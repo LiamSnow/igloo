@@ -1,65 +1,103 @@
 // This configuration file controls everything for igloo
 (
-    version: "0.1",
+    version: 0.1,
 
-    users: [
-        liams: (
+    users: {
+        "liams": (
             //used for website access (generate using openssl)
             password_hash: "$6$xyz$IVL44asgjCQ0I2hQEd5yBF.fzuDD76Myox44EvwZE/v/ujPacqtw0le121WuQYkmg32JO/tG/EPss1/ih4TDB0",
-            api_key: "asdfjkasdhf2908jhf9dshafjkh", //used for API access outside website
+            //used for API access outside website
+            api_key_hash: "$6$xyz$IVL44asgjCQ0I2hQEd5yBF.fzuDD76Myox44EvwZE/v/ujPacqtw0le121WuQYkmg32JO/tG/EPss1/ih4TDB0",
         ),
-        maxg: (
+        "maxg": (
             password_hash: "$6$xyz$2e6B9sqVo6A6BM1i9Y8KyguvI0ZizjBLxPx6fmJo4XMr2XZqC6YIjRIr1wTyexOqyATbWOlxtSo.tGb2T5fgQ1",
         ),
-    ],
+        "jakeb": (
+            password_hash: "$6$xyz$2e6B9sqVo6A6BM1i9Y8KyguvI0ZizjBLxPx6fmJo4XMr2XZqC6YIjRIr1wTyexOqyATbWOlxtSo.tGb2T5fgQ1",
+        ),
+        "nickn": (
+            password_hash: "$6$xyz$2e6B9sqVo6A6BM1i9Y8KyguvI0ZizjBLxPx6fmJo4XMr2XZqC6YIjRIr1wTyexOqyATbWOlxtSo.tGb2T5fgQ1",
+        ),
+    },
+
+    user_groups: {
+        //all is default user group
+        "camera": ["liams","maxg"]
+    },
+
 
     providers: [
-        "esphome",
-        "homekit",
+        ESPHome(
+            default_port: 6053 // optional, override default port
+        ),
+        HomeKit(),
     ],
 
-    zones: (
-        // set permissions for all zones
-        permissions: (
-            view: "all",
-            modify: "all",
-        ),
-
-        bedroom: (
-            // or a specific zone
-            permissions: "liams", // shorthand to declare permissions (apply to both)
-
-            ceiling_light: (
-                // or a specific device, in a cascading manner
-                permissions: "all",
-                address: "esphome://192.168.1.124", // "PROVIDER://IP:PORT" (port can be implied, 6053 in this case)
+    zones: {
+        "liams_room": {
+            "ceiling_light": ESPHome(
+                ip: "192.168.1.124:6053",
+                password: "example-password"
             ),
+            "desk_lights": Group([ // make a light group
+                ESPHome(
+                    ip: "192.168.1.122", //uses default port
+                    noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+                ),
+                ESPHome(
+                    ip: "192.168.1.123",
+                    noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+                ),
+            ]),
+            "ac": ESPHome(
+                ip: "192.168.1.300",
+                noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+            ),
+            "pc_power": ESPHome(
+                ip: "192.168.1.200",
+                noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+            ),
+        },
 
-            desk_light: "esphome://192.168.1.122", // shorthand to declare device (only address)
-            ac: "esphome://192.168.1.200",
-            pc_power: "esphome://192.168.1.300",
-        ),
+        "kitchen": {
+            "main": ESPHome(
+                ip: "192.168.1.101",
+                noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+            ),
+            "sink": ESPHome(
+                ip: "192.168.1.102",
+                noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+            ),
+            "camera": ESPHome(
+                ip: "192.168.1.102",
+                noise_psk: "gYytPPML2H1OMNLjsfaD0WCa0pbs/EZvUVpAkAJVmiU="
+            )
+        },
+    },
 
-        kitchen: (
-            main: "esphome://192.168.1.101",
-            sink: "esphome://192.168.1.102",
-        ),
-    ),
+    //Declare permissions in a cascading manner
+    permissions: {
+        //SELECTOR:(USER|USER_GROUP)
+        "": "all",
+        "liams_room": "liams",
+        "kitchen.camera": "camera"
+    },
 
     // Make automations that run at specific time, are triggered by a button, and more!
-    automations: (
-        bedtime: (
+    automations: {
+        "bedtime": (
             // permissions inherited from devices used (can also be explicitly set)
-            type: "time",
-            default: "10:00PM",
+            trigger: Time(
+                default: "10:00PM",
+            ),
 
             on_trigger: [
                 "lights.bedroom off", // see documentation on the CLI
             ],
         ),
 
-        party: (
-            type: "button",
+        "party": (
+            trigger: Button,
             on_trigger: [
                 "kitchen effect rainbow",
                 "living_room effect wave blue red",
@@ -68,13 +106,14 @@
             ],
         ),
 
-        alarm: (
-            type: "time",
-            default: "10:00PM",
+        "alarm": (
+            trigger: Time(
+                default: "10:00PM",
+            ),
 
             trigger_offset: -1200, // offset by rise time, so the lights are 100% at the time of the alarm
             on_trigger: [
-                "lights.bedroom effect rise 0 100 1200",
+                "bedroom effect rise 0 100 1200",
             ],
 
             // whenever the alarm time is changed
@@ -82,5 +121,5 @@
                 "curl -X POST 192.168.1.400/alarm/time -d \"{{TIME}}\"", // use the magic {{TIME}}
             ],
         ),
-    ),
+    },
 )
