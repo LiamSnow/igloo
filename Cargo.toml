@@ -8,3 +8,5 @@ ron = "0.8.1"
 serde = { version = "1.0.217", features = ["derive"] }
 esphomebridge-rs = { path = "../esphomebridge-rs/" }
 tokio = { version = "1.43.0", features = ["full"] }
+clap = "4.5.30"
+clap_derive = "4.5.28"

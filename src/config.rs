@@ -3,6 +3,8 @@ use std::{collections::HashMap, error::Error, fs};
 use ron::{extensions::Extensions, Options};
 use serde::{Deserialize, Serialize};
 
+use crate::providers::{DeviceConfig, Provider};
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct IglooConfig {
     pub version: f32,
@@ -20,43 +22,6 @@ pub type IglooZones = HashMap<String, HashMap<String, DeviceConfig>>;
 pub struct User {
     pub password_hash: String,
     pub api_key_hash: Option<String>
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum Provider {
-    ESPHome(ESPHomeConfig),
-    HomeKit(HomeKitConfig)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ESPHomeConfig {
-    pub default_port: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct HomeKitConfig {
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum DeviceConfig {
-    ESPHome(ESPHomeDeviceConfig),
-    Test()
-}
-
-impl DeviceConfig {
-    pub fn unwrap_esphome(self) -> ESPHomeDeviceConfig {
-        if let Self::ESPHome(e) = self {
-            return e
-        }
-        panic!("unwrap_esphome had wrong type!");
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ESPHomeDeviceConfig {
-    pub ip: String,
-    pub password: Option<String>,
-    pub noise_psk: Option<String>
 }
 
 #[derive(Debug, Deserialize, Serialize)]
