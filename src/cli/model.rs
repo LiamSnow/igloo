@@ -24,8 +24,10 @@ impl Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Control lights
+    #[command(alias = "lights")]
     Light(LightArgs),
     /// Control switches
+    #[command(alias = "switches")]
     Switch(SwitchArgs),
 
     /// List various items
@@ -43,8 +45,6 @@ pub enum Commands {
     Reload,
     /// Display version information
     Version,
-    /// Display system top information
-    Top,
 }
 
 #[derive(Args, Debug)]
@@ -67,12 +67,12 @@ pub enum LightAction {
     /// Set the light temperature
     #[command(alias = "temp")]
     Temperature {
-        temp: f32,
+        temp: u32,
     },
     /// Set the light brightness
     #[command(alias = "bri")]
     Brightness {
-        brightness: f32,
+        brightness: u8,
     },
 }
 
@@ -111,8 +111,15 @@ pub enum ListItems {
     /// List automations
     #[command(alias = "atms")]
     Automations,
-    /// List a specific target FIXME
-    Target { target: String },
+    /// List zones
+    #[command(alias = "zns")]
+    Zones,
+    /// List devices in zone
+    #[command(alias = "devs")]
+    Devices { zone: String },
+    /// List subdevices in device
+    #[command(alias = "subdevs")]
+    Subdevices { dev: String },
 }
 
 #[derive(Args, Debug)]
@@ -123,21 +130,21 @@ pub struct DescribeArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum DescribeItems {
-    /// Describe a user
-    #[command(alias = "usr")]
-    User { user: String },
-    /// Describe a user group
-    #[command(alias = "ug")]
-    UserGroup { user_group: String },
-    /// Describe a provider
-    #[command(alias = "pvd")]
-    Provider { provider: String },
-    /// Describe a zone
-    #[command(alias = "zn")]
-    Zone { zone: String },
+    // /// Describe a user
+    // #[command(alias = "usr")]
+    // User { user: String },
+    // /// Describe a user group
+    // #[command(alias = "ug")]
+    // UserGroup { user_group: String },
+    // /// Describe a provider
+    // #[command(alias = "pvd")]
+    // Provider { provider: String },
+    // /// Describe a zone
+    // #[command(alias = "zn")]
+    // Zone { zone: String },
     /// Describe a device
     #[command(alias = "dev")]
-    Device { device: String },
+    Device { dev: String },
     /// Describe an automation
     #[command(alias = "atm")]
     Automation { automation: String },
@@ -158,7 +165,7 @@ pub enum LogType {
     User { user: String },
     /// View device logs
     #[command(alias = "dev")]
-    Device { device: String },
+    Device { dev: String },
     /// View automation logs
     #[command(alias = "atm")]
     Automation { automation: String },

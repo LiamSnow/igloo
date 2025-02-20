@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, fs};
 use ron::{extensions::Extensions, Options};
 use serde::{Deserialize, Serialize};
 
-use crate::providers::{DeviceConfig, Provider};
+use crate::providers::{DeviceConfig, ProviderConfig};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct IglooConfig {
@@ -11,7 +11,7 @@ pub struct IglooConfig {
     pub users: HashMap<String, User>,
     pub user_groups: HashMap<String, Vec<String>>,
     pub permissions: HashMap<String, String>,
-    pub providers: Vec<Provider>,
+    pub providers: Vec<ProviderConfig>,
     pub zones: IglooZones,
     pub automations: HashMap<String, Automation>
 }

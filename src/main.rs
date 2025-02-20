@@ -2,7 +2,7 @@ use std::error::Error;
 
 use cli::model::Cli;
 use config::IglooConfig;
-use device::{command::DeviceCommand, scoped::ScopedDeviceCommand};
+use map::connect_all;
 
 pub mod config;
 pub mod device;
@@ -20,8 +20,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let table = map::make(cfg.zones)?;
-    let cmd = ScopedDeviceCommand::all(DeviceCommand::Connect);
-    cmd.execute(table.clone()).await?;
+    connect_all(table.clone()).await;
     println!("all connected!");
 
     loop {
