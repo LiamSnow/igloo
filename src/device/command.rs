@@ -1,13 +1,20 @@
-use std::error::Error;
-
 use clap_derive::Args;
 use tokio::task::JoinSet;
 
-use crate::{cli::model::LightAction, map::DeviceMap, providers::IglooDevice};
+use crate::{cli::model::LightAction, map::{Selector, SelectorError, ZonesMap}, providers::IglooDevice};
 
 #[derive(Debug, Clone)]
-pub enum DeviceCommand {
+pub enum SubdeviceCommand {
     Light(LightAction),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LightState {
+    pub on: bool,
+    pub color_on: bool,
+    pub color: Option<Color>,
+    pub temp: Option<u32>,
+    pub brightness: Option<u8>,
 }
 
 #[derive(Debug, Default, Clone, Args)]
@@ -17,81 +24,155 @@ pub struct Color {
     pub b: u8
 }
 
-pub struct ScopedDeviceCommand {
-    pub zone: Option<String>,
-    pub dev: Option<String>,
-    pub subdev: Option<String>,
-    pub cmd: DeviceCommand
+pub struct ScopedSubdeviceCommand {
+    pub selector: Selector,
+    pub cmd: SubdeviceCommand
 }
 
-impl ScopedDeviceCommand {
-    pub fn from_str(target: &str, cmd: DeviceCommand) -> Result<Self, Box<dyn Error>> {
-        if target == "all" {
-            return Ok(Self::all(cmd));
-        }
-
-        let parts: Vec<String> = target.split(".").map(|s| s.to_string()).collect();
-        if parts.len() < 1 || parts.len() > 3 {
-            return Err("command target has wrong number of parts".into());
-        }
-
-        Ok(Self {
-            cmd,
-            zone: parts.get(0).cloned(),
-            dev: parts.get(1).cloned(),
-            subdev: parts.get(2).cloned()
-        })
+impl ScopedSubdeviceCommand {
+    pub fn from_str(map: ZonesMap, selector_str: &str, cmd: SubdeviceCommand) -> Result<Self, SelectorError> {
+        Ok(Self::new(Selector::from_str(map, selector_str)?, cmd))
     }
 
-    pub fn all(cmd: DeviceCommand) -> Self {
-        Self {
-            cmd,
-            zone: None,
-            dev: None,
-            subdev: None
-        }
+    pub fn new(selector: Selector, cmd: SubdeviceCommand) -> Self {
+        Self { selector, cmd }
     }
 
-    pub async fn execute(self, table: DeviceMap) -> Result<(), Box<dyn Error>> {
-        if let Some(zone) = self.zone {
-            let zone = table.get(&zone).ok_or("could not find zone")?;
-
-            if let Some(device) = &self.dev {
-                let device = zone.get(device).ok_or("could not find device")?;
-
-                //subdevice
-                if let Some(subdevice) = self.subdev {
-                    IglooDevice::execute_lock(device.clone(), self.cmd, subdevice).await;
-                }
-
-                //device
-                else {
-                    IglooDevice::execute_global_lock(device.clone(), self.cmd).await;
-                }
-            }
-
-            //zone
-            else {
+    pub async fn execute(self) {
+        match self.selector {
+            Selector::All(map) => {
                 let mut set = JoinSet::new();
-                for (_, dev_lock) in zone {
+                for (_, zone) in &*map {
+                    for (_, dev_lock) in &**zone {
+                        set.spawn(IglooDevice::execute_global_lock(dev_lock.clone(), self.cmd.clone()));
+                    }
+                }
+                set.join_all().await;
+			},
+            Selector::Zone(zone) => {
+                let mut set = JoinSet::new();
+                for (_, dev_lock) in &*zone {
                     set.spawn(IglooDevice::execute_global_lock(dev_lock.clone(), self.cmd.clone()));
                 }
                 set.join_all().await;
-            }
+			},
+            Selector::Device(dev_lock) => {
+                IglooDevice::execute_global_lock(dev_lock, self.cmd).await;
+			},
+            Selector::Subdevice(dev_lock, subdev_name) => {
+                IglooDevice::execute_lock(dev_lock, self.cmd, &subdev_name).await;
+			},
         }
-
-        //all
-        else {
-            let mut set = JoinSet::new();
-            for (_, zone) in &*table {
-                for (_, dev_lock) in zone {
-                    set.spawn(IglooDevice::execute_global_lock(dev_lock.clone(), self.cmd.clone()));
-                }
-            }
-            set.join_all().await;
-        }
-
-        Ok(())
     }
 }
 
+impl Selector {
+    pub async fn get_light_state(&self) -> Option<LightState> {
+        match self {
+            Selector::All(map) => {
+                let mut states = Vec::new();
+                for (_, zone) in &**map {
+                    for (_, dev_lock) in &**zone {
+                        let dev = dev_lock.read().await;
+                        states.push(IglooDevice::get_global_light_state(&dev));
+                    }
+                }
+                LightState::avg(states)
+			},
+            Selector::Zone(zone) => {
+                let mut states = Vec::new();
+                for (_, dev_lock) in &**zone {
+                    let dev = dev_lock.read().await;
+                    states.push(IglooDevice::get_global_light_state(&dev));
+                }
+                LightState::avg(states)
+			},
+            Selector::Device(dev_lock) => {
+                let dev = dev_lock.read().await;
+                IglooDevice::get_global_light_state(&dev)
+			},
+            Selector::Subdevice(dev_lock, subdev_name) => {
+                let dev = dev_lock.read().await;
+                IglooDevice::get_light_state(&dev, subdev_name)
+			},
+        }
+    }
+}
+
+
+impl LightState {
+    /// im sorry
+    pub fn avg(states: Vec<Option<Self>>) -> Option<Self> {
+        let mut num = 0;
+        let mut on_count = 0;
+        let mut color_on_count = 0;
+
+        let mut num_with_color = 0;
+        let mut r_count = 0;
+        let mut g_count = 0;
+        let mut b_count = 0;
+
+        let mut num_with_temp = 0;
+        let mut temp_count = 0;
+
+        let mut num_with_bright = 0;
+        let mut bright_count = 0;
+
+        for state_opt in states {
+            if let Some(state) = state_opt {
+                num += 1;
+                on_count += state.on as u32;
+                color_on_count += state.color_on as u32;
+
+                if let Some(color) = state.color {
+                    num_with_color += 1;
+                    r_count += color.r as u32;
+                    g_count += color.g as u32;
+                    b_count += color.b as u32;
+                }
+
+                if let Some(temp) = state.temp {
+                    num_with_temp += 1;
+                    temp_count += temp;
+                }
+
+                if let Some(bright) = state.brightness {
+                    num_with_bright += 1;
+                    bright_count += bright as u32;
+                }
+            }
+        }
+
+        if num < 1 {
+            return None
+        }
+
+        let mut me = Self {
+            on: (on_count as f32 / num as f32) > 0.5,
+            color_on: (color_on_count as f32 / num as f32) > 0.5,
+            ..Default::default()
+        };
+
+        if num_with_color > 0 {
+            me.color = Some(Color {
+                r: (r_count as f32 / num_with_color as f32) as u8,
+                g: (g_count as f32 / num_with_color as f32) as u8,
+                b: (b_count as f32 / num_with_color as f32) as u8
+            });
+        }
+
+        if num_with_temp > 0 {
+            me.temp = Some(
+                (temp_count as f32 / num_with_temp as f32) as u32
+            );
+        }
+
+        if num_with_bright > 0 {
+            me.brightness = Some(
+                (bright_count as f32 / num_with_temp as f32) as u8
+            );
+        }
+
+        Some(me)
+    }
+}

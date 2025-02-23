@@ -12,16 +12,22 @@ pub struct IglooConfig {
     pub user_groups: HashMap<String, Vec<String>>,
     pub permissions: HashMap<String, String>,
     pub providers: Vec<ProviderConfig>,
-    pub zones: IglooZones,
+    pub zones: ZonesConfig,
+    pub ui: HashMap<String, Vec<UIElementConfig>>,
     pub automations: HashMap<String, Automation>
 }
 
-pub type IglooZones = HashMap<String, HashMap<String, DeviceConfig>>;
+pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct User {
     pub password_hash: String,
     pub api_key_hash: Option<String>
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum UIElementConfig {
+    Light(String),
 }
 
 #[derive(Debug, Deserialize, Serialize)]

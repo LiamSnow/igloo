@@ -1,10 +1,11 @@
 use core::str;
 use std::{error::Error, time::Duration};
 
-use esphomebridge_rs::{api, device::ESPHomeDevice, entity::EntityCategory};
+use esphomebridge_rs::{api::{self, LightStateResponse}, device::ESPHomeDevice, entity::ENTITY_CATEGORY_NONE};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
-use crate::{cli::model::LightAction, device::{command::DeviceCommand, device::IglooDeviceLock}};
+use crate::{cli::model::LightAction, device::{command::{Color, LightState, SubdeviceCommand}, device::{IglooDeviceLock, SubdeviceInfo}}};
 
 use super::IglooDevice;
 
@@ -20,11 +21,17 @@ pub struct ESPHomeDeviceConfig {
     pub noise_psk: Option<String>
 }
 
+// matches aioesphomeapi
+pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
+pub const KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(90);
+
 pub fn make(config: ESPHomeDeviceConfig) -> Result<IglooDevice, Box<dyn Error>> {
     let mut ip = config.ip;
     if !ip.contains(':') {
         ip += ":6053";
     }
+
+    let (tx, mut rx) = mpsc::channel::<String>(32);
 
     let dev;
     if let Some(noise_psk) = config.noise_psk {
@@ -42,21 +49,35 @@ pub fn make(config: ESPHomeDeviceConfig) -> Result<IglooDevice, Box<dyn Error>> 
 
 pub async fn connect(dev_lock: IglooDeviceLock) -> Result<(), Box<dyn Error>> {
     let clone = dev_lock.clone();
-    let mut idev = clone.write().await;
-    match *idev {
-        IglooDevice::ESPHome(ref mut dev) => dev.connect().await?,
+    {
+        let mut idev = clone.write().await;
+        match *idev {
+            IglooDevice::ESPHome(ref mut dev) => {
+                dev.connect().await?;
+                dev.subscribe_states().await?;
+            },
+        }
     }
-    drop(idev);
 
     tokio::spawn(async move {
-        // == ESPHome server's keepalive (has tolerance of 2.5x)
-        // TODO when we add logging, should we reduce this so the TCP buffer does fill up to much?
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        let mut interval = tokio::time::interval(KEEP_ALIVE_INTERVAL);
         loop {
             interval.tick().await;
             let mut idev = dev_lock.write().await;
             match *idev {
-                IglooDevice::ESPHome(ref mut dev) => dev.process_incoming().await.unwrap(), //FIXME unwrap
+                IglooDevice::ESPHome(ref mut dev) => {
+                    dev.ping_no_wait().await.unwrap();
+
+                    //FIXME what if device never pinged?
+                    if let Some(last_ping) = dev.last_ping {
+                        if last_ping.elapsed().unwrap() > KEEP_ALIVE_TIMEOUT {
+                            //TODO handle this? at least include devices name
+                            println!("Device has timed out -> Reconnecting");
+                            dev.force_disconnect().await.unwrap();
+                            dev.connect().await.unwrap();
+                        }
+                    }
+                }
             }
         }
     });
@@ -64,18 +85,18 @@ pub async fn connect(dev_lock: IglooDeviceLock) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub async fn execute(dev: &mut ESPHomeDevice, cmd: DeviceCommand, subdevice_name: String) -> Result<(), Box<dyn Error>> {
+pub async fn execute(dev: &mut ESPHomeDevice, cmd: SubdeviceCommand, subdevice_name: &str) -> Result<(), Box<dyn Error>> {
     match cmd {
-        DeviceCommand::Light(cmd) => if let Some(entity) = dev.entities.light.get(&subdevice_name) {
+        SubdeviceCommand::Light(cmd) => if let Some(entity) = dev.entities.light.get(subdevice_name) {
             dev.light_command(&cmd.to_esphome(entity.key)).await?
         },
     }
     Ok(())
 }
 
-pub async fn execute_global(dev: &mut ESPHomeDevice, cmd: DeviceCommand) -> Result<(), Box<dyn Error>> {
+pub async fn execute_global(dev: &mut ESPHomeDevice, cmd: SubdeviceCommand) -> Result<(), Box<dyn Error>> {
     match cmd {
-        DeviceCommand::Light(cmd) => {
+        SubdeviceCommand::Light(cmd) => {
             let mut esp_cmd = cmd.clone().to_esphome(0);
             for key in dev.get_primary_light_keys() {
                 esp_cmd.key = key;
@@ -86,31 +107,43 @@ pub async fn execute_global(dev: &mut ESPHomeDevice, cmd: DeviceCommand) -> Resu
     Ok(())
 }
 
-pub fn list_subdevs(dev: &ESPHomeDevice) -> Vec<String> {
-    let mut names = Vec::new();
-    for (entity_type, entities) in dev.entities.to_hashmap() {
-        for (entity_name, entity) in entities {
-            if entity.category != EntityCategory::None {
-                names.push(format!("{entity_type} {entity_name} ({})", entity.category));
-            }
-            else {
-                names.push(format!("{entity_type} {entity_name}"));
-            }
-        }
-    }
-    for (_, service) in &dev.services {
-        names.push(format!("service {}", service.name));
-    }
-    names
+pub fn get_light_state(dev: &ESPHomeDevice, subdevice_name: &str) -> Option<LightState> {
+    let entity = dev.entities.light.get(subdevice_name)?;
+    let state = dev.states.light.get(&entity.key)?;
+    let state = state.as_ref()?;
+    Some(state.into())
 }
 
-pub fn describe(dev: &ESPHomeDevice) -> String {
-    let mut s = String::new();
+pub fn get_global_light_state(dev: &ESPHomeDevice) -> Option<LightState> {
+    let mut states: Vec<LightState> = Vec::new();
+    for key in dev.get_primary_light_keys() {
+        if let Some(Some(state)) = dev.states.light.get(&key) {
+            states.push(state.into());
+        }
+    }
 
-    s += &format!("connected: {}", dev.connected);
-    //TODO ?? show entites and services here?
+    None
+}
 
-    s
+pub fn list_subdevs(dev: &ESPHomeDevice) -> Vec<SubdeviceInfo> {
+    let mut names = Vec::new();
+
+    for entity in dev.entities.get_all() {
+        names.push(SubdeviceInfo {
+            typ: entity.typ.to_string(),
+            name: entity.object_id.to_string(),
+            is_diagnostic: entity.category != ENTITY_CATEGORY_NONE
+        })
+    }
+
+    for (_, service) in &dev.services {
+        names.push(SubdeviceInfo {
+            typ: "service".to_string(),
+            name: service.name.clone(),
+            is_diagnostic: false
+        })
+    }
+    names
 }
 
 pub async fn subscribe_logs(_dev: &mut ESPHomeDevice) {
@@ -123,16 +156,14 @@ impl LightAction {
             key,
             has_transition_length: true,
             transition_length: 0,
+            has_state: true,
+            state: true,
             ..Default::default()
         };
 
         match self {
-            LightAction::On => {
-                cmd.has_state = true;
-                cmd.state = true;
-            },
+            LightAction::On => {},
             LightAction::Off => {
-                cmd.has_state = true;
                 cmd.state = false;
             },
             LightAction::Color(color) => {
@@ -155,3 +186,20 @@ impl LightAction {
         cmd
     }
 }
+
+impl From<&LightStateResponse> for LightState {
+    fn from(value: &LightStateResponse) -> Self {
+        Self {
+            on: value.state,
+            temp: Some(value.color_temperature as u32),
+            brightness: Some(value.brightness as u8),
+            color: Some(Color {
+                r: (value.red * 255.) as u8,
+                g: (value.green * 255.) as u8,
+                b: (value.blue * 255.) as u8,
+            }),
+            color_on: value.color_mode == 35
+        }
+    }
+}
+

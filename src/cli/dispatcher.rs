@@ -1,21 +1,41 @@
-use std::error::Error;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::{device::command::{DeviceCommand, ScopedDeviceCommand}, map::DeviceMap, VERSION};
+use axum::{http::StatusCode, response::IntoResponse, Json};
+use serde::Serialize;
+use thiserror::Error;
+
+use crate::{device::{command::{SubdeviceCommand, ScopedSubdeviceCommand}, device::{DeviceInfo, SubdeviceInfo}}, map::{IglooStack, Selector, SelectorError, UIElement}, CONFIG_VERSION, VERSION};
 
 use super::model::{Cli, Commands, DescribeItems, ListItems, LogType};
 
+#[derive(Error, Debug, Serialize)]
+pub enum DispatchError {
+    #[error("selector error `{0}`")]
+    SelectorError(SelectorError),
+}
+
+impl From<SelectorError> for DispatchError {
+    fn from(value: SelectorError) -> Self {
+        Self::SelectorError(value)
+    }
+}
+
 impl Cli {
-    //FIXME return json instead of printing
-    pub async fn dispatch(self, table: DeviceMap) -> Result<(), Box<dyn Error>> {
-        match self.command {
+    pub async fn dispatch(self, table: Arc<IglooStack>) -> Result<impl IntoResponse, DispatchError> {
+        Ok(match self.command {
             Commands::Light(args) => {
-                let cmd = ScopedDeviceCommand::from_str(
+                let cmd = ScopedSubdeviceCommand::from_str(
+                    table.map.clone(),
                     &args.target,
-                    DeviceCommand::Light(args.action)
+                    SubdeviceCommand::Light(args.action)
                 )?;
-                cmd.execute(table).await?;
+                cmd.execute().await;
+                (StatusCode::OK).into_response()
             },
             Commands::Switch(_) => todo!(),
+            Commands::UI => {
+                (StatusCode::OK, Json(table.ui)).into_response()
+            }
             Commands::List(args) => {
                 match args.item {
                     ListItems::Users => todo!(),
@@ -23,39 +43,27 @@ impl Cli {
                     ListItems::Providers => todo!(),
                     ListItems::Automations => todo!(),
                     ListItems::Zones => {
-                        for (zone_name, _) in &*table {
-                            println!("{zone_name}");
-                        }
+                        let zones: Vec<String> = table.map.keys().cloned().collect();
+                        (StatusCode::OK, Json(zones)).into_response()
                     },
                     ListItems::Devices { zone } => {
-                        let zone = table.get(&zone).ok_or("could not find zone")?;
-                        for (dev_name, _) in zone {
-                            println!("{dev_name}");
-                        }
+                        let zone = Selector::from_str(table.map.clone(), &zone)?.get_zone()?;
+                        let devices: Vec<String> = zone.keys().cloned().collect();
+                        (StatusCode::OK, Json(devices)).into_response()
                     },
                     ListItems::Subdevices { dev } => {
-                        //TODO func
-                        let (zone_name, dev_name) =  dev.split_once(".").ok_or("please provide ZONE.DEVICE")?;
-                        let zone = table.get(zone_name).ok_or("could not find zone")?;
-                        let dev_lock = zone.get(dev_name).ok_or("could not find device")?;
-
+                        let dev_lock = Selector::from_str(table.map.clone(), &dev)?.get_device()?;
                         let dev = dev_lock.read().await;
-                        for subdev in dev.list_subdevs() {
-                            println!("{subdev}");
-                        }
+                        (StatusCode::OK, Json(dev.list_subdevs())).into_response()
                     },
                 }
             },
             Commands::Describe(args) => {
                 match args.item {
                     DescribeItems::Device { dev } => {
-                        //TODO func
-                        let (zone_name, dev_name) =  dev.split_once(".").ok_or("please provide ZONE.DEVICE")?;
-                        let zone = table.get(zone_name).ok_or("could not find zone")?;
-                        let dev_lock = zone.get(dev_name).ok_or("could not find device")?;
-
+                        let dev_lock = Selector::from_str(table.map.clone(), &dev)?.get_device()?;
                         let dev = dev_lock.read().await;
-                        println!("{}", dev.describe());
+                        (StatusCode::OK, Json(dev.describe())).into_response()
                     },
                     DescribeItems::Automation { automation: _ } => {
                         todo!()
@@ -67,21 +75,18 @@ impl Cli {
                     LogType::System => todo!(),
                     LogType::User { user: _ } => todo!(),
                     LogType::Device { dev } => {
-                        let (zone_name, dev_name) =  dev.split_once(".").ok_or("please provide ZONE.DEVICE")?;
-                        let zone = table.get(zone_name).ok_or("could not find zone")?;
-                        let dev_lock = zone.get(dev_name).ok_or("could not find device")?;
-
+                        let dev_lock = Selector::from_str(table.map.clone(), &dev)?.get_device()?;
                         let mut dev = dev_lock.write().await;
                         dev.subscribe_logs().await;
+                        todo!()
                     },
                     LogType::Automation { automation: _ } => todo!(),
                 }
             },
             Commands::Automation(_) => todo!(),
             Commands::Reload => todo!(),
-            Commands::Version => println!("{}", VERSION),
-        }
-
-        Ok(())
+            Commands::Version => (StatusCode::OK, Json(VERSION)).into_response()
+        })
     }
 }
+

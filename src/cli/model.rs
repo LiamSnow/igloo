@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use clap::command;
 use clap_derive::{Args, Parser, Subcommand, ValueEnum};
 use clap::Parser;
@@ -14,7 +12,7 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn parse(cmd_str: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn parse(cmd_str: &str) -> Result<Self, clap::error::Error> {
         let cmd_str = "igloo ".to_string() + cmd_str;
         let res = Self::try_parse_from(cmd_str.split_whitespace())?;
         Ok(res)
@@ -29,6 +27,9 @@ pub enum Commands {
     /// Control switches
     #[command(alias = "switches")]
     Switch(SwitchArgs),
+
+    /// UI Interface
+    UI,
 
     /// List various items
     #[command(alias = "ls")]

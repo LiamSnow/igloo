@@ -1,10 +1,11 @@
 use std::{error::Error, sync::Arc};
 
+use serde::Serialize;
 use tokio::sync::RwLock;
 
 use crate::providers::{self, DeviceConfig, DeviceType, IglooDevice};
 
-use super::command::DeviceCommand;
+use super::command::{LightState, SubdeviceCommand};
 
 pub type IglooDeviceLock = Arc<RwLock<IglooDevice>>;
 
@@ -17,9 +18,11 @@ impl IglooDevice {
     }
 
     pub async fn connect(dev_lock: IglooDeviceLock) {
-        let dev = dev_lock.read().await;
-        let typ: DeviceType = dev.get_type();
-        drop(dev);
+        let typ;
+        {
+            let dev = dev_lock.read().await;
+            typ = dev.get_type();
+        }
 
         let res = match typ {
             DeviceType::ESPHome => providers::esphome::connect(dev_lock.clone()).await,
@@ -29,19 +32,20 @@ impl IglooDevice {
         }
     }
 
-    pub async fn execute(&mut self, cmd: DeviceCommand, subdevice_name: String) -> Result<(), Box<dyn Error>> {
+    pub async fn execute(&mut self, cmd: SubdeviceCommand, subdevice_name: &str) -> Result<(), Box<dyn Error>> {
         match self {
             IglooDevice::ESPHome(dev) => providers::esphome::execute(dev, cmd, subdevice_name).await,
         }
     }
 
-    pub async fn execute_global(&mut self, cmd: DeviceCommand) -> Result<(), Box<dyn Error>> {
+    /// Execute a subdevice command on all subdevices of that type
+    pub async fn execute_global(&mut self, cmd: SubdeviceCommand) -> Result<(), Box<dyn Error>> {
         match self {
             IglooDevice::ESPHome(dev) => providers::esphome::execute_global(dev, cmd).await,
         }
     }
 
-    pub async fn execute_lock(dev_lock: IglooDeviceLock, cmd: DeviceCommand, subdevice_name: String) {
+    pub async fn execute_lock(dev_lock: IglooDeviceLock, cmd: SubdeviceCommand, subdevice_name: &str) {
         let mut dev = dev_lock.write().await;
         let res = dev.execute(cmd, subdevice_name).await;
         if let Err(e) = res {
@@ -49,7 +53,19 @@ impl IglooDevice {
         }
     }
 
-    pub async fn execute_global_lock(dev_lock: IglooDeviceLock, cmd: DeviceCommand) {
+    pub fn get_light_state(&self, subdevice_name: &str) -> Option<LightState> {
+        match self {
+            IglooDevice::ESPHome(dev) => providers::esphome::get_light_state(dev, subdevice_name),
+        }
+    }
+    pub fn get_global_light_state(&self) -> Option<LightState> {
+        match self {
+            IglooDevice::ESPHome(dev) => providers::esphome::get_global_light_state(dev),
+        }
+    }
+
+    /// Execute a subdevice command on all subdevices of that type
+    pub async fn execute_global_lock(dev_lock: IglooDeviceLock, cmd: SubdeviceCommand) {
         let mut dev = dev_lock.write().await;
         let res = dev.execute_global(cmd).await;
         if let Err(e) = res {
@@ -58,16 +74,16 @@ impl IglooDevice {
     }
 
     //TODO struct?
-    pub fn list_subdevs(&self) -> Vec<String> {
+    pub fn list_subdevs(&self) -> Vec<SubdeviceInfo> {
         match self {
             IglooDevice::ESPHome(dev) => providers::esphome::list_subdevs(dev),
         }
     }
 
     //TODO struct?
-    pub fn describe(&self) -> String {
-        match self {
-            IglooDevice::ESPHome(dev) => providers::esphome::describe(dev),
+    pub fn describe(&self) -> DeviceInfo {
+        DeviceInfo {
+            typ: self.get_type()
         }
     }
 
@@ -77,4 +93,16 @@ impl IglooDevice {
             IglooDevice::ESPHome(dev) => providers::esphome::subscribe_logs(dev).await,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeviceInfo {
+    typ: DeviceType
+}
+
+#[derive(Debug, Serialize)]
+pub struct SubdeviceInfo {
+    pub typ: String,
+    pub name: String,
+    pub is_diagnostic: bool
 }

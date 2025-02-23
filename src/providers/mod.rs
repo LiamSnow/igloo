@@ -10,6 +10,7 @@ pub enum IglooDevice {
     ESPHome(ESPHomeDevice)
 }
 
+#[derive(Debug, Serialize)]
 pub enum DeviceType {
     ESPHome
 }
