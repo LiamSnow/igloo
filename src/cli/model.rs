@@ -28,16 +28,14 @@ pub enum CliCommands {
     /// Control switches
     #[command(alias = "switches")]
     Switch(SwitchArgs),
-
     /// UI Interface
     UI,
-
     /// List various items
     #[command(alias = "ls")]
     List(ListArgs),
     /// Describe various items
-    #[command(alias = "dsc")]
-    Describe(DescribeArgs),
+    // #[command(alias = "dsc")]
+    // Describe(DescribeArgs),
     /// View logs
     Logs(LogsArgs),
     /// Control automations
@@ -160,8 +158,8 @@ pub enum DescribeItems {
     // #[command(alias = "zn")]
     // Zone { zone: String },
     /// Describe a device
-    #[command(alias = "dev")]
-    Device { dev: String },
+    // #[command(alias = "dev")]
+    // Device { dev: String },
     /// Describe an automation
     #[command(alias = "atm")]
     Automation { automation: String },

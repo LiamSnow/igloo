@@ -95,7 +95,10 @@ async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: RackSubdeviceCommand) -> Resul
             SubdeviceCommand::Light(light_cmd) => {
                 if let Some(entity) = dev.entities.light.get(&subdev_name) {
                     //FIXME replace ? with log
-                    dev.light_command(&light_cmd.to_esphome(entity.key)).await?
+                    let ecmd = light_cmd.to_esphome(entity.key);
+                    println!("{} sending", ecmd.brightness);
+                    dev.light_command(&ecmd).await?;
+                    println!("{} done", ecmd.brightness);
                 }
                 else {
                     //TODO error log

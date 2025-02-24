@@ -2,7 +2,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::mpsc::Sender;
 
-use crate::{command::{RackSubdeviceCommand, SubdeviceCommand}, map::DeviceCmdChannelMap};
+use crate::{command::{RackSubdeviceCommand, SubdeviceCommand}, map::DeviceCommandChannelMap};
 
 pub enum Selection {
     Multiple(Vec<Sender<RackSubdeviceCommand>>),
@@ -31,7 +31,7 @@ pub enum SelectorError {
 }
 
 impl Selection {
-    pub fn new(map: &DeviceCmdChannelMap, selection_str: &str) -> Result<Self, SelectorError> {
+    pub fn new(map: &DeviceCommandChannelMap, selection_str: &str) -> Result<Self, SelectorError> {
         match SelectionString::new(selection_str)? {
             SelectionString::All => {
                 let mut v = Vec::new();

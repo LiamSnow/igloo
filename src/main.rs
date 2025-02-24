@@ -26,14 +26,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (stack, mut update_rx) = IglooStack::init(cfg).await?;
 
     tokio::spawn(async move {
-        while let Some(states) = update_rx.recv().await {
-            println!("\n\n\n\n\n\n\n\n\n\n\n --------- NEW STATES ---------");
-            for state in states {
-                if let Some(state) = state {
-                    println!("{:#?}", state);
-                }
-            }
-            println!("\n\n\n\n -------- END ------- \n\n\n\n\n\n\n\n\n\n\n");
+        while let Some(_states) = update_rx.recv().await {
+            // println!("\n\n\n\n\n\n\n\n\n\n\n --------- NEW STATES ---------");
+            // for state in states {
+            //     if let Some(state) = state {
+            //         println!("{:#?}", state);
+            //     }
+            // }
+            // println!("\n\n\n\n -------- END ------- \n\n\n\n\n\n\n\n\n\n\n");
             //TODO notify web sockets
         }
     });

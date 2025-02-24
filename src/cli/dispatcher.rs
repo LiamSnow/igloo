@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{command::SubdeviceCommand, map::IglooStack, selector::{Selection, SelectorError}, VERSION};
 
-use super::model::{Cli, CliCommands, DescribeItems, ListItems, LogType};
+use super::model::{Cli, CliCommands, ListItems, LogType};
 
 #[derive(Error, Debug, Serialize)]
 pub enum DispatchError {
@@ -26,7 +26,7 @@ impl Cli {
     pub async fn dispatch(self, stack: Arc<IglooStack>) -> Result<impl IntoResponse, DispatchError> {
         Ok(match self.command {
             CliCommands::Light(args) => {
-                let mut selector = Selection::new(&stack.channels, &args.target)?;
+                let mut selector = Selection::new(&stack.cmd_chan_map, &args.target)?;
                 selector.execute(SubdeviceCommand::Light(args.action))?;
                 (StatusCode::OK).into_response()
             },
@@ -41,28 +41,18 @@ impl Cli {
                     ListItems::Providers => todo!(),
                     ListItems::Automations => todo!(),
                     ListItems::Zones => {
-                        let zones: Vec<String> = stack.channels.keys().cloned().collect();
+                        let zones: Vec<String> = stack.cmd_chan_map.keys().cloned().collect();
                         (StatusCode::OK, Json(zones)).into_response()
                     },
                     ListItems::Devices { zone } => {
                         let mut dev_names = Vec::new();
-                        let zone = stack.channels.get(&zone).ok_or(DispatchError::UnknownZone(zone))?;
+                        let zone = stack.cmd_chan_map.get(&zone).ok_or(DispatchError::UnknownZone(zone))?;
                         for (dev_name, _) in zone {
                             dev_names.push(dev_name.to_string());
                         }
                         (StatusCode::OK, Json(dev_names)).into_response()
                     },
                     ListItems::Subdevices { dev: _ } => {
-                        todo!()
-                    },
-                }
-            },
-            CliCommands::Describe(args) => {
-                match args.item {
-                    DescribeItems::Device { dev: _ } => {
-                        todo!()
-                    },
-                    DescribeItems::Automation { automation: _ } => {
                         todo!()
                     },
                 }
