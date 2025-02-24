@@ -7,10 +7,11 @@ use map::IglooStack;
 use serde::Serialize;
 
 pub mod config;
-pub mod device;
 pub mod cli;
 pub mod map;
 pub mod providers;
+pub mod command;
+pub mod selector;
 
 pub const VERSION: f32 = 0.1;
 pub const CONFIG_VERSION: f32 = 0.1;
@@ -22,12 +23,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         panic!("Wrong config version. Got {}, expected {}.", cfg.version, CONFIG_VERSION);
     }
 
-    let table = Arc::new(IglooStack::init(cfg).await?);
-    println!("all connected!");
+    let (stack, mut update_rx) = IglooStack::init(cfg).await?;
+
+    tokio::spawn(async move {
+        while let Some(states) = update_rx.recv().await {
+            //TODO notify web sockets
+        }
+    });
 
     let app = Router::new()
         .route("/", post(post_cmd))
-        .with_state(table);
+        .with_state(stack);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app.into_make_service())
@@ -41,7 +47,7 @@ struct ErrorResponse {
     error: String
 }
 
-async fn post_cmd(State(table): State<Arc<IglooStack>>, cmd_str: String) -> impl IntoResponse {
+async fn post_cmd(State(stack): State<Arc<IglooStack>>, cmd_str: String) -> impl IntoResponse {
     let cmd = Cli::parse(&cmd_str);
 
     if let Err(e) = cmd {
@@ -53,7 +59,7 @@ async fn post_cmd(State(table): State<Arc<IglooStack>>, cmd_str: String) -> impl
         ).into_response()
     }
 
-    match cmd.unwrap().dispatch(table).await {
+    match cmd.unwrap().dispatch(stack).await {
         Ok(v) => (
             StatusCode::OK,
             v,

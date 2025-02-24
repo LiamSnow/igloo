@@ -28,6 +28,16 @@ pub struct User {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum UIElementConfig {
     Light(String),
+    Switch(String)
+}
+
+impl UIElementConfig {
+    pub fn get_selector_str(&self) -> &str {
+        match self {
+            UIElementConfig::Light(s) => s,
+            UIElementConfig::Switch(s) => s
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]

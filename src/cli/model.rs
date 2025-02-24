@@ -1,14 +1,15 @@
 use clap::command;
 use clap_derive::{Args, Parser, Subcommand, ValueEnum};
 use clap::Parser;
+use serde::Serialize;
 
-use crate::device::command::Color;
+use crate::command::Color;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: CliCommands,
 }
 
 impl Cli {
@@ -20,7 +21,7 @@ impl Cli {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Commands {
+pub enum CliCommands {
     /// Control lights
     #[command(alias = "lights")]
     Light(LightArgs),
@@ -86,10 +87,25 @@ pub struct SwitchArgs {
     pub state: SwitchState,
 }
 
-#[derive(ValueEnum, Clone, Debug)]
+#[derive(ValueEnum, Clone, Debug, Serialize)]
 pub enum SwitchState {
     On,
     Off,
+}
+
+impl Default for SwitchState {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl From<SwitchState> for bool {
+    fn from(value: SwitchState) -> Self {
+        match value {
+            SwitchState::On => true,
+            SwitchState::Off => false
+        }
+    }
 }
 
 #[derive(Args, Debug)]
