@@ -7,7 +7,8 @@ use crate::{cli::model::SwitchState, command::{LightState, RackSubdeviceCommand,
 
 pub struct IglooStack {
     pub channels: DeviceCmdChannelMap,
-    pub ui_elements: HashMap<String, Vec<UIElement>>
+    pub ui_group_names: Vec<String>,
+    pub ui_elements: Vec<UIElement>
 }
 
 pub type DeviceCmdChannelMap = HashMap<String, HashMap<String, Sender<RackSubdeviceCommand>>>;
@@ -16,6 +17,7 @@ pub type DeviceIDMap = HashMap<String, HashMap<String, usize>>; //maps Zone, Dev
 
 #[derive(Default)]
 pub struct SubdeviceStates {
+    /// did.sub_name -> state
     light: Vec<HashMap<String, LightState>>,
     switch: Vec<HashMap<String, SwitchState>>,
 }
@@ -23,86 +25,79 @@ pub struct SubdeviceStates {
 #[derive(Clone, Serialize)]
 pub struct UIElement {
     pub cfg: UIElementConfig,
-    pub id: usize
-}
-
-pub struct UIElementState {
-    pub id: usize,
-    pub state: SubdeviceState
-}
-
-#[derive(Default, Clone)]
-pub struct UIElementStates {
-    pub light: Vec<Option<LightState>>,
-    pub switch: Vec<Option<SwitchState>>,
+    pub gid: usize,
+    pub eid: usize
 }
 
 #[derive(Default)]
-struct UIElementSelections {
-    light: Vec<UIElementSelection>,
-    switch: Vec<UIElementSelection>
+struct UIElementEffection {
+    light: UIElementEffectionGroup,
+    switch: UIElementEffectionGroup
 }
 
-pub enum UIElementSelection {
-    All,
-    Zone(Vec<usize>),
-    Device(usize),
-    Subdevice(usize, String)
-}
-
-impl UIElementSelection {
-    fn new(id_map: &DeviceIDMap, cfg: &UIElementConfig) -> Result<Self, Box<dyn Error>> {
-        Ok(match SelectionString::new(cfg.get_selector_str())? {
-            SelectionString::All => Self::All,
-            SelectionString::Zone(zone_name) => {
-                let zone = id_map.get(zone_name).unwrap(); //FIXME
-                Self::Zone(zone.values().copied().collect())
-            },
-            SelectionString::Device(zone_name, dev_name) => {
-                let zone = id_map.get(zone_name).unwrap(); //FIXME
-                let dev = zone.get(dev_name).unwrap();
-                Self::Device(*dev)
-            },
-            SelectionString::Subdevice(zone_name, dev_name, sub_name) => {
-                let zone = id_map.get(zone_name).unwrap(); //FIXME
-                let dev = zone.get(dev_name).unwrap();
-                Self::Subdevice(*dev, sub_name.to_string())
-            },
-        })
-    }
+#[derive(Default)]
+pub struct UIElementEffectionGroup {
+    /// eid
+    all: usize,
+    /// did -> eid
+    dev: HashMap<usize, usize>,
+    /// did -> zid
+    zone: HashMap<usize, Vec<usize>>,
+    /// (did,sub_name) -> eid
+    sub: HashMap<(usize, String), usize>
 }
 
 impl IglooStack {
-    pub async fn init(config: IglooConfig) -> Result<(Arc<Self>, Receiver<UIElementStates>), Box<dyn Error>> {
+    pub async fn init(config: IglooConfig) -> Result<(Arc<Self>, Receiver<Vec<Option<SubdeviceState>>>), Box<dyn Error>> {
         let (map, mut dev_states, dev_id_lut, mut dev_update_rx) = Self::make_map(config.zones)?;
 
-        let mut ui = HashMap::new();
-        let mut ui_selections = UIElementSelections { ..Default::default() };
-        let mut ui_states = UIElementStates { ..Default::default() };
-        let (mut light_id, mut switch_id) = (0, 0);
+        let mut gid = 0;
+        let mut eid = 0;
+        let mut ui_group_names = Vec::new();
+        let mut ui_elements = Vec::new();
+        let mut ui_states: Vec<Option<SubdeviceState>> = Vec::new();
+        let mut ui_effections = UIElementEffection { ..Default::default() };
+        let mut zone_lut: Vec<(usize, Vec<usize>)> = Vec::new(); //zid -> (eid, Vec<did>)
+        let mut zid = 0;
         for (group_name, cfgs) in config.ui {
-            let mut group_els = Vec::new();
             for cfg in cfgs {
-                let sel = UIElementSelection::new(&dev_id_lut, &cfg)?;
-                match cfg {
-                    UIElementConfig::Light(_) => {
-                        ui_selections.light.push(sel);
-                        ui_states.light.push(None);
-                        group_els.push(UIElement { cfg, id: light_id });
-                        light_id += 1;
-                    }
-                    UIElementConfig::Switch(_) => {
-                        ui_selections.switch.push(sel);
-                        ui_states.switch.push(None);
-                        group_els.push(UIElement { cfg, id: switch_id });
-                        switch_id += 1;
+                let effect_group = match cfg {
+                    UIElementConfig::Light(_) => &mut ui_effections.light,
+                    UIElementConfig::Switch(_) => &mut ui_effections.switch,
+                };
+
+                match SelectionString::new(cfg.get_selector_str())? {
+                    SelectionString::All => effect_group.all = eid,
+                    SelectionString::Zone(zone_name) => {
+                        let zone = dev_id_lut.get(zone_name).unwrap().values(); //FIXME
+                        let mut dids = Vec::new();
+                        for did in zone {
+                            let v = effect_group.zone.entry(*did).or_insert(Vec::new());
+                            v.push(zid);
+                            dids.push(*did);
+                        }
+                        zone_lut.push((eid, dids));
+                        zid += 1;
+                    },
+                    SelectionString::Device(zone_name, dev_name) => {
+                        let did = dev_id_lut.get(zone_name).unwrap().get(dev_name).unwrap(); //FIXME
+                        effect_group.dev.insert(*did, eid);
+                    },
+                    SelectionString::Subdevice(zone_name, dev_name, sub_name) => {
+                        let did = dev_id_lut.get(zone_name).unwrap().get(dev_name).unwrap(); //FIXME
+                        effect_group.sub.insert((*did, sub_name.to_string()), eid);
                     },
                 }
+
+                ui_elements.push(UIElement { cfg, gid, eid, });
+                ui_states.push(None);
+                eid += 1;
             }
-            ui.insert(group_name, group_els);
+            ui_group_names.push(group_name);
+            gid += 1;
         }
 
-        let (ui_tx, ui_rx) = mpsc::channel::<UIElementStates>(5);
+        let (ui_tx, ui_rx) = mpsc::channel(5);
         tokio::spawn(async move {
             while let Some(update) = dev_update_rx.recv().await {
                 match update.value {
@@ -111,42 +106,56 @@ impl IglooStack {
                         dev_states.light.get_mut(update.dev_id).unwrap() //FIXME
                             .insert(update.subdev_name.clone(), new_state.clone());
 
-                        //apple changes to effected elements
-                        for (id, selection) in ui_selections.light.iter().enumerate() {
-                            match selection {
-                                UIElementSelection::All => {
-                                    let mut light_states = Vec::new();
-                                    for map in &dev_states.light {
-                                        for (_, state) in map {
-                                            light_states.push(state);
-                                        }
-                                    }
-                                    let avg_light_state = LightState::avg(light_states);
-                                    *ui_states.light.get_mut(id).unwrap() = Some(avg_light_state); //FIXME
-                                },
-                                UIElementSelection::Zone(dids) => if dids.contains(&id) {
-                                    let mut light_states = Vec::new();
-                                    for did in dids {
-                                        for (_, state) in dev_states.light.get(*did).unwrap() { //FIXME
-                                            light_states.push(state);
-                                        }
-                                    }
-                                    let avg_light_state = LightState::avg(light_states);
-                                    *ui_states.light.get_mut(id).unwrap() = Some(avg_light_state); //FIXME
-                                },
-                                UIElementSelection::Device(did) => if *did == id {
-                                    let mut light_states = Vec::new();
-                                    for (_, state) in dev_states.light.get(*did).unwrap() { //FIXME
+                        //apply changes to effected elements
+
+                        //subdevice
+                        if let Some(eid) = ui_effections.light.sub.get(&(update.dev_id, update.subdev_name)) {
+                            let ui_state = ui_states.get_mut(*eid).unwrap(); //FIXME
+                            *ui_state = Some(SubdeviceState::Light(new_state.clone()));
+                        }
+
+                        //device
+                        if let Some(eid) = ui_effections.light.dev.get(&update.dev_id) {
+                            //average state of light subdevices
+                            let mut light_states = Vec::new();
+                            let map = dev_states.light.get(update.dev_id).unwrap(); //FIXME
+                            for (_, state) in map {
+                                light_states.push(state);
+                            }
+                            let avg_light_state = LightState::avg(light_states);
+
+                            //apply
+                            let ui_state = ui_states.get_mut(*eid).unwrap(); //FIXME
+                            *ui_state = Some(SubdeviceState::Light(avg_light_state.clone()));
+                        }
+
+                        //zone
+                        if let Some(zids) = ui_effections.light.zone.get(&update.dev_id) {
+                            for zid in zids {
+                                let (eid, dids) = zone_lut.get(*zid).unwrap(); //FIXME
+                                let mut light_states = Vec::new();
+                                for did in dids {
+                                    let map = dev_states.light.get(*did).unwrap(); //FIXME
+                                    for (_, state) in map {
                                         light_states.push(state);
                                     }
-                                    let avg_light_state = LightState::avg(light_states);
-                                    *ui_states.light.get_mut(id).unwrap() = Some(avg_light_state); //FIXME
-                                },
-                                UIElementSelection::Subdevice(did, subdev_name) => if *did == id && *subdev_name == update.subdev_name {
-                                    *ui_states.light.get_mut(id).unwrap() = Some(new_state.clone()); //FIXME
-                                },
+                                }
+                                let avg_light_state = LightState::avg(light_states);
+                                let ui_state = ui_states.get_mut(*eid).unwrap(); //FIXME
+                                *ui_state = Some(SubdeviceState::Light(avg_light_state.clone()));
                             }
                         }
+
+                        //all
+                        let mut light_states = Vec::new();
+                        for map in &dev_states.light {
+                            for (_, state) in map {
+                                light_states.push(state);
+                            }
+                        }
+                        let avg_light_state = LightState::avg(light_states);
+                        let ui_state = ui_states.get_mut(ui_effections.light.all).unwrap(); //FIXME
+                        *ui_state = Some(SubdeviceState::Light(avg_light_state.clone()));
                     },
                     SubdeviceState::Switch(_) => todo!(),
                 }
@@ -154,7 +163,7 @@ impl IglooStack {
             }
         });
 
-        Ok((Arc::new(IglooStack { channels: map, ui_elements: ui }), ui_rx))
+        Ok((Arc::new(IglooStack { channels: map, ui_group_names, ui_elements }), ui_rx))
     }
 
     fn make_map(zones: ZonesConfig) -> Result<(DeviceCmdChannelMap, SubdeviceStates, DeviceIDMap, Receiver<SubdeviceStateUpdate>), Box<dyn Error>> {
