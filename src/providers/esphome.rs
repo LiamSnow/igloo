@@ -20,6 +20,22 @@ pub struct ESPHomeDeviceConfig {
     pub noise_psk: Option<String>
 }
 
+#[derive(Error, Debug)]
+pub enum ESPHomeError {
+    #[error("Device must have a noise_psk or password!")]
+    MissingAuth,
+    #[error("`{0}`")]
+    ESPHome(DeviceError),
+    #[error("Invalid Subdevice/Entity `{0}`")]
+    InvalidSubdevice(String),
+}
+
+impl From<DeviceError> for ESPHomeError {
+    fn from(value: DeviceError) -> Self {
+        Self::ESPHome(value)
+    }
+}
+
 // matches aioesphomeapi
 pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
 pub const KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(90);
@@ -29,20 +45,6 @@ pub fn new(config: ESPHomeDeviceConfig, dev_id: usize, update: Sender<SubdeviceS
     let dev = make_device(config)?;
     tokio::spawn(spawn(dev, dev_id, cmd_rx, update));
     Ok(cmd_tx)
-}
-
-#[derive(Error, Debug)]
-pub enum ESPHomeError {
-    #[error("ESPHome device must have a noise_psk or password!")]
-    MissingAuth,
-    #[error("ESPHome device error: `{0}`")]
-    ESPHome(DeviceError),
-}
-
-impl From<DeviceError> for ESPHomeError {
-    fn from(value: DeviceError) -> Self {
-        Self::ESPHome(value)
-    }
 }
 
 async fn spawn(mut dev: ESPHomeDevice, dev_id: usize, mut cmd_rx: Receiver<RackSubdeviceCommand>, update_tx: Sender<SubdeviceStateUpdate>) -> Result<(), ESPHomeError> {
@@ -74,9 +76,11 @@ async fn spawn(mut dev: ESPHomeDevice, dev_id: usize, mut cmd_rx: Receiver<RackS
     loop {
         match timeout(Duration::from_millis(100), cmd_rx.recv()).await {
             Ok(Some(cmd)) => {
+                //TODO replace ? with log
                 handle_cmd(&mut dev, cmd).await?;
             },
             Err(_) => {
+                //TODO log error
                 dev.process_incoming().await?;
             }
             Ok(None) => {
@@ -90,51 +94,31 @@ async fn spawn(mut dev: ESPHomeDevice, dev_id: usize, mut cmd_rx: Receiver<RackS
 }
 
 async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: RackSubdeviceCommand) -> Result<(), ESPHomeError> {
-    if let Some(subdev_name) = cmd.subdev_name {
-        match cmd.cmd {
-            SubdeviceCommand::Light(light_cmd) => {
-                if let Some(entity) = dev.entities.light.get(&subdev_name) {
-                    //FIXME replace ? with log
-                    let ecmd = light_cmd.to_esphome(entity.key);
-                    println!("{} sending", ecmd.brightness);
-                    dev.light_command(&ecmd).await?;
-                    println!("{} done", ecmd.brightness);
-                }
-                else {
-                    //TODO error log
-                }
-            },
-            SubdeviceCommand::Switch(switch_state) => {
-                if let Some(entity) = dev.entities.light.get(&subdev_name) {
-                    //FIXME replace ? with log
-                    dev.switch_command(&api::SwitchCommandRequest {
-                        key: entity.key,
-                        state: switch_state.into(),
-                    }).await?;
-                }
-                else {
-                    //TODO error log
-                }
-            },
-        }
-    }
-    else {
-        match cmd.cmd {
-            SubdeviceCommand::Light(light_cmd) => {
+    match cmd.cmd {
+        SubdeviceCommand::Light(light_cmd) => {
+            if let Some(subdev_name) = cmd.subdev_name {
+                let entity = dev.entities.light.get(&subdev_name)
+                    .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
+                dev.light_command(&light_cmd.to_esphome(entity.key)).await?;
+            }
+            else {
                 let mut esp_cmd = light_cmd.clone().to_esphome(0);
-                for key in dev.get_primary_light_keys() {
-                    esp_cmd.key = key;
-                    //FIXME replace ? with log
-                    dev.light_command(&esp_cmd.clone()).await?;
-                }
-            },
-            SubdeviceCommand::Switch(switch_state) => {
-                let state = switch_state.into();
-                for key in dev.get_primary_light_keys() {
-                    //FIXME replace ? with log
-                    dev.switch_command(&api::SwitchCommandRequest { key, state }).await?;
-                }
-            },
+                dev.light_command_global(&mut esp_cmd).await?;
+            }
+        },
+        SubdeviceCommand::Switch(state) => {
+            if let Some(subdev_name) = cmd.subdev_name {
+                let entity = dev.entities.switch.get(&subdev_name)
+                    .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
+                dev.switch_command(&api::SwitchCommandRequest {
+                    key: entity.key,
+                    state: state.into(),
+                }).await?;
+            }
+            else {
+                let mut esp_cmd = api::SwitchCommandRequest { key: 0, state: state.into() };
+                dev.switch_command_global(&mut esp_cmd).await?;
+            }
         }
     }
 

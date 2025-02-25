@@ -1,20 +1,21 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use serde::Serialize;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::{mpsc::{self, Receiver, Sender}, oneshot, Mutex};
 
-use crate::{cli::model::SwitchState, command::{LightState, RackSubdeviceCommand, SubdeviceState, SubdeviceStateUpdate}, config::{IglooConfig, UIElementConfig, ZonesConfig}, providers::{esphome, DeviceConfig}, selector::SelectionString};
+use crate::{cli::model::SwitchState, command::{LightState, RackSubdeviceCommand, SubdeviceState, SubdeviceStateUpdate}, config::{IglooConfig, UIElementConfig, ZonesConfig}, providers::{esphome, DeviceConfig}, selector::{OwnedSelection, Selection}};
 
 pub struct IglooStack {
     /// Maps zone.device -> device command channel
     pub cmd_chan_map: DeviceCommandChannelMap,
     pub ui_elements: HashMap<String, Vec<UIElement>>,
+    pub current_effects: Mutex<Vec<(OwnedSelection, oneshot::Sender::<bool>)>>
 }
 
 /// Maps zone.device -> device command channel
 pub type DeviceCommandChannelMap = HashMap<String, HashMap<String, Sender<RackSubdeviceCommand>>>;
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 pub struct UIElement {
     pub cfg: UIElementConfig,
     pub eid: usize
@@ -52,7 +53,8 @@ impl IglooStack {
         let (ui_elements, element_states, dev_effections, zone_lut) = Self::make_ui(config.ui, dev_id_lut)?;
         let (ui_update_tx, ui_update_rx) = mpsc::channel(5);
         tokio::spawn(Self::ui_update_thread(dev_update_rx, dev_states, element_states, dev_effections, zone_lut, ui_update_tx));
-        Ok((Arc::new(IglooStack { cmd_chan_map, ui_elements }), ui_update_rx))
+        let current_effects = Mutex::new(Vec::new());
+        Ok((Arc::new(IglooStack { cmd_chan_map, ui_elements, current_effects }), ui_update_rx))
     }
 
     fn make_map(zones: ZonesConfig) -> Result<(DeviceCommandChannelMap, SubdeviceStates, HashMap<String, HashMap<String, usize>>, Receiver<SubdeviceStateUpdate>), Box<dyn Error>> {
@@ -94,14 +96,15 @@ impl IglooStack {
             let mut group_elements = Vec::new();
 
             for cfg in cfgs {
-                let effect_group = match cfg {
-                    UIElementConfig::Light(_) => &mut dep_map.light,
-                    UIElementConfig::Switch(_) => &mut dep_map.switch,
+                let (sel_str, effect_group) = match cfg {
+                    UIElementConfig::Light(ref sel_str, ..) => (sel_str, &mut dep_map.light),
+                    UIElementConfig::Switch(ref sel_str) => (sel_str, &mut dep_map.switch),
+                    _ => continue //FIXME add element
                 };
 
-                match SelectionString::new(cfg.get_selector_str())? {
-                    SelectionString::All => effect_group.all = eid,
-                    SelectionString::Zone(zone_name) => {
+                match Selection::new(sel_str)? {
+                    Selection::All => effect_group.all = eid,
+                    Selection::Zone(zone_name) => {
                         let zone = dev_id_lut.get(zone_name).unwrap().values(); //FIXME
                         let mut dids = Vec::new();
                         for did in zone {
@@ -112,11 +115,11 @@ impl IglooStack {
                         zone_lut.push((eid, dids));
                         zid += 1;
                     },
-                    SelectionString::Device(zone_name, dev_name) => {
+                    Selection::Device(zone_name, dev_name) => {
                         let did = dev_id_lut.get(zone_name).unwrap().get(dev_name).unwrap(); //FIXME
                         effect_group.dev.insert(*did, eid);
                     },
-                    SelectionString::Subdevice(zone_name, dev_name, sub_name) => {
+                    Selection::Subdevice(zone_name, dev_name, sub_name) => {
                         let did = dev_id_lut.get(zone_name).unwrap().get(dev_name).unwrap(); //FIXME
                         effect_group.subdev.insert((*did, sub_name.to_string()), eid);
                     },

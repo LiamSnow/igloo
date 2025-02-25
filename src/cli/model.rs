@@ -25,6 +25,9 @@ pub enum CliCommands {
     /// Control lights
     #[command(alias = "lights")]
     Light(LightArgs),
+    /// Lighting effects
+    #[command(alias = "eff")]
+    Effect(LightEffectArgs),
     /// Control switches
     #[command(alias = "switches")]
     Switch(SwitchArgs),
@@ -74,6 +77,49 @@ pub enum LightAction {
     Brightness {
         brightness: u8,
     },
+}
+
+#[derive(Args, Debug)]
+pub struct LightEffectArgs {
+    /// Target light
+    pub target: String,
+    #[command(subcommand)]
+    pub effect: LightEffect,
+}
+
+#[derive(Subcommand, Clone, Debug, Serialize)]
+pub enum LightEffect {
+    /// fade from one brightness to another
+    BrightnessFade {
+        start_brightness: u8,
+        end_brightness: u8,
+        length_ms: u32
+    },
+    Rainbow {
+        speed: u8,
+        length_ms: Option<u32>
+    },
+    // /// fade from one color to another
+    // ColorFade {
+    //     start_r: u8,
+    //     start_g: u8,
+    //     start_b: u8,
+    //     end_r: u8,
+    //     end_g: u8,
+    //     end_b: u8,
+    //     length_ms: u32
+    // },
+    // Wave {
+    //     start_r: u8,
+    //     start_g: u8,
+    //     start_b: u8,
+    //     end_r: u8,
+    //     end_g: u8,
+    //     end_b: u8,
+    //     wavelength: u32,
+    //     speed: u8,
+    //     length_ms: Option<u32>
+    // }
 }
 
 #[derive(Args, Debug)]

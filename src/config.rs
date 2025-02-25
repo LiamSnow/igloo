@@ -25,24 +25,38 @@ pub struct User {
     pub api_key_hash: Option<String>
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum UIElementConfig {
-    Light(String),
-    Switch(String)
+    Light(String, Option<LightFeature>, Option<LightFeature>),
+    Switch(String),
+    Button(ButtonConfig),
+    TimeSelector(TimeSelectorConfig)
 }
 
-impl UIElementConfig {
-    pub fn get_selector_str(&self) -> &str {
-        match self {
-            UIElementConfig::Light(s) => s,
-            UIElementConfig::Switch(s) => s
-        }
-    }
+#[derive(Debug, Deserialize, Serialize)]
+pub enum LightFeature {
+    RGB, CT
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ButtonConfig {
+    name: String,
+    #[serde(skip_serializing)]
+    #[allow(dead_code)] //FIXME
+    on_click: String
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimeSelectorConfig {
+    name: String,
+    #[serde(skip_serializing)]
+    #[allow(dead_code)] //FIXME
+    default: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Automation {
-    pub trigger: AutomationTrigger,
+    pub trigger: Option<AutomationTrigger>,
     pub trigger_offset: Option<i32>,
     pub on_trigger: Vec<String>,
     pub on_change: Option<Vec<String>>
@@ -50,13 +64,7 @@ pub struct Automation {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum AutomationTrigger {
-    Button,
-    Time(AutomationTimeTrigger),
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct AutomationTimeTrigger {
-    pub default: String,
+    Time(String),
 }
 
 impl IglooConfig {
