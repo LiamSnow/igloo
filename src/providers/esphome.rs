@@ -12,12 +12,10 @@ use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
 
 use crate::{
-    cli::model::LightAction,
-    command::{
+    cli::model::LightAction, command::{
         LightState, SubdeviceCommand, SubdeviceState, SubdeviceType,
         TargetedSubdeviceCommand, RGBF32,
-    },
-    map::SubdeviceStateUpdate,
+    }, elements::SubdeviceStateUpdate
 };
 
 #[derive(Debug, Deserialize, Serialize)]

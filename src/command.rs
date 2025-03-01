@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::cli::model::{LightAction, SwitchState};
+use crate::{cli::model::{LightAction, SwitchState}, elements::AveragedSubdeviceState};
 
 #[derive(Debug, Clone)]
 pub enum SubdeviceCommand {
@@ -18,12 +18,6 @@ pub struct TargetedSubdeviceCommand {
 pub enum SubdeviceState {
     Light(LightState),
     Switch(SwitchState),
-}
-
-#[derive(Serialize, Clone)]
-pub struct AveragedSubdeviceState {
-    pub value: SubdeviceState,
-    pub homogeneous: bool,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]

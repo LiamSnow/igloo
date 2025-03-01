@@ -1,12 +1,10 @@
 use std::{collections::HashMap, error::Error, fs};
 
-use chrono::NaiveTime;
 use ron::{extensions::Extensions, Options};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    command::SubdeviceType,
-    providers::{DeviceConfig, ProviderConfig},
+    command::SubdeviceType, elements::{parse_time, ElementValue}, providers::{DeviceConfig, ProviderConfig}
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -68,21 +66,6 @@ impl UIElementConfig {
             _ => return None,
         })
     }
-}
-
-#[derive(Debug, Serialize, Clone)]
-pub enum ElementValue {
-    #[serde(serialize_with = "serialize_time")]
-    Time(NaiveTime),
-}
-
-pub fn serialize_time<S: Serializer>(time: &NaiveTime, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&time.format("%H:%M").to_string())
-}
-
-pub fn parse_time(time_str: &str) -> Result<NaiveTime, chrono::ParseError> {
-    NaiveTime::parse_from_str(&time_str, "%H:%M")
-        .or_else(|_| NaiveTime::parse_from_str(&time_str, "%I:%M %p"))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

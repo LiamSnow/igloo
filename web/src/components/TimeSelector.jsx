@@ -10,7 +10,11 @@ function TimeSelector(props) {
     return (
         <div>
             <h3>{killSnake(props.name)}</h3>
-            <input type="time" value={props.value()} onChange={handleTimeChange} />
+            <input type="time"
+                value={props.value()}
+                onChange={handleTimeChange}
+                class={styles.Input}
+            />
         </div>
     );
 }

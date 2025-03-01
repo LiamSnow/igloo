@@ -22,6 +22,7 @@ pub mod effects;
 pub mod map;
 pub mod providers;
 pub mod selector;
+pub mod elements;
 
 pub const VERSION: f32 = 0.1;
 pub const CONFIG_VERSION: f32 = 0.1;

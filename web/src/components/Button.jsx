@@ -5,13 +5,15 @@ function Button(props) {
     const cmd = props.onclick;
 
     function handleClick() {
+        console.log("click");
         props.execute(cmd);
     }
 
     return (
         <div>
-            <h3>{killSnake(props.name)}</h3>
-            <button on:click={handleClick}>Trigger</button>
+            <button onClick={handleClick} class={styles.Button}>{
+                killSnake(props.name)
+            }</button>
         </div>
     );
 }

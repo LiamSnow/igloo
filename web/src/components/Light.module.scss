@@ -14,52 +14,48 @@
   button {
     color: white;
     border: none;
-    padding: 8px 12px;
+    padding: 6px 9px;
     font-size: 18px;
     border-radius: 40%;
     cursor: pointer;
     background: none;
   }
+}
 
-  .State {
-    background: #222;
+.SliderBox {
+  margin-top: 5px;
+
+  input {
+    width: 100%;
+    padding: 0 !important;
+    height: 38px;
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 8px !important;
+    border: none !important;
+    overflow: clip;
+    cursor: grabbing;
   }
 
-  .State.On {
-    background: hsl(40, 100%, 50%);
+  input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 4px;
+    height: 38px;
+    border-radius: 8px;
+    background: white;
+    border: 2px solid #ccc;
+    cursor: grabbing;
   }
-}
 
-input {
-  width: 100%;
-  padding: 0 !important;
-  height: 38px;
-  -webkit-appearance: none;
-  appearance: none;
-  border-radius: 8px !important;
-  border: none !important;
-  overflow: clip;
-  cursor: grabbing;
-}
-
-input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 4px;
-  height: 38px;
-  border-radius: 8px;
-  background: white;
-  border: 2px solid #ccc;
-  cursor: grabbing;
-}
-
-input::-moz-range-thumb {
-  width: 4px;
-  height: 38px;
-  border-radius: 8px;
-  background: white;
-  border: 2px solid #ccc;
-  cursor: grabbing;
+  input::-moz-range-thumb {
+    width: 4px;
+    height: 38px;
+    border-radius: 8px;
+    background: white;
+    border: 2px solid #ccc;
+    cursor: grabbing;
+  }
 }
 
 .HueSlider {

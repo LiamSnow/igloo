@@ -12,7 +12,7 @@ function Light(props) {
     const handleToggle = (_) => lightCmd(props.state().on ? 'off' : 'on');
     const handleBrightness = (e) => lightCmd(`brightness ${e.target.value}`);
     const handleTemperature = (e) => lightCmd(`temp ${e.target.value}`);
-    const handleHueChange = (e) => lightCmd(`color ${parseInt(e.target.value)}`);
+    const handleHueChange = (e) => lightCmd(`color ${e.target.value}`);
 
     const controlBrightness = (_) => setControllingBrightness(true);
     const controlColor = (_) => {
@@ -29,10 +29,12 @@ function Light(props) {
             <div class={styles.Header}>
                 <h3>{killSnake(props.name)}</h3>
 
-                <button onClick={handleToggle}
-                    class={ props.state().on ? styles.State + " " + styles.On : styles.State }
-                >
-                    <Icon icon="akar-icons:light-bulb" />
+                <button onClick={handleToggle} class={ styles.State }>
+                    <Show when={props.state().on} fallback={
+                        <Icon icon="mdi:toggle-switch-variant-off" />
+                    }>
+                        <Icon icon="mdi:toggle-switch-variant" />
+                    </Show>
                 </button>
 
                 <button onClick={controlBrightness}>
@@ -47,7 +49,7 @@ function Light(props) {
             </div>
 
             <Show when={controllingBrightness()}>
-                <div>
+                <div class={styles.SliderBox}>
                     <input class={styles.BrightSlider}
                         type="range"
                         min="0"
@@ -59,7 +61,7 @@ function Light(props) {
             </Show>
 
             <Show when={!controllingBrightness() && !props.state().color_on}>
-                <div>
+                <div class={styles.SliderBox}>
                     <input class={styles.TempSlider}
                         type="range"
                         min="0"
@@ -71,16 +73,14 @@ function Light(props) {
             </Show>
 
             <Show when={!controllingBrightness() && props.state().color_on}>
-                <div>
-                    <div>
-                        <input class={styles.HueSlider}
-                            type="range"
-                            min="0"
-                            max="360"
-                            value={props.state().hue}
-                            onChange={handleHueChange}
-                        />
-                    </div>
+                <div class={styles.SliderBox}>
+                    <input class={styles.HueSlider}
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={props.state().hue}
+                        onChange={handleHueChange}
+                    />
                 </div>
             </Show>
         </div>
