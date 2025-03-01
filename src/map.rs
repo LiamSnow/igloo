@@ -57,6 +57,12 @@ pub struct SubdeviceStateUpdate {
     pub value: SubdeviceState,
 }
 
+#[derive(Serialize)]
+struct ElementStateUpdate {
+    esid: usize,
+    value: AveragedSubdeviceState,
+}
+
 impl IglooStack {
     pub async fn init(config: IglooConfig) -> Result<Arc<Self>, Box<dyn Error>> {
         // Make IDs
@@ -255,7 +261,11 @@ async fn element_state_task(
                 let avg_state = LightState::avg(&states).unwrap(); //FIXME
 
                 //broadcast to websockets
-                let json = serde_json::to_string(&(esid, avg_state.clone())).unwrap(); //FIXME
+                let wsu = ElementStateUpdate {
+                    esid,
+                    value: avg_state.clone()
+                };
+                let json = serde_json::to_string(&wsu).unwrap(); //FIXME
                 let _ = ws_broadcast.send(json.into()); //ignore error (nobody is listening right now)
 
                 //update master
@@ -289,7 +299,11 @@ async fn element_state_task(
                 let avg_state = SwitchState::avg(&states).unwrap(); //FIXME
 
                 //broadcast to websockets
-                let json = serde_json::to_string(&(esid, avg_state.clone())).unwrap(); //FIXME
+                let wsu = ElementStateUpdate {
+                    esid,
+                    value: avg_state.clone()
+                };
+                let json = serde_json::to_string(&wsu).unwrap(); //FIXME
                 let _ = ws_broadcast.send(json.into()); //ignore error (nobody is listening right now)
 
                 //update master
@@ -317,7 +331,14 @@ async fn element_subdev_state_task(
         }
 
         //broadcast to websockets
-        let json = serde_json::to_string(&(esid, value.clone())).unwrap(); //FIXME
+        let wsu = ElementStateUpdate {
+            esid,
+            value: AveragedSubdeviceState {
+                value: value.clone(),
+                homogeneous: true,
+            }
+        };
+        let json = serde_json::to_string(&wsu).unwrap(); //FIXME
         let _ = ws_broadcast.send(json.into()); //ignore error (nobody is listening right now)
 
         //update master

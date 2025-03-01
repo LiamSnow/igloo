@@ -132,7 +132,23 @@ pub async fn spawn(stack: Arc<IglooStack>, selection: Selection, effect: LightEf
     };
 }
 
+pub async fn list_all(stack: &Arc<IglooStack>) -> Vec<EffectDisplay> {
+    let mut res = Vec::new();
+    let mut effects = stack.effects_state.lock().await;
+    for (id, meta) in &mut effects.current {
+        res.push(EffectDisplay {
+            id: *id,
+            effect: meta.effect.clone(),
+            selection: meta.sel.to_str(&stack.lut),
+        });
+    }
+    res
+}
+
 pub async fn list(stack: &Arc<IglooStack>, selection: &Selection) -> Vec<EffectDisplay> {
+    if matches!(selection, Selection::All) {
+        return list_all(stack).await
+    }
     let mut res = Vec::new();
     let mut effects = stack.effects_state.lock().await;
     for (id, meta) in &mut effects.current {

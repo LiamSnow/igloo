@@ -1,5 +1,4 @@
 use std::{error::Error, sync::Arc};
-
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -13,7 +12,8 @@ use axum::{
 use cli::model::Cli;
 use config::IglooConfig;
 use map::IglooStack;
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, sync::Mutex};
+use futures_util::{SinkExt, StreamExt};
 
 pub mod cli;
 pub mod command;
@@ -63,6 +63,7 @@ async fn post_cmd(State(stack): State<Arc<IglooStack>>, cmd_str: String) -> impl
         )
             .into_response(),
         Ok(None) => (StatusCode::OK).into_response(),
+        //TODO log error
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e)).into_response(),
     }
 }
@@ -71,16 +72,57 @@ async fn ws_handler(
     State(stack): State<Arc<IglooStack>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    println!("AHHHH");
     ws.on_upgrade(move |socket| handle_socket(stack, socket))
 }
 
-async fn handle_socket(stack: Arc<IglooStack>, mut socket: WebSocket) {
+async fn handle_socket(stack: Arc<IglooStack>, socket: WebSocket) {
+    let (ws_tx, mut ws_rx) = socket.split();
+    let ws_tx = Arc::new(Mutex::new(ws_tx));
+    let ws_tx_copy = ws_tx.clone();
     let mut broadcast_rx = stack.ws_broadcast.subscribe();
 
-    while let Ok(json) = broadcast_rx.recv().await {
-        if socket.send(Message::Text(json)).await.is_err() {
-            break;
+    let mut tx_task = tokio::spawn(async move {
+        while let Ok(json) = broadcast_rx.recv().await {
+            ws_tx.lock().await.send(Message::Text(json)).await.unwrap()
         }
+    });
+
+    let mut rx_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            match msg {
+                Message::Text(cmd_str) => {
+                    if let Some(json) = parse_execute_wscmd(&stack, &cmd_str).await {
+                        ws_tx_copy.lock().await.send(Message::Text(json.into())).await.unwrap()
+                    }
+                }
+                Message::Close(_) => {
+                    return;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = (&mut tx_task) => {
+            rx_task.abort();
+        },
+        _ = (&mut rx_task) => {
+            tx_task.abort();
+        }
+    }
+}
+
+async fn parse_execute_wscmd(stack: &Arc<IglooStack>, cmd_str: &str) -> Option<String> {
+    let cmd = match Cli::parse(cmd_str) {
+        Ok(r) => r,
+        //TODO log
+        Err(e) => return Some(serde_json::to_string(&e.render().to_string()).unwrap()), //FIXME
+    };
+
+    match cmd.dispatch(&stack).await {
+        Ok(r) => r,
+        //TODO log
+        Err(e) => Some(serde_json::to_string(&e).unwrap()), //FIXME
     }
 }

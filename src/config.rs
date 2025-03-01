@@ -70,7 +70,7 @@ impl UIElementConfig {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub enum ElementValue {
     #[serde(serialize_with = "serialize_time")]
     Time(NaiveTime),
@@ -94,8 +94,6 @@ pub enum LightFeature {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ButtonConfig {
     name: String,
-    #[serde(skip_serializing)]
-    #[allow(dead_code)] //FIXME
     on_click: String,
 }
 

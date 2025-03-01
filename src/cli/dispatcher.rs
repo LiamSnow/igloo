@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::{
     command::{AveragedSubdeviceState, SubdeviceCommand},
     config::{parse_time, ElementValue},
-    effects,
+    effects::{self, EffectDisplay},
     map::{Element, IglooStack},
     selector::{DeviceChannelError, Selection, SelectorError},
     VERSION,
@@ -45,6 +45,13 @@ struct UIResponse<'a> {
     elements: &'a HashMap<String, Vec<Element>>,
     states: &'a Vec<Option<AveragedSubdeviceState>>,
     values: &'a Vec<ElementValue>,
+    effects: Vec<EffectDisplay>
+}
+
+#[derive(Serialize)]
+struct ElementValueUpdate {
+    evid: usize,
+    value: ElementValue
 }
 
 impl Cli {
@@ -69,24 +76,31 @@ impl Cli {
             CliCommands::Switch(_) => todo!(),
             CliCommands::UI(arg) => match arg.arg {
                 UICommand::Get => {
+                    let effects = effects::list_all(&stack).await;
                     let states = stack.element_states.lock().await;
                     let values = stack.element_values.lock().await;
                     let res = UIResponse {
                         elements: &stack.elements,
                         states: &states,
                         values: &values,
+                        effects
                     };
                     Some(serde_json::to_string(&res)?)
                 }
                 UICommand::Set { selector, value } => {
-                    let evid = stack
+                    let evid = *stack
                         .evid_lut
                         .get(&selector)
-                        .ok_or(DispatchError::InvalidElementValueSelector(selector))?;
+                        .ok_or(DispatchError::InvalidElementValueSelector(selector.clone()))?;
                     let mut evs = stack.element_values.lock().await;
-                    match evs.get_mut(*evid).unwrap() {
-                        ElementValue::Time(naive_time) => *naive_time = parse_time(&value).unwrap(),
+                    match evs.get_mut(evid).unwrap() { //FIXME
+                        ElementValue::Time(naive_time) => *naive_time = parse_time(&value).unwrap(), //FIXME
                     }
+                    let u = ElementValueUpdate {
+                        evid,
+                        value: evs.get(evid).unwrap().clone(),
+                    };
+                    stack.ws_broadcast.send(serde_json::to_string(&u).unwrap().into()).unwrap(); //FIXME
                     //TODO notif automations
                     None
                 }
