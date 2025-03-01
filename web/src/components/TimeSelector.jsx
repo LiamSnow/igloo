@@ -1,22 +1,17 @@
 import { createSignal } from "solid-js";
 import styles from './TimeSelector.module.scss';
-import { command, killSnake } from '../util';
+import { killSnake } from '../util';
 
 function TimeSelector(props) {
-    const timeValue = props.value?.Time || "";
-    const [time, setTime] = createSignal(timeValue);
-
     function handleTimeChange(e) {
-        const newTime = e.target.value;
-        setTime(newTime);
-        command(`time ${props.name} ${newTime}`);
+        props.execute(`ui set ${props.group}.${props.name} ${e.target.value}`);
     }
 
     return (
-        <>
+        <div>
             <h3>{killSnake(props.name)}</h3>
-            <input type="time" value={time()} onChange={handleTimeChange} />
-        </>
+            <input type="time" value={props.value()} onChange={handleTimeChange} />
+        </div>
     );
 }
 

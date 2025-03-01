@@ -1,64 +1,75 @@
-import { createResource, onMount, onCleanup, Show, For } from "solid-js";
+import { createSignal, onMount, onCleanup, Show, For } from "solid-js";
+import { createStore } from "solid-js/store"
 import Group from "./components/Group";
 
-async function fetchUIData() {
-    const response = await fetch('http://localhost:3000', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: 'ui get'
-    });
-
-    if (!response.ok) {
-        console.error(`API error: ${response.status}`);
-        return null;
-    }
-
-    return await response.json();
-}
-
 function App() {
-    const [data, { mutate }] = createResource(fetchUIData);
+    const [data, setData] = createStore(null);
+    const [error, setError] = createSignal(null);
+    const [execute, setExecute] = createSignal(null);
 
     onMount(() => {
         const ws = new WebSocket('ws://localhost:3000/ws');
 
+        ws.onopen = () => {
+            ws.send('ui get');
+        };
+
         ws.onmessage = (event) => {
-            const [index, state] = JSON.parse(event.data);
-            if (data()) {
-                const newStates = { ...data().states };
-                newStates[index] = state;
-                mutate({ ...data(), states: newStates });
+            try {
+                let res = JSON.parse(event.data);
+
+                if (res.elements !== undefined) {
+                    setData(res);
+                }
+                else if (res.esid !== undefined) {
+                    setData('states', res.esid, res.value);
+                }
+                else if (res.evid !== undefined) {
+                    setData('values', res.evid, res.value);
+                }
+            } catch (err) {
+                console.error('Error processing message:', err);
+                setError(err);
             }
         };
 
         ws.onerror = (error) => {
             console.error('WebSocket error:', error);
+            setError(error);
         };
 
         onCleanup(() => {
             ws.close();
         });
+
+        setExecute(() => (message) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+            } else {
+                console.error('WebSocket is closed');
+            }
+        });
     });
 
     return (
         <div>
-            <Show when={data.loading}>
+            <Show when={!data}>
                 <p>Loading...</p>
             </Show>
 
-            <Show when={data.error}>
-                <p>Error: {data.error.message}</p>
+            <Show when={error()}>
+                <p>Error: {error().message}</p>
             </Show>
 
-            <Show when={data()}>
+            <Show when={data}>
                 <div class="groups">
-                    <For each={Object.entries(data().elements)}>
+                    <For each={Object.entries(data.elements || {})}>
                         {([groupName, groupItems]) => (
                             <Group
                                 name={groupName}
                                 items={groupItems}
-                                states={data().states}
-                                values={data().values}
+                                data={data}
+                                execute={execute()}
                             />
                         )}
                     </For>

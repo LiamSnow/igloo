@@ -13,32 +13,29 @@ function Group(props) {
                 <For each={props.items}>
                     {(item) => {
                         const configType = Object.keys(item.cfg)[0];
-                        const name = typeof item.cfg[configType] === 'string'
-                            ? item.cfg[configType]
-                            : item.cfg[configType].name;
 
-                        const state = item.esid !== null ? props.states[item.esid] : null;
-                        const value = item.evid !== null ? props.values[item.evid] : null;
-
-                        let component;
                         switch (configType) {
                             case "RGBCTLight":
-                                component = <Light name={name} state={state} />;
-                                break;
+                                const state = () => props.data.states[item.esid].value.Light;
+                                return <Light name={item.cfg[configType]}
+                                                execute={props.execute}
+                                                state={state}
+                                            />;
                             case "TimeSelector":
-                                component = <TimeSelector name={name} value={value} />;
-                                break;
+                                const value = () => props.data.values[item.evid].Time;
+                                return <TimeSelector name={item.cfg[configType].name}
+                                                execute={props.execute}
+                                                group={props.name}
+                                                value={value}
+                                            />;
                             case "Button":
-                                component = <Button name={name} onclick={item.cfg.on_click} />;
-                                break;
+                                return <Button name={item.cfg[configType].name}
+                                                execute={props.execute}
+                                                onclick={item.cfg[configType].on_click}
+                                            />;
                             default:
-                                component = <p>Unknown component type: {configType}</p>;
+                                return <p>Unknown component type: {configType}</p>;
                         }
-                        return (
-                            <div>
-                                {component}
-                            </div>
-                        );
                     }}
                 </For>
             </div>

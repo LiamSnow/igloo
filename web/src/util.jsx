@@ -1,19 +1,3 @@
-
-export async function command(cmd) {
-    const response = await fetch('http://localhost:3000', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: cmd
-    });
-
-    if (!response.ok) {
-        console.error(`API error: ${response.status}`);
-        return false;
-    }
-
-    return true;
-}
-
 /** Fast 8-bit Hue to RGB
     Basically HSL to RGB with S=100%, L=50% */
 export function hue8ToRGB(hue) {
@@ -27,6 +11,10 @@ export function hue8ToRGB(hue) {
 /** Takes color { r: u8, g: u8, b: u8 }
     Returns a hue 0-255 */
 export function rgbToHue8(color) {
+    if (!color || !color.r) {
+        return 0;
+    }
+
     const { r, g, b } = color;
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
