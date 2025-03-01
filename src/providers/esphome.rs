@@ -14,8 +14,8 @@ use tokio::{sync::mpsc, time::timeout};
 use crate::{
     cli::model::LightAction,
     command::{
-        Color, LightState, SubdeviceCommand, SubdeviceState, SubdeviceType,
-        TargetedSubdeviceCommand,
+        LightState, SubdeviceCommand, SubdeviceState, SubdeviceType,
+        TargetedSubdeviceCommand, RGBF32,
     },
     map::SubdeviceStateUpdate,
 };
@@ -47,6 +47,13 @@ impl From<DeviceError> for ESPHomeError {
         Self::ESPHome(value)
     }
 }
+
+// ON_OFF = 1 << 0;
+// BRIGHTNESS = 1 << 1;
+// WHITE = 1 << 2;
+// COLOR_TEMPERATURE = 1 << 3;
+// COLD_WARM_WHITE = 1 << 4;
+// RGB = 1 << 5;
 
 // matches aioesphomeapi
 pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
@@ -185,16 +192,28 @@ impl LightAction {
             LightAction::Off => {
                 cmd.state = false;
             }
-            LightAction::Color(color) => {
-                cmd.has_rgb = true;
-                //RGB are relative values (IE red % = red / (red + blue + green))
-                cmd.red = color.r as f32 / 255.; //so we dont need to / 255
-                cmd.green = color.g as f32 / 255.;
-                cmd.blue = color.b as f32 / 255.;
+            LightAction::Color { hue } => {
+                if let Some(hue) = hue {
+                    cmd.has_rgb = true;
+                    let rgb = RGBF32::from_hue(hue);
+                    cmd.red = rgb.r as f32;
+                    cmd.green = rgb.g as f32;
+                    cmd.blue = rgb.b as f32;
+                }
+                else {
+                    cmd.has_color_mode = true;
+                    cmd.color_mode = 35; //FIXME
+                }
             }
             LightAction::Temperature { temp } => {
-                cmd.has_color_temperature = true;
-                cmd.color_temperature = temp as f32;
+                if let Some(temp) = temp {
+                    cmd.has_color_temperature = true;
+                    cmd.color_temperature = temp as f32;
+                }
+                else {
+                    cmd.has_color_mode = true;
+                    cmd.color_mode = 11; //FIXME
+                }
             }
             LightAction::Brightness { brightness } => {
                 cmd.has_brightness = true;
@@ -210,13 +229,15 @@ impl From<LightStateResponse> for LightState {
     fn from(value: LightStateResponse) -> Self {
         Self {
             on: value.state,
+            //TODO use supported color modes
             temp: Some(value.color_temperature as u32),
             brightness: Some((value.brightness * 100.) as u8),
-            color: Some(Color {
-                r: (value.red * 255.) as u8,
-                g: (value.green * 255.) as u8,
-                b: (value.blue * 255.) as u8,
-            }),
+            //TODO use supported color modes
+            hue: Some(RGBF32 {
+                r: value.red,
+                g: value.green,
+                b: value.blue,
+            }.to_hue()),
             color_on: (value.color_mode & 32) == 32,
         }
     }

@@ -5,7 +5,6 @@ use tokio::{sync::oneshot, time};
 
 use crate::{
     cli::model::{LightAction, LightEffect},
-    command::Color,
     map::IglooStack,
     selector::Selection,
 };
@@ -114,7 +113,7 @@ pub async fn spawn(stack: Arc<IglooStack>, selection: Selection, effect: LightEf
                     }
 
                     selection
-                        .execute(&stack, LightAction::Color(Color::from_hue8(hue)).into())
+                        .execute(&stack, LightAction::Color{hue:Some(hue)}.into())
                         .unwrap(); //FIXME
                     hue = (hue + 1) % 255;
                     if let Some(num_steps) = num_steps {
@@ -180,7 +179,7 @@ impl From<&LightAction> for LightClaim {
     fn from(value: &LightAction) -> Self {
         match value {
             LightAction::On | LightAction::Off => Self::All,
-            LightAction::Color(_) => Self::ColorOrTemp,
+            LightAction::Color { .. } => Self::ColorOrTemp,
             LightAction::Temperature { .. } => Self::ColorOrTemp,
             LightAction::Brightness { .. } => Self::Brightness,
         }

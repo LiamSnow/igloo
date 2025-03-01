@@ -1,31 +1,28 @@
-import { createSignal, createEffect } from "solid-js";
+import { createSignal } from "solid-js";
 import styles from './Light.module.scss';
-import { hue8ToRGB, killSnake, rgbToHue8 } from '../util';
+import { killSnake } from '../util';
 import { Icon } from '@iconify-icon/solid';
 
 // https://icon-sets.iconify.design
 
 function Light(props) {
     const [controllingBrightness, setControllingBrightness] = createSignal(true);
-    const [hue, setHue] = createSignal(null);
-    createEffect(() => {
-        setHue(rgbToHue8(props.state().color));
-    });
 
     const lightCmd = (s) => props.execute(`light ${props.name} ${s}`)
     const handleToggle = (_) => lightCmd(props.state().on ? 'off' : 'on');
     const handleBrightness = (e) => lightCmd(`brightness ${e.target.value}`);
     const handleTemperature = (e) => lightCmd(`temp ${e.target.value}`);
-    const handleHueChange = (e) => {
-        const newHue = parseInt(e.target.value);
-        setHue(newHue);
-        const color = hue8ToRGB(newHue);
-        lightCmd(`color ${color.r} ${color.g} ${color.b}`)
-    };
+    const handleHueChange = (e) => lightCmd(`color ${parseInt(e.target.value)}`);
 
     const controlBrightness = (_) => setControllingBrightness(true);
-    const controlColor = (_) => setControllingBrightness(false);
-    const controlTemp = (_) => setControllingBrightness(false);
+    const controlColor = (_) => {
+        setControllingBrightness(false);
+        lightCmd(`color`);
+    }
+    const controlTemp = (_) => {
+        setControllingBrightness(false);
+        lightCmd(`temp`);
+    }
 
     return (
         <div>
@@ -41,10 +38,10 @@ function Light(props) {
                 <button onClick={controlBrightness}>
                     <Icon icon="material-symbols-light:brightness-4" />
                 </button>
-                <button onClick={controlColor}>
+                <button onClick={controlTemp}>
                     <Icon icon="mdi:temperature" />
                 </button>
-                <button onClick={controlTemp}>
+                <button onClick={controlColor}>
                     <Icon icon="mdi:color" />
                 </button>
             </div>
@@ -79,8 +76,8 @@ function Light(props) {
                         <input class={styles.HueSlider}
                             type="range"
                             min="0"
-                            max="255"
-                            value={hue()}
+                            max="360"
+                            value={props.state().hue}
                             onChange={handleHueChange}
                         />
                     </div>

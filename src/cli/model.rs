@@ -3,8 +3,6 @@ use clap::Parser;
 use clap_derive::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
-use crate::command::Color;
-
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -64,12 +62,12 @@ pub enum LightAction {
     On,
     /// Turn the light off
     Off,
-    /// Set the light color
-    #[command(alias = "rgb")]
-    Color(Color),
+    /// Set the light color using an hue value
+    #[command(alias = "hue")]
+    Color { hue: Option<u16> },
     /// Set the light temperature
     #[command(alias = "temp")]
-    Temperature { temp: u32 },
+    Temperature { temp: Option<u32> },
     /// Set the light brightness
     #[command(alias = "bri")]
     Brightness { brightness: u8 },

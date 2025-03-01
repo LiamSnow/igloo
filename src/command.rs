@@ -1,4 +1,3 @@
-use clap_derive::Args;
 use serde::Serialize;
 
 use crate::cli::model::{LightAction, SwitchState};
@@ -66,48 +65,107 @@ impl From<SwitchState> for SubdeviceState {
     }
 }
 
-#[derive(Debug, Default, Clone, Args, Serialize, PartialEq, Eq)]
-pub struct Color {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl Color {
-    /// Fast 8-bit Hue to RGB
-    /// Basically HSL to RGB with S=100%, L=50%
-    pub fn from_hue8(hue: u8) -> Self {
-        Color {
-            r: match hue {
-                0..=42 => 255,
-                43..=84 => (85 - hue) * 6,
-                85..=169 => 0,
-                170..=212 => (hue - 170) * 6,
-                _ => 255,
-            },
-            g: match hue {
-                0..=42 => hue * 6,
-                43..=127 => 255,
-                128..=169 => (170 - hue) * 6,
-                _ => 0,
-            },
-            b: match hue {
-                0..=84 => 0,
-                85..=127 => (hue - 85) * 6,
-                128..=212 => 255,
-                _ => (255 - hue) * 6,
-            },
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 pub struct LightState {
     pub on: bool,
     pub color_on: bool,
-    pub color: Option<Color>,
+    pub hue: Option<u16>,
     pub temp: Option<u32>,
     pub brightness: Option<u8>,
+}
+
+//Values as percentages (IE 0.-1.)
+pub struct RGBF32 {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32
+}
+
+impl RGBF32 {
+    /// Basically HSL to RGB with S=100%, L=50%
+    pub fn from_hue(hue: u16) -> Self {
+        let h = hue % 360;
+        let (r, g, b) = match h {
+            0..=59 => {
+                let f = h as f32 / 60.0;
+                (1., f, 0.)
+            },
+            60..=119 => {
+                let f = (h - 60) as f32 / 60.0;
+                (1. - f, 1., 0.)
+            },
+            120..=179 => {
+                let f = (h - 120) as f32 / 60.0;
+                (0., 1., f)
+            },
+            180..=239 => {
+                let f = (h - 180) as f32 / 60.0;
+                (0., 1. - f, 1.)
+            },
+            240..=299 => {
+                let f = (h - 240) as f32 / 60.0;
+                (f, 0., 1.)
+            },
+            _ => {
+                let f = (h - 300) as f32 / 60.0;
+                (1., 0., 1. - f)
+            }
+        };
+        Self { r, g, b }
+    }
+
+    pub fn to_hue(&self) -> u16 {
+        let r = self.r;
+        let g = self.g;
+        let b = self.b;
+
+        // Find max and min components
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+
+        // Check if the color is grayscale
+        if (max - min).abs() < f32::EPSILON {
+            return 0; // Arbitrary choice for grayscale
+        }
+
+        // Calculate hue based on which component is max
+        let hue = if (r - max).abs() < f32::EPSILON {
+            // Red is max
+            if (b - min).abs() < f32::EPSILON {
+                // Blue is min, Green is varying
+                // h = 0-60
+                60.0 * g
+            } else {
+                // Green is min, Blue is varying
+                // h = 300-360
+                300.0 + 60.0 * (1.0 - b)
+            }
+        } else if (g - max).abs() < f32::EPSILON {
+            // Green is max
+            if (r - min).abs() < f32::EPSILON {
+                // Red is min, Blue is varying
+                // h = 120-180
+                120.0 + 60.0 * b
+            } else {
+                // Blue is min, Red is varying
+                // h = 60-120
+                60.0 + 60.0 * (1.0 - r)
+            }
+        } else { // Blue is max
+            // Blue is max
+            if (g - min).abs() < f32::EPSILON {
+                // Green is min, Red is varying
+                // h = 240-300
+                240.0 + 60.0 * r
+            } else {
+                // Red is min, Green is varying
+                // h = 180-240
+                180.0 + 60.0 * (1.0 - g)
+            }
+        };
+
+        (hue.round() as u16) % 360
+    }
 }
 
 impl LightState {
@@ -115,7 +173,7 @@ impl LightState {
     /// Only avgs Some colors, if there are no colors it returns None (same for temp and bri)
     pub fn avg(states: &Vec<Vec<Option<Self>>>) -> Option<AveragedSubdeviceState> {
         let (mut total, mut on_sum, mut color_on_sum) = (0, 0, 0);
-        let (mut total_color, mut color_sum) = (0, (0, 0, 0));
+        let (mut total_hue, mut hue_sum) = (0, 0);
         let (mut total_temp, mut temp_sum) = (0, 0);
         let (mut total_bright, mut bright_sum) = (0, 0);
 
@@ -127,11 +185,9 @@ impl LightState {
             total += 1;
             on_sum += state.on as u32;
             color_on_sum += state.color_on as u32;
-            if let Some(color) = &state.color {
-                total_color += 1;
-                color_sum.0 += color.r as u32;
-                color_sum.1 += color.g as u32;
-                color_sum.2 += color.b as u32;
+            if let Some(hue) = state.hue {
+                total_hue += 1;
+                hue_sum += hue as u32;
             }
             if let Some(temp) = state.temp {
                 total_temp += 1;
@@ -160,12 +216,8 @@ impl LightState {
             value: SubdeviceState::Light(Self {
                 on: (on_sum as f32 / total as f32) >= 0.5,
                 color_on: (color_on_sum as f32 / total as f32) >= 0.5,
-                color: if total_color > 0 {
-                    Some(Color {
-                        r: (color_sum.0 as f32 / total_color as f32) as u8,
-                        g: (color_sum.1 as f32 / total_color as f32) as u8,
-                        b: (color_sum.2 as f32 / total_color as f32) as u8,
-                    })
+                hue: if total_hue > 0 {
+                    Some((hue_sum as f32 / total_temp as f32) as u16)
                 } else {
                     None
                 },
@@ -204,7 +256,7 @@ impl LightState {
         }
 
         if self.color_on {
-            return self.color == other.color;
+            return self.hue == other.hue;
         }
 
         match (self.temp, other.temp) {
