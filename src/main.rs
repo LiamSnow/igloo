@@ -1,18 +1,27 @@
 use std::{error::Error, sync::Arc};
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
+    http::{header, StatusCode},
+    response::{AppendHeaders, IntoResponse},
+    routing::{any, post},
+    Json, Router,
+};
 use cli::model::Cli;
 use config::IglooConfig;
 use map::IglooStack;
-use serde::Serialize;
+use tokio::net::TcpListener;
 
-pub mod config;
 pub mod cli;
+pub mod command;
+pub mod config;
+pub mod effects;
 pub mod map;
 pub mod providers;
-pub mod command;
 pub mod selector;
-pub mod effects;
 
 pub const VERSION: f32 = 0.1;
 pub const CONFIG_VERSION: f32 = 0.1;
@@ -21,48 +30,57 @@ pub const CONFIG_VERSION: f32 = 0.1;
 async fn main() -> Result<(), Box<dyn Error>> {
     let cfg = IglooConfig::from_file("./config.ron").unwrap();
     if cfg.version != CONFIG_VERSION {
-        panic!("Wrong config version. Got {}, expected {}.", cfg.version, CONFIG_VERSION);
+        panic!(
+            "Wrong config version. Got {}, expected {}.",
+            cfg.version, CONFIG_VERSION
+        );
     }
 
     let stack = IglooStack::init(cfg).await?;
 
     let app = Router::new()
         .route("/", post(post_cmd))
+        .route("/ws", any(ws_handler))
         .with_state(stack);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app.into_make_service())
-        .await?;
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())
 }
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String
-}
-
 async fn post_cmd(State(stack): State<Arc<IglooStack>>, cmd_str: String) -> impl IntoResponse {
-    let cmd = Cli::parse(&cmd_str);
+    let cmd = match Cli::parse(&cmd_str) {
+        Ok(r) => r,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(e.render().to_string())).into_response(),
+    };
 
-    if let Err(e) = cmd {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e.render().to_string()
-            }),
-        ).into_response()
-    }
-
-    match cmd.unwrap().dispatch(stack).await {
-        Ok(v) => (
+    match cmd.dispatch(&stack).await {
+        Ok(Some(body)) => (
             StatusCode::OK,
-            v,
-        ).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(e),
-        ).into_response()
+            AppendHeaders([(header::CONTENT_TYPE, "application/json")]),
+            body,
+        )
+            .into_response(),
+        Ok(None) => (StatusCode::OK).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e)).into_response(),
     }
 }
 
+async fn ws_handler(
+    State(stack): State<Arc<IglooStack>>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    println!("AHHHH");
+    ws.on_upgrade(move |socket| handle_socket(stack, socket))
+}
+
+async fn handle_socket(stack: Arc<IglooStack>, mut socket: WebSocket) {
+    let mut broadcast_rx = stack.ws_broadcast.subscribe();
+
+    while let Ok(json) = broadcast_rx.recv().await {
+        if socket.send(Message::Text(json)).await.is_err() {
+            break;
+        }
+    }
+}

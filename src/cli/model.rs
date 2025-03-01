@@ -1,6 +1,6 @@
 use clap::command;
-use clap_derive::{Args, Parser, Subcommand, ValueEnum};
 use clap::Parser;
+use clap_derive::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
 use crate::command::Color;
@@ -69,14 +69,10 @@ pub enum LightAction {
     Color(Color),
     /// Set the light temperature
     #[command(alias = "temp")]
-    Temperature {
-        temp: u32,
-    },
+    Temperature { temp: u32 },
     /// Set the light brightness
     #[command(alias = "bri")]
-    Brightness {
-        brightness: u8,
-    },
+    Brightness { brightness: u8 },
 }
 
 #[derive(Args, Debug)]
@@ -95,11 +91,11 @@ pub enum LightEffect {
     BrightnessFade {
         start_brightness: u8,
         end_brightness: u8,
-        length_ms: u32
+        length_ms: u32,
     },
     Rainbow {
         speed: u8,
-        length_ms: Option<u32>
+        length_ms: Option<u32>,
     },
     // /// fade from one color to another
     // ColorFade {
@@ -149,7 +145,7 @@ impl From<bool> for SwitchState {
     fn from(value: bool) -> Self {
         match value {
             true => SwitchState::On,
-            false => SwitchState::Off
+            false => SwitchState::Off,
         }
     }
 }
@@ -158,7 +154,7 @@ impl From<SwitchState> for bool {
     fn from(value: SwitchState) -> Self {
         match value {
             SwitchState::On => true,
-            SwitchState::Off => false
+            SwitchState::Off => false,
         }
     }
 }
@@ -167,7 +163,7 @@ impl From<&SwitchState> for bool {
     fn from(value: &SwitchState) -> Self {
         match value {
             SwitchState::On => true,
-            SwitchState::Off => false
+            SwitchState::Off => false,
         }
     }
 }
@@ -183,10 +179,7 @@ pub enum UICommand {
     /// get UI element, states, and values
     Get,
     /// set a UI element's value
-    Set {
-        selector: String,
-        value: String
-    }
+    Set { selector: String, value: String },
 }
 
 #[derive(Args, Debug)]

@@ -1,6 +1,5 @@
-import { command } from "../api";
 import styles from './Button.module.scss';
-import { killSnake } from '../util';
+import { command, killSnake } from '../util';
 
 function Button(props) {
     const cmd = props.onclick;

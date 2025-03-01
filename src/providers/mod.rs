@@ -8,7 +8,7 @@ pub mod homekit;
 #[derive(Debug, Deserialize, Serialize)]
 pub enum ProviderConfig {
     ESPHome(ESPHomeConfig),
-    HomeKit(HomeKitConfig)
+    HomeKit(HomeKitConfig),
 }
 
 #[derive(Debug, Deserialize, Serialize)]

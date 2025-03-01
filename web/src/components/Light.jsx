@@ -1,7 +1,6 @@
 import { createSignal, createMemo } from "solid-js";
-import { command } from "../api";
 import styles from './Light.module.scss';
-import { hue8ToRGB, killSnake, rgbToHue8 } from '../util';
+import { command, hue8ToRGB, killSnake, rgbToHue8 } from '../util';
 
 function Light(props) {
     const [light, _] = createSignal(props.state?.value?.Light || {});

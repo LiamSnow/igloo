@@ -1,9 +1,19 @@
 use std::{collections::HashMap, error::Error, iter, sync::Arc};
 
+use axum::extract::ws::Utf8Bytes;
 use serde::Serialize;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex};
 
-use crate::{cli::model::SwitchState, command::{AveragedSubdeviceState, LightState, SubdeviceState, SubdeviceType, TargetedSubdeviceCommand}, config::{ElementValue, IglooConfig, UIElementConfig}, effects::EffectsState, providers::{esphome, DeviceConfig}, selector::Selection};
+use crate::{
+    cli::model::SwitchState,
+    command::{
+        AveragedSubdeviceState, LightState, SubdeviceState, SubdeviceType, TargetedSubdeviceCommand,
+    },
+    config::{ElementValue, IglooConfig, UIElementConfig},
+    effects::EffectsState,
+    providers::{esphome, DeviceConfig},
+    selector::Selection,
+};
 
 #[derive(Default)]
 pub struct IDLut {
@@ -24,6 +34,7 @@ pub struct IglooStack {
     pub element_values: Mutex<Vec<ElementValue>>,
     pub evid_lut: HashMap<String, usize>,
     pub effects_state: Mutex<EffectsState>,
+    pub ws_broadcast: broadcast::Sender<Utf8Bytes>,
     //permissions zid,uid,allowed
     // pub zone_perms: Vec<Vec<bool>>,
 }
@@ -36,23 +47,25 @@ pub struct Element {
     // element state index (for elements tied to devices IE Lights)
     pub esid: Option<usize>,
     // element value index (for elements that hold a value IE TimeSelector)
-    pub evid: Option<usize>
+    pub evid: Option<usize>,
 }
 
 #[derive(Clone)]
 pub struct SubdeviceStateUpdate {
     pub did: usize,
     pub sid: usize,
-    pub value: SubdeviceState
+    pub value: SubdeviceState,
 }
 
 impl IglooStack {
     pub async fn init(config: IglooConfig) -> Result<Arc<Self>, Box<dyn Error>> {
         // Make IDs
         let (mut next_did, mut next_zid) = (0, 0);
-        let mut lut = IDLut { ..Default::default() };
-        let (mut dev_cfgs, mut dev_sels, mut on_update_of_types, mut on_subdev_updates)
-            = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let mut lut = IDLut {
+            ..Default::default()
+        };
+        let (mut dev_cfgs, mut dev_sels, mut on_update_of_types, mut on_subdev_updates) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for (zone_name, devs) in config.zones {
             let start_did = next_did;
             let mut did_lut = HashMap::new();
@@ -65,7 +78,7 @@ impl IglooStack {
                 next_did += 1;
             }
             lut.did.push(did_lut);
-            lut.did_range.push((start_did, next_did-1));
+            lut.did_range.push((start_did, next_did - 1));
             lut.zid.insert(zone_name, next_zid);
             next_zid += 1;
         }
@@ -78,27 +91,42 @@ impl IglooStack {
             let mut group_elements = Vec::new();
             for cfg in cfgs {
                 if cfg.get_sel_and_subdev_type().is_some() {
-                    let el = Element { cfg, esid: Some(esid), evid: None };
+                    let el = Element {
+                        cfg,
+                        esid: Some(esid),
+                        evid: None,
+                    };
                     group_elements.push(el);
                     element_states.push(None);
                     esid += 1;
-                }
-                else if let Some(default_value) = cfg.get_default_value() {
+                } else if let Some(default_value) = cfg.get_default_value() {
                     evid_lut.insert(format!("{group_name}.{}", cfg.get_name().unwrap()), evid);
-                    group_elements.push(Element { cfg, esid: None, evid: Some(evid) });
+                    group_elements.push(Element {
+                        cfg,
+                        esid: None,
+                        evid: Some(evid),
+                    });
                     element_values.push(default_value);
                     evid += 1;
-                }
-                else {
-                    group_elements.push(Element { cfg, esid: None, evid: None });
+                } else {
+                    group_elements.push(Element {
+                        cfg,
+                        esid: None,
+                        evid: None,
+                    });
                 }
             }
             elements.insert(group_name, group_elements);
         }
 
         // Make element state trackers
+        let ws_broadcast = broadcast::Sender::new(20);
         let element_states = Arc::new(Mutex::new(element_states));
-        for el in elements.values().flat_map(|group| group.iter()).filter(|el| el.esid.is_some()) {
+        for el in elements
+            .values()
+            .flat_map(|group| group.iter())
+            .filter(|el| el.esid.is_some())
+        {
             let esid = el.esid.unwrap();
             let (sel_str, subdev_type) = el.cfg.get_sel_and_subdev_type().unwrap();
             let sel = Selection::from_str(&lut, sel_str)?;
@@ -108,25 +136,46 @@ impl IglooStack {
                     on_subdev_updates[did] = Some(HashMap::new());
                 }
                 let (update_tx, update_rx) = mpsc::channel::<SubdeviceState>(5);
-                on_subdev_updates[did].as_mut().unwrap().insert(subdev_name.clone(), update_tx);
-                tokio::spawn(element_subdev_state_task(element_states.clone(), esid, subdev_type, update_rx));
-            }
-            else {
+                on_subdev_updates[did]
+                    .as_mut()
+                    .unwrap()
+                    .insert(subdev_name.clone(), update_tx);
+                tokio::spawn(element_subdev_state_task(
+                    element_states.clone(),
+                    esid,
+                    subdev_type,
+                    update_rx,
+                    ws_broadcast.clone()
+                ));
+            } else {
                 let (start_did, end_did) = match sel {
-                    Selection::All => (0, next_did-1),
+                    Selection::All => (0, next_did - 1),
                     Selection::Zone(_, start_did, end_did) => (start_did, end_did),
                     Selection::Device(_, did) => (did, did),
-                    _ => panic!()
+                    _ => panic!(),
                 };
-                let (update_tx, update_rx) = mpsc::channel::<SubdeviceStateUpdate>(end_did-start_did+1); //TODO does this seem reasonable?
+                let (update_tx, update_rx) =
+                    mpsc::channel::<SubdeviceStateUpdate>(end_did - start_did + 1); //TODO does this seem reasonable?
                 for did in start_did..=end_did {
                     if on_update_of_types[did].is_none() {
                         on_update_of_types[did] = Some(HashMap::new());
                     }
-                    let v = on_update_of_types[did].as_mut().unwrap().entry(subdev_type.clone()).or_insert(Vec::new());
+                    let v = on_update_of_types[did]
+                        .as_mut()
+                        .unwrap()
+                        .entry(subdev_type.clone())
+                        .or_insert(Vec::new());
                     v.push(update_tx.clone());
                 }
-                tokio::spawn(element_state_task(element_states.clone(), esid, subdev_type, start_did, end_did, update_rx));
+                tokio::spawn(element_state_task(
+                    element_states.clone(),
+                    esid,
+                    subdev_type,
+                    start_did,
+                    end_did,
+                    update_rx,
+                    ws_broadcast.clone()
+                ));
             }
         }
 
@@ -140,7 +189,14 @@ impl IglooStack {
             let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedSubdeviceCommand>(5);
 
             let task = match dev_cfg {
-                DeviceConfig::ESPHome(cfg) => esphome::task(cfg, did, dev_sel, cmd_rx, on_update_of_type, on_subdev_update),
+                DeviceConfig::ESPHome(cfg) => esphome::task(
+                    cfg,
+                    did,
+                    dev_sel,
+                    cmd_rx,
+                    on_update_of_type,
+                    on_subdev_update,
+                ),
                 DeviceConfig::HomeKit(_cfg) => todo!(),
             };
             tokio::spawn(task);
@@ -148,16 +204,32 @@ impl IglooStack {
             dev_chans.push(cmd_tx);
         }
 
-        let element_values = Mutex::new(element_values);
-        let effects_state = Mutex::new(EffectsState { next_id: 0, current: HashMap::new() });
-        Ok(Arc::new(IglooStack { dev_chans, lut, elements, element_states, element_values, evid_lut, effects_state }))
+        Ok(Arc::new(IglooStack {
+            dev_chans,
+            lut,
+            elements,
+            element_states,
+            element_values: Mutex::new(element_values),
+            evid_lut,
+            effects_state: Mutex::new(EffectsState::default()),
+            ws_broadcast
+        }))
     }
 }
 
-async fn element_state_task(element_states: ElementStatesLock, esid: usize, subdev_type: SubdeviceType, start_did: usize, end_did: usize, mut update_rx: mpsc::Receiver<SubdeviceStateUpdate>) {
-    let num_devices = end_did-start_did+1;
+async fn element_state_task(
+    element_states: ElementStatesLock,
+    esid: usize,
+    subdev_type: SubdeviceType,
+    start_did: usize,
+    end_did: usize,
+    mut update_rx: mpsc::Receiver<SubdeviceStateUpdate>,
+    ws_broadcast: broadcast::Sender<Utf8Bytes>
+) {
+    let num_devices = end_did - start_did + 1;
     match subdev_type {
         SubdeviceType::Light => {
+            // did, sid => state
             let mut states: Vec<Vec<Option<LightState>>> = vec![Vec::new(); num_devices];
 
             while let Some(update) = update_rx.recv().await {
@@ -172,17 +244,25 @@ async fn element_state_task(element_states: ElementStatesLock, esid: usize, subd
                 //update state
                 if let SubdeviceState::Light(value) = update.value {
                     *dev_states.get_mut(update.sid).unwrap() = Some(value);
-                }
-                else {
-                    panic!("Light element recieved wrong subdevice state update {:#?}", update.value.get_type())
+                } else {
+                    panic!(
+                        "Light element recieved wrong subdevice state update {:#?}",
+                        update.value.get_type()
+                    )
                 }
 
+                //averge state
+                let avg_state = LightState::avg(&states).unwrap(); //FIXME
+
+                //broadcast to websockets
+                let json = serde_json::to_string(&(esid, avg_state.clone())).unwrap(); //FIXME
+                let _ = ws_broadcast.send(json.into()); //ignore error (nobody is listening right now)
+
                 //update master
-                let (avg_state, homogeneous) = LightState::avg(&states).unwrap();
                 let mut element_states = element_states.lock().await;
-                element_states[esid] = Some(AveragedSubdeviceState { value: SubdeviceState::Light(avg_state), homogeneous });
+                element_states[esid] = Some(avg_state);
             }
-        },
+        }
         SubdeviceType::Switch => {
             let mut states: Vec<Vec<Option<bool>>> = vec![Vec::new(); num_devices];
 
@@ -198,29 +278,53 @@ async fn element_state_task(element_states: ElementStatesLock, esid: usize, subd
                 //update state
                 if let SubdeviceState::Switch(value) = update.value {
                     *dev_states.get_mut(update.sid).unwrap() = Some(value.into());
-                }
-                else {
-                    panic!("Switch element recieved wrong subdevice state update {:#?}", update.value.get_type())
+                } else {
+                    panic!(
+                        "Switch element recieved wrong subdevice state update {:#?}",
+                        update.value.get_type()
+                    )
                 }
 
+                //averge state
+                let avg_state = SwitchState::avg(&states).unwrap(); //FIXME
+
+                //broadcast to websockets
+                let json = serde_json::to_string(&(esid, avg_state.clone())).unwrap(); //FIXME
+                let _ = ws_broadcast.send(json.into()); //ignore error (nobody is listening right now)
+
                 //update master
-                let (avg_state, homogeneous) = SwitchState::avg(&states).unwrap();
                 let mut element_states = element_states.lock().await;
-                element_states[esid] = Some(AveragedSubdeviceState { value: SubdeviceState::Switch(avg_state), homogeneous });
+                element_states[esid] = Some(avg_state);
             }
         }
     }
-
 }
 
-async fn element_subdev_state_task(element_states: ElementStatesLock, esid: usize, subdev_type: SubdeviceType, mut update_rx: mpsc::Receiver<SubdeviceState>) {
+async fn element_subdev_state_task(
+    element_states: ElementStatesLock,
+    esid: usize,
+    subdev_type: SubdeviceType,
+    mut update_rx: mpsc::Receiver<SubdeviceState>,
+    ws_broadcast: broadcast::Sender<Utf8Bytes>
+) {
     while let Some(value) = update_rx.recv().await {
         let typ = value.get_type();
         if typ != subdev_type {
-            println!("ERROR element type {:#?} does match subdev type {:#?}", subdev_type, typ);
+            println!(
+                "ERROR element type {:#?} does match subdev type {:#?}",
+                subdev_type, typ
+            );
         }
 
+        //broadcast to websockets
+        let json = serde_json::to_string(&(esid, value.clone())).unwrap(); //FIXME
+        let _ = ws_broadcast.send(json.into()); //ignore error (nobody is listening right now)
+
+        //update master
         let mut element_states = element_states.lock().await;
-        element_states[esid] = Some(AveragedSubdeviceState { value, homogeneous: true });
+        element_states[esid] = Some(AveragedSubdeviceState {
+            value,
+            homogeneous: true,
+        });
     }
 }

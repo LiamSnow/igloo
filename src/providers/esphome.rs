@@ -1,12 +1,24 @@
 use core::str;
 use std::{collections::HashMap, time::Duration};
 
-use esphomebridge_rs::{api::{self, LightStateResponse}, device::ESPHomeDevice, entity::EntityStateUpdateValue, error::DeviceError};
+use esphomebridge_rs::{
+    api::{self, LightStateResponse},
+    device::ESPHomeDevice,
+    entity::EntityStateUpdateValue,
+    error::DeviceError,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
 
-use crate::{cli::model::LightAction, command::{Color, LightState, TargetedSubdeviceCommand, SubdeviceCommand, SubdeviceState, SubdeviceType}, map::SubdeviceStateUpdate};
+use crate::{
+    cli::model::LightAction,
+    command::{
+        Color, LightState, SubdeviceCommand, SubdeviceState, SubdeviceType,
+        TargetedSubdeviceCommand,
+    },
+    map::SubdeviceStateUpdate,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ESPHomeConfig {
@@ -17,7 +29,7 @@ pub struct ESPHomeConfig {
 pub struct ESPHomeDeviceConfig {
     pub ip: String,
     pub password: Option<String>,
-    pub noise_psk: Option<String>
+    pub noise_psk: Option<String>,
 }
 
 #[derive(Error, Debug)]
@@ -46,7 +58,7 @@ pub async fn task(
     selector: String,
     mut cmd_rx: mpsc::Receiver<TargetedSubdeviceCommand>,
     on_update_of_type: Option<HashMap<SubdeviceType, Vec<mpsc::Sender<SubdeviceStateUpdate>>>>,
-    on_subdev_update: Option<HashMap<String, mpsc::Sender<SubdeviceState>>>
+    on_subdev_update: Option<HashMap<String, mpsc::Sender<SubdeviceState>>>,
 ) -> Result<(), ESPHomeError> {
     let mut dev = make_device(config)?;
     dev.connect().await?;
@@ -88,7 +100,7 @@ pub async fn task(
             Ok(Some(cmd)) => {
                 //TODO replace ? with log
                 handle_cmd(&mut dev, cmd).await?;
-            },
+            }
             Err(_) => {
                 //TODO log error
                 dev.process_incoming().await?;
@@ -103,27 +115,37 @@ pub async fn task(
     Ok(())
 }
 
-async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: TargetedSubdeviceCommand) -> Result<(), ESPHomeError> {
+async fn handle_cmd(
+    dev: &mut ESPHomeDevice,
+    cmd: TargetedSubdeviceCommand,
+) -> Result<(), ESPHomeError> {
     match cmd.cmd {
         SubdeviceCommand::Light(light_cmd) => {
             if let Some(subdev_name) = cmd.subdev_name {
-                let key = dev.get_light_key_from_name(&subdev_name)
+                let key = dev
+                    .get_light_key_from_name(&subdev_name)
                     .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
                 dev.light_command(&light_cmd.to_esphome(key)).await?;
-            }
-            else {
+            } else {
                 let mut esp_cmd = light_cmd.clone().to_esphome(0);
                 dev.light_command_global(&mut esp_cmd).await?;
             }
-        },
+        }
         SubdeviceCommand::Switch(state) => {
             if let Some(subdev_name) = cmd.subdev_name {
-                let key = dev.get_switch_key_from_name(&subdev_name)
+                let key = dev
+                    .get_switch_key_from_name(&subdev_name)
                     .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
-                dev.switch_command(&api::SwitchCommandRequest { key, state: state.into() }).await?;
-            }
-            else {
-                let mut esp_cmd = api::SwitchCommandRequest { key: 0, state: state.into() };
+                dev.switch_command(&api::SwitchCommandRequest {
+                    key,
+                    state: state.into(),
+                })
+                .await?;
+            } else {
+                let mut esp_cmd = api::SwitchCommandRequest {
+                    key: 0,
+                    state: state.into(),
+                };
                 dev.switch_command_global(&mut esp_cmd).await?;
             }
         }
@@ -133,14 +155,16 @@ async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: TargetedSubdeviceCommand) -> R
 }
 
 fn make_device(config: ESPHomeDeviceConfig) -> Result<ESPHomeDevice, ESPHomeError> {
-    let ip = if config.ip.contains(':') { config.ip } else { config.ip + ":6053" };
+    let ip = if config.ip.contains(':') {
+        config.ip
+    } else {
+        config.ip + ":6053"
+    };
     if let Some(noise_psk) = config.noise_psk {
         Ok(ESPHomeDevice::new_noise(ip, noise_psk))
-    }
-    else if let Some(password) = config.password {
+    } else if let Some(password) = config.password {
         Ok(ESPHomeDevice::new_plain(ip, password))
-    }
-    else {
+    } else {
         Err(ESPHomeError::MissingAuth)
     }
 }
@@ -157,25 +181,25 @@ impl LightAction {
         };
 
         match self {
-            LightAction::On => {},
+            LightAction::On => {}
             LightAction::Off => {
                 cmd.state = false;
-            },
+            }
             LightAction::Color(color) => {
                 cmd.has_rgb = true;
                 //RGB are relative values (IE red % = red / (red + blue + green))
                 cmd.red = color.r as f32 / 255.; //so we dont need to / 255
                 cmd.green = color.g as f32 / 255.;
                 cmd.blue = color.b as f32 / 255.;
-            },
+            }
             LightAction::Temperature { temp } => {
                 cmd.has_color_temperature = true;
                 cmd.color_temperature = temp as f32;
-            },
+            }
             LightAction::Brightness { brightness } => {
                 cmd.has_brightness = true;
                 cmd.brightness = brightness as f32 / 100.;
-            },
+            }
         }
 
         cmd
@@ -193,7 +217,7 @@ impl From<LightStateResponse> for LightState {
                 g: (value.green * 255.) as u8,
                 b: (value.blue * 255.) as u8,
             }),
-            color_on: (value.color_mode & 32) == 32
+            color_on: (value.color_mode & 32) == 32,
         }
     }
 }
@@ -201,6 +225,6 @@ impl From<LightStateResponse> for LightState {
 fn esphome_state_to_igloo(value: EntityStateUpdateValue) -> Option<SubdeviceState> {
     Some(match value {
         EntityStateUpdateValue::Light(v) => SubdeviceState::Light(v.into()),
-        _ => return None
+        _ => return None,
     })
 }

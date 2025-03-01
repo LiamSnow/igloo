@@ -1,7 +1,6 @@
 import { createSignal } from "solid-js";
-import { command } from "../api";
 import styles from './TimeSelector.module.scss';
-import { killSnake } from '../util';
+import { command, killSnake } from '../util';
 
 function TimeSelector(props) {
     const timeValue = props.value?.Time || "";

@@ -3,18 +3,24 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use serde::Serialize;
 use tokio::{sync::oneshot, time};
 
-use crate::{cli::model::{LightAction, LightEffect}, command::Color, map::IglooStack, selector::Selection};
+use crate::{
+    cli::model::{LightAction, LightEffect},
+    command::Color,
+    map::IglooStack,
+    selector::Selection,
+};
 
+#[derive(Default)]
 pub struct EffectsState {
     pub next_id: u32,
-    pub current: HashMap<u32, EffectMeta>
+    pub current: HashMap<u32, EffectMeta>,
 }
 
 pub struct EffectMeta {
     claim: LightClaim,
     effect: LightEffect,
     sel: Selection,
-    cancel_tx: Option<oneshot::Sender<()>>
+    cancel_tx: Option<oneshot::Sender<()>>,
 }
 
 #[derive(Serialize)]
@@ -44,22 +50,30 @@ pub async fn spawn(stack: Arc<IglooStack>, selection: Selection, effect: LightEf
     {
         let mut effects = stack.effects_state.lock().await;
         id = effects.next_id;
-        effects.current.insert(id, EffectMeta {
-            effect: effect.clone(),
-            claim,
-            sel: selection.clone(),
-            cancel_tx: Some(cancel_tx)
-        });
+        effects.current.insert(
+            id,
+            EffectMeta {
+                effect: effect.clone(),
+                claim,
+                sel: selection.clone(),
+                cancel_tx: Some(cancel_tx),
+            },
+        );
         effects.next_id += 1;
     }
 
     match effect {
         LightEffect::Cancel => return,
-        LightEffect::BrightnessFade { start_brightness, end_brightness, length_ms } => {
+        LightEffect::BrightnessFade {
+            start_brightness,
+            end_brightness,
+            length_ms,
+        } => {
             tokio::spawn(async move {
                 let step_ms = 50;
                 let num_steps = length_ms / step_ms;
-                let step_brightness = ((end_brightness - start_brightness) as f32) / num_steps as f32;
+                let step_brightness =
+                    ((end_brightness - start_brightness) as f32) / num_steps as f32;
                 let mut brightness = start_brightness as f32;
                 let mut interval = time::interval(Duration::from_millis(step_ms.into()));
                 for _ in 0..num_steps {
@@ -68,14 +82,22 @@ pub async fn spawn(stack: Arc<IglooStack>, selection: Selection, effect: LightEf
                         break;
                     }
 
-                    selection.execute(&stack, LightAction::Brightness { brightness: brightness as u8 }.into()).unwrap(); //FIXME
+                    selection
+                        .execute(
+                            &stack,
+                            LightAction::Brightness {
+                                brightness: brightness as u8,
+                            }
+                            .into(),
+                        )
+                        .unwrap(); //FIXME
                     brightness += step_brightness;
                 }
                 println!("00 brightnessfade effect shutdown");
                 let mut effects = stack.effects_state.lock().await;
                 effects.current.remove(&id);
             })
-        },
+        }
         LightEffect::Rainbow { speed, length_ms } => {
             tokio::spawn(async move {
                 //255 => 1000ms
@@ -91,7 +113,9 @@ pub async fn spawn(stack: Arc<IglooStack>, selection: Selection, effect: LightEf
                         break;
                     }
 
-                    selection.execute(&stack, LightAction::Color(Color::from_hue8(hue)).into()).unwrap(); //FIXME
+                    selection
+                        .execute(&stack, LightAction::Color(Color::from_hue8(hue)).into())
+                        .unwrap(); //FIXME
                     hue = (hue + 1) % 255;
                     if let Some(num_steps) = num_steps {
                         step_num += 1;
@@ -116,7 +140,7 @@ pub async fn list(stack: &Arc<IglooStack>, selection: &Selection) -> Vec<EffectD
             res.push(EffectDisplay {
                 id: *id,
                 effect: meta.effect.clone(),
-                selection: meta.sel.to_str(&stack.lut)
+                selection: meta.sel.to_str(&stack.lut),
             });
         }
     }
@@ -127,7 +151,7 @@ pub async fn list(stack: &Arc<IglooStack>, selection: &Selection) -> Vec<EffectD
 pub enum LightClaim {
     All,
     ColorOrTemp,
-    Brightness
+    Brightness,
 }
 
 impl LightClaim {
@@ -156,4 +180,3 @@ impl From<&LightEffect> for LightClaim {
         }
     }
 }
-

@@ -21,10 +21,10 @@ pub enum SubdeviceState {
     Switch(SwitchState),
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct AveragedSubdeviceState {
     pub value: SubdeviceState,
-    pub homogeneous: bool
+    pub homogeneous: bool,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -113,7 +113,7 @@ pub struct LightState {
 impl LightState {
     /// Average a set of colors
     /// Only avgs Some colors, if there are no colors it returns None (same for temp and bri)
-    pub fn avg(states: &Vec<Vec<Option<Self>>>) -> Option<(Self, bool)> {
+    pub fn avg(states: &Vec<Vec<Option<Self>>>) -> Option<AveragedSubdeviceState> {
         let (mut total, mut on_sum, mut color_on_sum) = (0, 0, 0);
         let (mut total_color, mut color_sum) = (0, (0, 0, 0));
         let (mut total_temp, mut temp_sum) = (0, 0);
@@ -156,8 +156,8 @@ impl LightState {
             return None;
         }
 
-        Some((
-            Self {
+        Some(AveragedSubdeviceState {
+            value: SubdeviceState::Light(Self {
                 on: (on_sum as f32 / total as f32) >= 0.5,
                 color_on: (color_on_sum as f32 / total as f32) >= 0.5,
                 color: if total_color > 0 {
@@ -179,25 +179,27 @@ impl LightState {
                 } else {
                     None
                 },
-            },
+            }),
             homogeneous,
-        ))
+        })
     }
 
     /// Returns if the lights are visibly equal
     /// For example: both lights are off, but have different color values
     pub fn visibly_equal(&self, other: &Self) -> bool {
         if self.on != other.on || self.color_on != other.color_on {
-            return false
+            return false;
         }
         if !self.on {
-            return true
+            return true;
         }
 
         match (self.brightness, other.brightness) {
-            (Some(a), Some(b)) => if a != b {
-                return false
-            },
+            (Some(a), Some(b)) => {
+                if a != b {
+                    return false;
+                }
+            }
             _ => {}
         }
 
@@ -206,9 +208,11 @@ impl LightState {
         }
 
         match (self.temp, other.temp) {
-            (Some(a), Some(b)) => if a != b {
-                return false
-            },
+            (Some(a), Some(b)) => {
+                if a != b {
+                    return false;
+                }
+            }
             _ => {}
         }
 
@@ -217,14 +221,13 @@ impl LightState {
 }
 
 impl SwitchState {
-    pub fn avg(states: &Vec<Vec<Option<bool>>>) -> Option<(Self, bool)> {
+    pub fn avg(states: &Vec<Vec<Option<bool>>>) -> Option<AveragedSubdeviceState> {
         let (mut last_state, mut first, mut homogeneous) = (false, true, false);
         for state in states.iter().flatten().filter_map(|s| s.as_ref()) {
             if homogeneous {
                 if first {
                     first = false;
-                }
-                else {
+                } else {
                     homogeneous = *state == last_state;
                 }
                 last_state = *state;
@@ -232,7 +235,10 @@ impl SwitchState {
         }
         match first {
             true => None,
-            false => Some((last_state.into(), homogeneous))
+            false => Some(AveragedSubdeviceState {
+                value: SubdeviceState::Switch(last_state.into()),
+                homogeneous
+            }),
         }
     }
 }

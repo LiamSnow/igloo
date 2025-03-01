@@ -1,9 +1,44 @@
-import { createResource, Show, For } from "solid-js";
+import { createResource, onMount, onCleanup, Show, For } from "solid-js";
 import Group from "./components/Group";
-import { fetchUIData } from "./api";
+
+async function fetchUIData() {
+    const response = await fetch('http://localhost:3000', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'ui get'
+    });
+
+    if (!response.ok) {
+        console.error(`API error: ${response.status}`);
+        return null;
+    }
+
+    return await response.json();
+}
 
 function App() {
-    const [data] = createResource(fetchUIData);
+    const [data, { mutate }] = createResource(fetchUIData);
+
+    onMount(() => {
+        const ws = new WebSocket('ws://localhost:3000/ws');
+
+        ws.onmessage = (event) => {
+            const [index, state] = JSON.parse(event.data);
+            if (data()) {
+                const newStates = { ...data().states };
+                newStates[index] = state;
+                mutate({ ...data(), states: newStates });
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        onCleanup(() => {
+            ws.close();
+        });
+    });
 
     return (
         <div>

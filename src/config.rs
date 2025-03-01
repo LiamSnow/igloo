@@ -4,7 +4,10 @@ use chrono::NaiveTime;
 use ron::{extensions::Extensions, Options};
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::{command::SubdeviceType, providers::{DeviceConfig, ProviderConfig}};
+use crate::{
+    command::SubdeviceType,
+    providers::{DeviceConfig, ProviderConfig},
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct IglooConfig {
@@ -15,7 +18,7 @@ pub struct IglooConfig {
     pub providers: Vec<ProviderConfig>,
     pub zones: ZonesConfig,
     pub ui: HashMap<String, Vec<UIElementConfig>>,
-    pub automations: HashMap<String, Automation>
+    pub automations: HashMap<String, Automation>,
 }
 
 pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
@@ -23,7 +26,7 @@ pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct User {
     pub password_hash: String,
-    pub api_key_hash: Option<String>
+    pub api_key_hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -34,7 +37,7 @@ pub enum UIElementConfig {
     RGBCTLight(String),
     Switch(String),
     Button(ButtonConfig),
-    TimeSelector(TimeSelectorConfig)
+    TimeSelector(TimeSelectorConfig),
 }
 
 impl UIElementConfig {
@@ -45,7 +48,7 @@ impl UIElementConfig {
             Self::RGBLight(s) => Some((s, SubdeviceType::Light)),
             Self::RGBCTLight(s) => Some((s, SubdeviceType::Light)),
             Self::Switch(s) => Some((s, SubdeviceType::Switch)),
-            _ => None
+            _ => None,
         }
     }
 
@@ -53,8 +56,8 @@ impl UIElementConfig {
         Some(match self {
             Self::TimeSelector(ref cfg) => {
                 ElementValue::Time(parse_time(&cfg.default).unwrap()) //FIXME
-            },
-            _ => return None
+            }
+            _ => return None,
         })
     }
 
@@ -62,7 +65,7 @@ impl UIElementConfig {
         Some(match self {
             Self::Button(c) => &c.name,
             Self::TimeSelector(c) => &c.name,
-            _ => return None
+            _ => return None,
         })
     }
 }
@@ -70,7 +73,7 @@ impl UIElementConfig {
 #[derive(Debug, Serialize)]
 pub enum ElementValue {
     #[serde(serialize_with = "serialize_time")]
-    Time(NaiveTime)
+    Time(NaiveTime),
 }
 
 pub fn serialize_time<S: Serializer>(time: &NaiveTime, serializer: S) -> Result<S::Ok, S::Error> {
@@ -84,7 +87,8 @@ pub fn parse_time(time_str: &str) -> Result<NaiveTime, chrono::ParseError> {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum LightFeature {
-    RGB, CT
+    RGB,
+    CT,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -92,7 +96,7 @@ pub struct ButtonConfig {
     name: String,
     #[serde(skip_serializing)]
     #[allow(dead_code)] //FIXME
-    on_click: String
+    on_click: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -106,7 +110,7 @@ pub struct TimeSelectorConfig {
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Automation {
     Time(TimeAutomation),
-    None(NoneAutomation)
+    None(NoneAutomation),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -119,7 +123,7 @@ pub struct TimeAutomation {
     pub selector: String,
     pub trigger_offset: Option<i32>,
     pub on_trigger: Vec<String>,
-    pub on_change: Option<Vec<String>>
+    pub on_change: Option<Vec<String>>,
 }
 
 impl IglooConfig {

@@ -4,7 +4,10 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::mpsc::error::TrySendError;
 
-use crate::{command::{TargetedSubdeviceCommand, SubdeviceCommand}, map::{IDLut, IglooStack}};
+use crate::{
+    command::{SubdeviceCommand, TargetedSubdeviceCommand},
+    map::{IDLut, IglooStack},
+};
 
 #[derive(Error, Debug, Serialize)]
 pub enum SelectorError {
@@ -53,22 +56,37 @@ impl Selection {
         match sel_str {
             SelectionString::All => Ok(Selection::All),
             SelectionString::Zone(zone_name) => {
-                let zid = lut.zid.get(*zone_name).ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
+                let zid = lut
+                    .zid
+                    .get(*zone_name)
+                    .ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
                 let (start_did, end_did) = lut.did_range.get(*zid).unwrap();
                 Ok(Self::Zone(*zid, *start_did, *end_did))
-            },
+            }
             SelectionString::Device(zone_name, dev_name) => {
-                let zid = lut.zid.get(*zone_name).ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
+                let zid = lut
+                    .zid
+                    .get(*zone_name)
+                    .ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
                 let dev_lut = lut.did.get(*zid).unwrap();
-                let did = dev_lut.get(*dev_name).ok_or(SelectorError::UnknownDevice(zone_name.to_string(), dev_name.to_string()))?;
+                let did = dev_lut.get(*dev_name).ok_or(SelectorError::UnknownDevice(
+                    zone_name.to_string(),
+                    dev_name.to_string(),
+                ))?;
                 Ok(Self::Device(*zid, *did))
-            },
+            }
             SelectionString::Subdevice(zone_name, subdev_name, dev_name) => {
-                let zid = lut.zid.get(*zone_name).ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
+                let zid = lut
+                    .zid
+                    .get(*zone_name)
+                    .ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
                 let dev_lut = lut.did.get(*zid).unwrap();
-                let did = dev_lut.get(*dev_name).ok_or(SelectorError::UnknownDevice(zone_name.to_string(), dev_name.to_string()))?;
+                let did = dev_lut.get(*dev_name).ok_or(SelectorError::UnknownDevice(
+                    zone_name.to_string(),
+                    dev_name.to_string(),
+                ))?;
                 Ok(Self::Subdevice(*zid, *did, subdev_name.to_string()))
-            },
+            }
         }
     }
 
@@ -79,45 +97,53 @@ impl Selection {
     pub fn get_zone(self) -> Option<(usize, usize, usize)> {
         match self {
             Self::Zone(zid, start_did, end_did) => Some((zid, start_did, end_did)),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn get_device(self) -> Option<(usize, usize)> {
         match self {
             Self::Device(zid, did) => Some((zid, did)),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn get_subdevice(self) -> Option<(usize, usize, String)> {
         match self {
             Self::Subdevice(zid, did, subdev_name) => Some((zid, did, subdev_name)),
-            _ => None
+            _ => None,
         }
     }
 
-    pub fn execute(&self, stack: &Arc<IglooStack>, cmd: SubdeviceCommand) -> Result<(), DeviceChannelError> {
+    pub fn execute(
+        &self,
+        stack: &Arc<IglooStack>,
+        cmd: SubdeviceCommand,
+    ) -> Result<(), DeviceChannelError> {
         match self {
-            Self::All => for dev_chan in &stack.dev_chans {
-                dev_chan.try_send(TargetedSubdeviceCommand {
-                    cmd: cmd.clone(),
-                    subdev_name: None,
-                })?;
-            },
-            Self::Zone(_, start_did, end_did) => for dev_chan in &stack.dev_chans[*start_did..=*end_did] {
-                dev_chan.try_send(TargetedSubdeviceCommand {
-                    cmd: cmd.clone(),
-                    subdev_name: None,
-                })?;
-            },
+            Self::All => {
+                for dev_chan in &stack.dev_chans {
+                    dev_chan.try_send(TargetedSubdeviceCommand {
+                        cmd: cmd.clone(),
+                        subdev_name: None,
+                    })?;
+                }
+            }
+            Self::Zone(_, start_did, end_did) => {
+                for dev_chan in &stack.dev_chans[*start_did..=*end_did] {
+                    dev_chan.try_send(TargetedSubdeviceCommand {
+                        cmd: cmd.clone(),
+                        subdev_name: None,
+                    })?;
+                }
+            }
             Self::Device(_, did) => {
                 let dev_chan = stack.dev_chans.get(*did).unwrap();
                 dev_chan.try_send(TargetedSubdeviceCommand {
                     cmd: cmd.clone(),
                     subdev_name: None,
                 })?;
-            },
+            }
             Self::Subdevice(_, did, subdev_name) => {
                 let dev_chan = stack.dev_chans.get(*did).unwrap();
                 dev_chan.try_send(TargetedSubdeviceCommand {
@@ -167,22 +193,19 @@ impl Selection {
 
     pub fn collides(&self, other: &Self) -> bool {
         if other.rank() > self.rank() {
-            return other.collides(self)
+            return other.collides(self);
         }
         match self {
             Self::All => true,
-            Self::Zone(zid, _, _) => {
-                *zid == other.get_zid().unwrap()
-            },
+            Self::Zone(zid, _, _) => *zid == other.get_zid().unwrap(),
             Self::Device(zid, did) => {
-                *zid == other.get_zid().unwrap() &&
-                *did == other.get_did().unwrap()
-            },
+                *zid == other.get_zid().unwrap() && *did == other.get_did().unwrap()
+            }
             Self::Subdevice(zid, did, subdev_name) => {
-                *zid == other.get_zid().unwrap() &&
-                *did == other.get_did().unwrap() &&
-                subdev_name == other.get_subdev_name().unwrap()
-            },
+                *zid == other.get_zid().unwrap()
+                    && *did == other.get_did().unwrap()
+                    && subdev_name == other.get_subdev_name().unwrap()
+            }
         }
     }
 
@@ -209,8 +232,7 @@ impl Selection {
             }
 
             res
-        }
-        else {
+        } else {
             "all".to_string()
         }
     }
@@ -220,13 +242,13 @@ pub enum SelectionString<'a> {
     All,
     Zone(&'a str),
     Device(&'a str, &'a str),
-    Subdevice(&'a str, &'a str, &'a str)
+    Subdevice(&'a str, &'a str, &'a str),
 }
 
 impl<'a> SelectionString<'a> {
     pub fn new(selection_str: &'a str) -> Result<Self, SelectorError> {
         if selection_str == "all" {
-            return Ok(Self::All)
+            return Ok(Self::All);
         }
 
         let parts: Vec<&str> = selection_str.split(".").collect();
@@ -239,12 +261,10 @@ impl<'a> SelectionString<'a> {
         if let Some(dev_name) = parts.get(1) {
             if let Some(subdev_name) = parts.get(2) {
                 Ok(Self::Subdevice(zone_name, dev_name, subdev_name))
-            }
-            else {
+            } else {
                 Ok(Self::Device(zone_name, dev_name))
             }
-        }
-        else {
+        } else {
             Ok(Self::Zone(zone_name))
         }
     }
