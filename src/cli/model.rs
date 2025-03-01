@@ -32,7 +32,7 @@ pub enum CliCommands {
     #[command(alias = "switches")]
     Switch(SwitchArgs),
     /// UI Interface
-    UI,
+    UI(UIArgs),
     /// List various items
     #[command(alias = "ls")]
     List(ListArgs),
@@ -89,6 +89,8 @@ pub struct LightEffectArgs {
 
 #[derive(Subcommand, Clone, Debug, Serialize)]
 pub enum LightEffect {
+    #[command(alias = "clear", alias = "stop")]
+    Cancel,
     /// fade from one brightness to another
     BrightnessFade {
         start_brightness: u8,
@@ -143,12 +145,47 @@ impl Default for SwitchState {
     }
 }
 
+impl From<bool> for SwitchState {
+    fn from(value: bool) -> Self {
+        match value {
+            true => SwitchState::On,
+            false => SwitchState::Off
+        }
+    }
+}
+
 impl From<SwitchState> for bool {
     fn from(value: SwitchState) -> Self {
         match value {
             SwitchState::On => true,
             SwitchState::Off => false
         }
+    }
+}
+
+impl From<&SwitchState> for bool {
+    fn from(value: &SwitchState) -> Self {
+        match value {
+            SwitchState::On => true,
+            SwitchState::Off => false
+        }
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct UIArgs {
+    #[command(subcommand)]
+    pub arg: UICommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum UICommand {
+    /// get UI element, states, and values
+    Get,
+    /// set a UI element's value
+    Set {
+        selector: String,
+        value: String
     }
 }
 
@@ -181,6 +218,9 @@ pub enum ListItems {
     /// List subdevices in device
     #[command(alias = "subdevs")]
     Subdevices { dev: String },
+    /// List effects
+    #[command(alias = "eff")]
+    Effects { target: Option<String> },
 }
 
 #[derive(Args, Debug)]

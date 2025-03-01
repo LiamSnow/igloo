@@ -1,9 +1,10 @@
 use std::{collections::HashMap, error::Error, fs};
 
+use chrono::NaiveTime;
 use ron::{extensions::Extensions, Options};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
-use crate::providers::{DeviceConfig, ProviderConfig};
+use crate::{command::SubdeviceType, providers::{DeviceConfig, ProviderConfig}};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct IglooConfig {
@@ -27,10 +28,58 @@ pub struct User {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum UIElementConfig {
-    Light(String, Option<LightFeature>, Option<LightFeature>),
+    BasicLight(String),
+    CTLight(String),
+    RGBLight(String),
+    RGBCTLight(String),
     Switch(String),
     Button(ButtonConfig),
     TimeSelector(TimeSelectorConfig)
+}
+
+impl UIElementConfig {
+    pub fn get_sel_and_subdev_type(&self) -> Option<(&str, SubdeviceType)> {
+        match self {
+            Self::BasicLight(s) => Some((s, SubdeviceType::Light)),
+            Self::CTLight(s) => Some((s, SubdeviceType::Light)),
+            Self::RGBLight(s) => Some((s, SubdeviceType::Light)),
+            Self::RGBCTLight(s) => Some((s, SubdeviceType::Light)),
+            Self::Switch(s) => Some((s, SubdeviceType::Switch)),
+            _ => None
+        }
+    }
+
+    pub fn get_default_value(&self) -> Option<ElementValue> {
+        Some(match self {
+            Self::TimeSelector(ref cfg) => {
+                ElementValue::Time(parse_time(&cfg.default).unwrap()) //FIXME
+            },
+            _ => return None
+        })
+    }
+
+    pub fn get_name(&self) -> Option<&str> {
+        Some(match self {
+            Self::Button(c) => &c.name,
+            Self::TimeSelector(c) => &c.name,
+            _ => return None
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum ElementValue {
+    #[serde(serialize_with = "serialize_time")]
+    Time(NaiveTime)
+}
+
+pub fn serialize_time<S: Serializer>(time: &NaiveTime, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&time.format("%H:%M").to_string())
+}
+
+pub fn parse_time(time_str: &str) -> Result<NaiveTime, chrono::ParseError> {
+    NaiveTime::parse_from_str(&time_str, "%H:%M")
+        .or_else(|_| NaiveTime::parse_from_str(&time_str, "%I:%M %p"))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -51,20 +100,26 @@ pub struct TimeSelectorConfig {
     name: String,
     #[serde(skip_serializing)]
     #[allow(dead_code)] //FIXME
-    default: Option<String>,
+    default: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Automation {
-    pub trigger: Option<AutomationTrigger>,
+pub enum Automation {
+    Time(TimeAutomation),
+    None(NoneAutomation)
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct NoneAutomation {
+    pub on_trigger: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimeAutomation {
+    pub selector: String,
     pub trigger_offset: Option<i32>,
     pub on_trigger: Vec<String>,
     pub on_change: Option<Vec<String>>
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum AutomationTrigger {
-    Time(String),
 }
 
 impl IglooConfig {

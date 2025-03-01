@@ -1,12 +1,12 @@
 use core::str;
-use std::{error::Error, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use esphomebridge_rs::{api::{self, LightStateResponse}, device::ESPHomeDevice, entity::EntityStateUpdateValue, error::DeviceError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::{sync::mpsc::{self, Receiver, Sender}, time::timeout};
+use tokio::{sync::mpsc, time::timeout};
 
-use crate::{cli::model::LightAction, command::{Color, LightState, RackSubdeviceCommand, SubdeviceCommand, SubdeviceState, SubdeviceStateUpdate}};
+use crate::{cli::model::LightAction, command::{Color, LightState, TargetedSubdeviceCommand, SubdeviceCommand, SubdeviceState, SubdeviceType}, map::SubdeviceStateUpdate};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ESPHomeConfig {
@@ -40,33 +40,43 @@ impl From<DeviceError> for ESPHomeError {
 pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
 pub const KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(90);
 
-pub fn new(config: ESPHomeDeviceConfig, dev_id: usize, update: Sender<SubdeviceStateUpdate>) -> Result<Sender<RackSubdeviceCommand>, Box<dyn Error>> {
-    let (cmd_tx, cmd_rx) = mpsc::channel::<RackSubdeviceCommand>(5);
-    let dev = make_device(config)?;
-    tokio::spawn(spawn(dev, dev_id, cmd_rx, update));
-    Ok(cmd_tx)
-}
-
-async fn spawn(mut dev: ESPHomeDevice, dev_id: usize, mut cmd_rx: Receiver<RackSubdeviceCommand>, update_tx: Sender<SubdeviceStateUpdate>) -> Result<(), ESPHomeError> {
+pub async fn task(
+    config: ESPHomeDeviceConfig,
+    did: usize,
+    selector: String,
+    mut cmd_rx: mpsc::Receiver<TargetedSubdeviceCommand>,
+    on_update_of_type: Option<HashMap<SubdeviceType, Vec<mpsc::Sender<SubdeviceStateUpdate>>>>,
+    on_subdev_update: Option<HashMap<String, mpsc::Sender<SubdeviceState>>>
+) -> Result<(), ESPHomeError> {
+    let mut dev = make_device(config)?;
     dev.connect().await?;
 
-    println!("{dev_id} connected");
+    println!("{selector} ({did}) connected");
 
     //push state up
     let mut update_rx = dev.subscribe_states(5).await?;
     tokio::spawn(async move {
         while let Some(update) = update_rx.recv().await {
             if let Some(value) = esphome_state_to_igloo(update.value) {
-                //TODO include type and category?
-                let res = update_tx.send(SubdeviceStateUpdate {
-                    dev_id,
-                    subdev_name: update.subdev_name,
-                    value
-                }).await;
+                let subdev_type = value.get_type();
 
-                //TODO
-                if let Err(e) = res {
-                    println!("esphome device state update error: {e}");
+                if let Some(ref on_update_of_type) = on_update_of_type {
+                    if let Some(on_update_of_type) = on_update_of_type.get(&subdev_type) {
+                        let u = SubdeviceStateUpdate {
+                            did,
+                            sid: update.entity_index,
+                            value: value.clone(),
+                        };
+                        for tx in on_update_of_type {
+                            tx.send(u.clone()).await.unwrap(); //FIXME
+                        }
+                    }
+                }
+
+                if let Some(ref on_subdev_update) = on_subdev_update {
+                    if let Some(tx) = on_subdev_update.get(&update.entity_name) {
+                        tx.send(value).await.unwrap(); //FIXME
+                    }
                 }
             }
         }
@@ -84,7 +94,7 @@ async fn spawn(mut dev: ESPHomeDevice, dev_id: usize, mut cmd_rx: Receiver<RackS
                 dev.process_incoming().await?;
             }
             Ok(None) => {
-                println!("{dev_id} Cmd channel closed"); //TODO
+                //TODO log
                 break;
             }
         }
@@ -93,13 +103,13 @@ async fn spawn(mut dev: ESPHomeDevice, dev_id: usize, mut cmd_rx: Receiver<RackS
     Ok(())
 }
 
-async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: RackSubdeviceCommand) -> Result<(), ESPHomeError> {
+async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: TargetedSubdeviceCommand) -> Result<(), ESPHomeError> {
     match cmd.cmd {
         SubdeviceCommand::Light(light_cmd) => {
             if let Some(subdev_name) = cmd.subdev_name {
-                let entity = dev.entities.light.get(&subdev_name)
+                let key = dev.get_light_key_from_name(&subdev_name)
                     .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
-                dev.light_command(&light_cmd.to_esphome(entity.key)).await?;
+                dev.light_command(&light_cmd.to_esphome(key)).await?;
             }
             else {
                 let mut esp_cmd = light_cmd.clone().to_esphome(0);
@@ -108,12 +118,9 @@ async fn handle_cmd(dev: &mut ESPHomeDevice, cmd: RackSubdeviceCommand) -> Resul
         },
         SubdeviceCommand::Switch(state) => {
             if let Some(subdev_name) = cmd.subdev_name {
-                let entity = dev.entities.switch.get(&subdev_name)
+                let key = dev.get_switch_key_from_name(&subdev_name)
                     .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
-                dev.switch_command(&api::SwitchCommandRequest {
-                    key: entity.key,
-                    state: state.into(),
-                }).await?;
+                dev.switch_command(&api::SwitchCommandRequest { key, state: state.into() }).await?;
             }
             else {
                 let mut esp_cmd = api::SwitchCommandRequest { key: 0, state: state.into() };
@@ -186,7 +193,7 @@ impl From<LightStateResponse> for LightState {
                 g: (value.green * 255.) as u8,
                 b: (value.blue * 255.) as u8,
             }),
-            color_on: value.color_mode == 35
+            color_on: (value.color_mode & 32) == 32
         }
     }
 }

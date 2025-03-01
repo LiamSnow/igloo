@@ -6,7 +6,40 @@ use crate::cli::model::{LightAction, SwitchState};
 #[derive(Debug, Clone)]
 pub enum SubdeviceCommand {
     Light(LightAction),
-    Switch(SwitchState)
+    Switch(SwitchState),
+}
+
+pub struct TargetedSubdeviceCommand {
+    /// if None -> apply to all applicable subdevices
+    pub subdev_name: Option<String>,
+    pub cmd: SubdeviceCommand,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum SubdeviceState {
+    Light(LightState),
+    Switch(SwitchState),
+}
+
+#[derive(Serialize)]
+pub struct AveragedSubdeviceState {
+    pub value: SubdeviceState,
+    pub homogeneous: bool
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub enum SubdeviceType {
+    Light,
+    Switch,
+}
+
+impl SubdeviceState {
+    pub fn get_type(&self) -> SubdeviceType {
+        match self {
+            Self::Light(..) => SubdeviceType::Light,
+            Self::Switch(..) => SubdeviceType::Switch,
+        }
+    }
 }
 
 impl From<LightAction> for SubdeviceCommand {
@@ -21,19 +54,6 @@ impl From<SwitchState> for SubdeviceCommand {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub enum SubdeviceState {
-    Light(LightState),
-    Switch(SwitchState)
-}
-
-#[derive(Debug, Clone)]
-pub struct SubdeviceStateUpdate {
-    pub dev_id: usize,
-    pub subdev_name: String,
-    pub value: SubdeviceState
-}
-
 impl From<LightState> for SubdeviceState {
     fn from(value: LightState) -> Self {
         Self::Light(value)
@@ -46,24 +66,16 @@ impl From<SwitchState> for SubdeviceState {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct LightState {
-    pub on: bool,
-    pub color_on: bool,
-    pub color: Option<Color>,
-    pub temp: Option<u32>,
-    pub brightness: Option<u8>,
-}
-
 #[derive(Debug, Default, Clone, Args, Serialize, PartialEq, Eq)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
-    pub b: u8
+    pub b: u8,
 }
 
 impl Color {
-    /// Fast HSL to RGB with S=100%, L=50%, and hue=0-255
+    /// Fast 8-bit Hue to RGB
+    /// Basically HSL to RGB with S=100%, L=50%
     pub fn from_hue8(hue: u8) -> Self {
         Color {
             r: match hue {
@@ -84,29 +96,36 @@ impl Color {
                 85..=127 => (hue - 85) * 6,
                 128..=212 => 255,
                 _ => (255 - hue) * 6,
-            }
+            },
         }
     }
 }
 
-//TODO name this
-pub struct RackSubdeviceCommand {
-    pub subdev_name: Option<String>,
-    pub cmd: SubdeviceCommand
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct LightState {
+    pub on: bool,
+    pub color_on: bool,
+    pub color: Option<Color>,
+    pub temp: Option<u32>,
+    pub brightness: Option<u8>,
 }
 
 impl LightState {
     /// Average a set of colors
     /// Only avgs Some colors, if there are no colors it returns None (same for temp and bri)
-    pub fn avg(states: Vec<&Self>) -> Self {
-        let num = states.len();
-        let (mut on_count, mut color_on_sum) = (0, 0);
-        let (mut total_color, mut color_sum) = (0,(0,0,0));
+    pub fn avg(states: &Vec<Vec<Option<Self>>>) -> Option<(Self, bool)> {
+        let (mut total, mut on_sum, mut color_on_sum) = (0, 0, 0);
+        let (mut total_color, mut color_sum) = (0, (0, 0, 0));
         let (mut total_temp, mut temp_sum) = (0, 0);
         let (mut total_bright, mut bright_sum) = (0, 0);
 
-        for state in states {
-            on_count += state.on as u32;
+        let mut last_state: &Self = &Default::default();
+        let mut first = true;
+        let mut homogeneous = true;
+
+        for state in states.iter().flatten().filter_map(|s| s.as_ref()) {
+            total += 1;
+            on_sum += state.on as u32;
             color_on_sum += state.color_on as u32;
             if let Some(color) = &state.color {
                 total_color += 1;
@@ -122,22 +141,98 @@ impl LightState {
                 total_bright += 1;
                 bright_sum += bright as u32;
             }
+
+            if homogeneous {
+                if first {
+                    first = false;
+                } else {
+                    homogeneous = last_state.visibly_equal(state);
+                }
+                last_state = state;
+            }
         }
 
-        Self {
-            on: (on_count as f32 / num as f32) > 0.5,
-            color_on: (color_on_sum as f32 / num as f32) > 0.5,
-            color: if total_color > 0 { Some(Color{
-                r: (color_sum.0 as f32 / total_color as f32) as u8,
-                g: (color_sum.1 as f32 / total_color as f32) as u8,
-                b: (color_sum.2 as f32 / total_color as f32) as u8
-            })} else { None },
-            temp: if total_temp > 0 {
-                Some((temp_sum as f32 / total_temp as f32) as u32)
-            } else { None },
-            brightness: if total_bright > 0 {
-                Some((bright_sum as f32 / total_temp as f32) as u8)
-            } else { None },
+        if total == 0 {
+            return None;
+        }
+
+        Some((
+            Self {
+                on: (on_sum as f32 / total as f32) >= 0.5,
+                color_on: (color_on_sum as f32 / total as f32) >= 0.5,
+                color: if total_color > 0 {
+                    Some(Color {
+                        r: (color_sum.0 as f32 / total_color as f32) as u8,
+                        g: (color_sum.1 as f32 / total_color as f32) as u8,
+                        b: (color_sum.2 as f32 / total_color as f32) as u8,
+                    })
+                } else {
+                    None
+                },
+                temp: if total_temp > 0 {
+                    Some((temp_sum as f32 / total_temp as f32) as u32)
+                } else {
+                    None
+                },
+                brightness: if total_bright > 0 {
+                    Some((bright_sum as f32 / total_temp as f32) as u8)
+                } else {
+                    None
+                },
+            },
+            homogeneous,
+        ))
+    }
+
+    /// Returns if the lights are visibly equal
+    /// For example: both lights are off, but have different color values
+    pub fn visibly_equal(&self, other: &Self) -> bool {
+        if self.on != other.on || self.color_on != other.color_on {
+            return false
+        }
+        if !self.on {
+            return true
+        }
+
+        match (self.brightness, other.brightness) {
+            (Some(a), Some(b)) => if a != b {
+                return false
+            },
+            _ => {}
+        }
+
+        if self.color_on {
+            return self.color == other.color;
+        }
+
+        match (self.temp, other.temp) {
+            (Some(a), Some(b)) => if a != b {
+                return false
+            },
+            _ => {}
+        }
+
+        true
+    }
+}
+
+impl SwitchState {
+    pub fn avg(states: &Vec<Vec<Option<bool>>>) -> Option<(Self, bool)> {
+        let (mut last_state, mut first, mut homogeneous) = (false, true, false);
+        for state in states.iter().flatten().filter_map(|s| s.as_ref()) {
+            if homogeneous {
+                if first {
+                    first = false;
+                }
+                else {
+                    homogeneous = *state == last_state;
+                }
+                last_state = *state;
+            }
+        }
+        match first {
+            true => None,
+            false => Some((last_state.into(), homogeneous))
         }
     }
 }

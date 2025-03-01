@@ -12,6 +12,7 @@ pub mod map;
 pub mod providers;
 pub mod command;
 pub mod selector;
+pub mod effects;
 
 pub const VERSION: f32 = 0.1;
 pub const CONFIG_VERSION: f32 = 0.1;
@@ -23,20 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         panic!("Wrong config version. Got {}, expected {}.", cfg.version, CONFIG_VERSION);
     }
 
-    let (stack, mut update_rx) = IglooStack::init(cfg).await?;
-
-    tokio::spawn(async move {
-        while let Some(_states) = update_rx.recv().await {
-            // println!("\n\n\n\n\n\n\n\n\n\n\n --------- NEW STATES ---------");
-            // for state in states {
-            //     if let Some(state) = state {
-            //         println!("{:#?}", state);
-            //     }
-            // }
-            // println!("\n\n\n\n -------- END ------- \n\n\n\n\n\n\n\n\n\n\n");
-            //TODO notify web sockets
-        }
-    });
+    let stack = IglooStack::init(cfg).await?;
 
     let app = Router::new()
         .route("/", post(post_cmd))
