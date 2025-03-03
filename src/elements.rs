@@ -8,11 +8,7 @@ use serde::{Serialize, Serializer};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::{
-    cli::model::{Cli, SwitchState},
-    command::{LightState, SubdeviceState, SubdeviceType},
-    config::UIElementConfig,
-    map::{Auth, DeviceIDLut, Permissions},
-    selector::Selection,
+    auth::Auth, cli::model::{Cli, SwitchState}, command::{LightState, SubdeviceState, SubdeviceType}, config::UIElementConfig, map::DeviceIDLut, permissions::Permissions, selector::Selection
 };
 
 pub struct Elements {

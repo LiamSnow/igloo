@@ -6,7 +6,7 @@ use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
     command::{SubdeviceCommand, TargetedSubdeviceCommand},
-    map::{DeviceIDLut, IglooStack, Permissions},
+    map::{DeviceIDLut, IglooStack},
 };
 
 #[derive(Error, Debug, Serialize)]
@@ -235,17 +235,6 @@ impl Selection {
         } else {
             "all".to_string()
         }
-    }
-
-    /// Checks ...
-    pub fn has_perm(&self, perms: &Permissions, uid: usize) -> bool {
-        if matches!(self, Selection::All) {
-            // calls to all will only apply to those they have permission for
-            return true;
-        }
-
-        let zid = self.get_zid().unwrap();
-        *perms.zone.get(zid).unwrap().get(uid).unwrap()
     }
 }
 

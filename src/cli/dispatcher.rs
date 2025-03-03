@@ -52,26 +52,31 @@ struct UIResponse<'a> {
 
 impl Cli {
     pub async fn dispatch(self, stack: &Arc<IglooStack>, uid: usize) -> Result<Option<String>, DispatchError> {
-        Ok(match self.command {
-            CliCommands::Light(args) => {
-                let selection = Selection::from_str(&stack.dev_lut, &args.target)?;
-                if !selection.has_perm(&stack.perms, uid) {
+        let sel = match self.command.get_selection() {
+            Some(sel_str) => {
+                let sel = Selection::from_str(&stack.dev_lut, &sel_str)?;
+                if !stack.perms.has_perm(&sel, uid) {
                     return Err(DispatchError::InvalidPermission)
                 }
+                Some(sel)
+            },
+            None => None,
+        };
 
-                effects::clear_conflicting(&stack, &selection, &((&args.action).into())).await;
-                selection
+        Ok(match self.command {
+            CliCommands::Light(args) => {
+                let sel = sel.unwrap();
+
+                effects::clear_conflicting(&stack, &sel, &((&args.action).into())).await;
+                sel
                     .execute(&stack, SubdeviceCommand::Light(args.action))
                     .map_err(|e| DispatchError::DeviceChannelErorr(args.target, e))?;
                 None
             }
             CliCommands::Effect(args) => {
-                let selection = Selection::from_str(&stack.dev_lut, &args.target)?;
-                if !selection.has_perm(&stack.perms, uid) {
-                    return Err(DispatchError::InvalidPermission)
-                }
+                let sel = sel.unwrap();
 
-                effects::spawn(stack.clone(), selection, args.effect).await;
+                effects::spawn(stack.clone(), sel, args.effect).await;
                 None
             }
             CliCommands::Switch(_) => todo!(),
@@ -150,12 +155,9 @@ impl Cli {
                 ListItems::Subdevices { dev: _ } => {
                     todo!()
                 }
-                ListItems::Effects { target } => {
-                    let selection = match target {
-                        Some(target) => Selection::from_str(&stack.dev_lut, &target)?,
-                        None => Selection::All,
-                    };
-                    let res = effects::list(&stack, &selection).await;
+                ListItems::Effects { target: _ } => {
+                    let sel = sel.unwrap_or(Selection::All);
+                    let res = effects::list(&stack, &sel).await;
                     Some(serde_json::to_string(&res)?)
                 }
             },

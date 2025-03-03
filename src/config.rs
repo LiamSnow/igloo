@@ -10,7 +10,7 @@ use crate::{
 #[derive(Debug, Deserialize, Serialize)]
 pub struct IglooConfig {
     pub version: f32,
-    pub users: HashMap<String, User>,
+    pub users: HashMap<String, UserConfig>,
     pub user_groups: HashMap<String, Vec<String>>,
     pub permissions: HashMap<String, String>,
     pub providers: Vec<ProviderConfig>,
@@ -22,7 +22,7 @@ pub struct IglooConfig {
 pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct User {
+pub struct UserConfig {
     pub password_hash: String,
 }
 

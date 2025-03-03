@@ -24,6 +24,8 @@ pub mod map;
 pub mod providers;
 pub mod selector;
 pub mod elements;
+pub mod permissions;
+pub mod auth;
 
 pub const VERSION: f32 = 0.1;
 pub const CONFIG_VERSION: f32 = 0.1;
