@@ -6,7 +6,7 @@ use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
     command::{SubdeviceCommand, TargetedSubdeviceCommand},
-    map::{IDLut, IglooStack},
+    map::{DeviceIDLut, IglooStack, Permissions},
 };
 
 #[derive(Error, Debug, Serialize)]
@@ -48,11 +48,11 @@ pub enum Selection {
 }
 
 impl Selection {
-    pub fn from_str(lut: &IDLut, s: &str) -> Result<Self, SelectorError> {
+    pub fn from_str(lut: &DeviceIDLut, s: &str) -> Result<Self, SelectorError> {
         Self::new(lut, &SelectionString::new(s)?)
     }
 
-    pub fn new(lut: &IDLut, sel_str: &SelectionString) -> Result<Self, SelectorError> {
+    pub fn new(lut: &DeviceIDLut, sel_str: &SelectionString) -> Result<Self, SelectorError> {
         match sel_str {
             SelectionString::All => Ok(Selection::All),
             SelectionString::Zone(zone_name) => {
@@ -155,7 +155,7 @@ impl Selection {
         Ok(())
     }
 
-    fn rank(&self) -> u8 {
+    pub fn rank(&self) -> u8 {
         match self {
             Self::All => 3,
             Self::Zone(..) => 2,
@@ -210,7 +210,7 @@ impl Selection {
     }
 
     /// This is REALLY slow, use sparingly
-    pub fn to_str(&self, lut: &IDLut) -> String {
+    pub fn to_str(&self, lut: &DeviceIDLut) -> String {
         if let Some(zid) = self.get_zid() {
             let mut res = match lut.zid.iter().find(|(_, v)| **v == zid) {
                 Some((k, _)) => k.to_string(),
@@ -235,6 +235,17 @@ impl Selection {
         } else {
             "all".to_string()
         }
+    }
+
+    /// Checks ...
+    pub fn has_perm(&self, perms: &Permissions, uid: usize) -> bool {
+        if matches!(self, Selection::All) {
+            // calls to all will only apply to those they have permission for
+            return true;
+        }
+
+        let zid = self.get_zid().unwrap();
+        *perms.zone.get(zid).unwrap().get(uid).unwrap()
     }
 }
 

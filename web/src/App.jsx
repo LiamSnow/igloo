@@ -17,6 +17,7 @@ function App() {
         ws.onmessage = (event) => {
             try {
                 let res = JSON.parse(event.data);
+                console.log(res);
 
                 if (res.elements !== undefined) {
                     setData(res);
@@ -63,7 +64,7 @@ function App() {
 
             <Show when={data}>
                 <div class="groups">
-                    <For each={Object.entries(data.elements || {})}>
+                    <For each={data.elements || {}}>
                         {([groupName, groupItems]) => (
                             <Group
                                 name={groupName}

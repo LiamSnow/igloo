@@ -39,13 +39,25 @@ pub enum CliCommands {
     // Describe(DescribeArgs),
     /// View logs
     Logs(LogsArgs),
-    /// Control automations
-    #[command(alias = "atm")]
-    Automation(AutomationArgs),
+    /// Control scripts
+    #[command(alias = "scr")]
+    Script(ScriptArgs),
     /// Reload the system
     Reload,
     /// Display version information
     Version,
+}
+
+impl CliCommands {
+    pub fn get_selection(&self) -> Option<&str> {
+        Some(match self {
+            Self::Light(args) => &args.target,
+            Self::Effect(args) => &args.target,
+            Self::Switch(args) => &args.target,
+            Self::List(args) => return args.item.get_selection(),
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Args, Debug)]
@@ -199,7 +211,7 @@ pub enum ListItems {
     Providers,
     /// List automations
     #[command(alias = "atms")]
-    Automations,
+    Scripts,
     /// List zones
     #[command(alias = "zns")]
     Zones,
@@ -212,6 +224,17 @@ pub enum ListItems {
     /// List effects
     #[command(alias = "eff")]
     Effects { target: Option<String> },
+}
+
+impl ListItems {
+    pub fn get_selection(&self) -> Option<&str> {
+        Some(match self {
+            ListItems::Devices { zone } => &zone,
+            ListItems::Subdevices { dev } => &dev,
+            ListItems::Effects { target } => return target.as_ref().map(|t| t.as_str()),
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Args, Debug)]
@@ -252,31 +275,27 @@ pub struct LogsArgs {
 pub enum LogType {
     /// View system logs
     System,
-    /// View user logs
-    #[command(alias = "usr")]
-    User { user: String },
     /// View device logs
     #[command(alias = "dev")]
-    Device { dev: String },
+    Device { name: String },
     /// View automation logs
     #[command(alias = "atm")]
-    Automation { automation: String },
+    Script { name: String },
 }
 
 #[derive(Args, Debug)]
-pub struct AutomationArgs {
-    /// Target automation
-    pub automation: String,
+pub struct ScriptArgs {
+    pub target: String,
     #[command(subcommand)]
-    pub action: AutomationAction,
+    pub action: ScriptAction,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum AutomationAction {
-    /// Trigger the automation
-    Trigger,
-    /// Get or set the automation value
-    Value(AutomationValue),
+pub enum ScriptAction {
+    /// Run the script. If its already running it will be cancelled first.
+    Run,
+    /// Cancel the script if its running
+    Cancel
 }
 
 #[derive(Args, Debug)]

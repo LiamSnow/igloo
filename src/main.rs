@@ -14,6 +14,7 @@ use config::IglooConfig;
 use map::IglooStack;
 use tokio::{net::TcpListener, sync::Mutex};
 use futures_util::{SinkExt, StreamExt};
+use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 pub mod cli;
 pub mod command;
@@ -39,10 +40,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let stack = IglooStack::init(cfg).await?;
 
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false); //FIXME
+        //.with_expiry(expiry)
+
     let app = Router::new()
         .route("/", post(post_cmd))
         .route("/ws", any(ws_handler))
-        .with_state(stack);
+        .with_state(stack)
+        .layer(session_layer);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app.into_make_service()).await?;
@@ -51,12 +58,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn post_cmd(State(stack): State<Arc<IglooStack>>, cmd_str: String) -> impl IntoResponse {
+    let uid = 0; //FIXME
+
     let cmd = match Cli::parse(&cmd_str) {
         Ok(r) => r,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e.render().to_string())).into_response(),
     };
 
-    match cmd.dispatch(&stack).await {
+    match cmd.dispatch(&stack, uid).await {
         Ok(Some(body)) => (
             StatusCode::OK,
             AppendHeaders([(header::CONTENT_TYPE, "application/json")]),
@@ -77,6 +86,8 @@ async fn ws_handler(
 }
 
 async fn handle_socket(stack: Arc<IglooStack>, socket: WebSocket) {
+    let uid = 0; //FIXME
+
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
     let ws_tx_copy = ws_tx.clone();
@@ -92,7 +103,7 @@ async fn handle_socket(stack: Arc<IglooStack>, socket: WebSocket) {
         while let Some(Ok(msg)) = ws_rx.next().await {
             match msg {
                 Message::Text(cmd_str) => {
-                    if let Some(json) = parse_execute_wscmd(&stack, &cmd_str).await {
+                    if let Some(json) = parse_execute_wscmd(&stack, &cmd_str, uid).await {
                         ws_tx_copy.lock().await.send(Message::Text(json.into())).await.unwrap()
                     }
                 }
@@ -114,14 +125,14 @@ async fn handle_socket(stack: Arc<IglooStack>, socket: WebSocket) {
     }
 }
 
-async fn parse_execute_wscmd(stack: &Arc<IglooStack>, cmd_str: &str) -> Option<String> {
+async fn parse_execute_wscmd(stack: &Arc<IglooStack>, cmd_str: &str, uid: usize) -> Option<String> {
     let cmd = match Cli::parse(cmd_str) {
         Ok(r) => r,
         //TODO log
         Err(e) => return Some(serde_json::to_string(&e.render().to_string()).unwrap()), //FIXME
     };
 
-    match cmd.dispatch(&stack).await {
+    match cmd.dispatch(&stack, uid).await {
         Ok(r) => r,
         //TODO log
         Err(e) => Some(serde_json::to_string(&e).unwrap()), //FIXME

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use serde::Serialize;
 use thiserror::Error;
@@ -26,6 +26,8 @@ pub enum DispatchError {
     UnknownZone(String),
     #[error("json encoding error `{0}`")]
     JsonEncodingError(String),
+    #[error("you do not have permission to perform this operation")]
+    InvalidPermission,
 }
 
 impl From<serde_json::Error> for DispatchError {
@@ -42,17 +44,21 @@ impl From<SelectorError> for DispatchError {
 
 #[derive(Serialize)]
 struct UIResponse<'a> {
-    elements: &'a HashMap<String, Vec<Element>>,
+    elements: Vec<(&'a String, Vec<&'a Element>)>,
     states: &'a Vec<Option<AveragedSubdeviceState>>,
     values: &'a Vec<ElementValue>,
     effects: Vec<EffectDisplay>,
 }
 
 impl Cli {
-    pub async fn dispatch(self, stack: &Arc<IglooStack>) -> Result<Option<String>, DispatchError> {
+    pub async fn dispatch(self, stack: &Arc<IglooStack>, uid: usize) -> Result<Option<String>, DispatchError> {
         Ok(match self.command {
             CliCommands::Light(args) => {
-                let selection = Selection::from_str(&stack.lut, &args.target)?;
+                let selection = Selection::from_str(&stack.dev_lut, &args.target)?;
+                if !selection.has_perm(&stack.perms, uid) {
+                    return Err(DispatchError::InvalidPermission)
+                }
+
                 effects::clear_conflicting(&stack, &selection, &((&args.action).into())).await;
                 selection
                     .execute(&stack, SubdeviceCommand::Light(args.action))
@@ -60,18 +66,40 @@ impl Cli {
                 None
             }
             CliCommands::Effect(args) => {
-                let selection = Selection::from_str(&stack.lut, &args.target)?;
+                let selection = Selection::from_str(&stack.dev_lut, &args.target)?;
+                if !selection.has_perm(&stack.perms, uid) {
+                    return Err(DispatchError::InvalidPermission)
+                }
+
                 effects::spawn(stack.clone(), selection, args.effect).await;
                 None
             }
             CliCommands::Switch(_) => todo!(),
             CliCommands::UI(arg) => match arg.arg {
                 UICommand::Get => {
+                    //remove not allowed elements
+                    let mut elements = Vec::new();
+                    for (group_name, els) in &stack.elements.elements {
+                        let mut els_for_user = Vec::new();
+                        for el in els {
+                            let allowed = match &el.allowed_uids {
+                                Some(uids) => *uids.get(uid).unwrap(),
+                                None => true
+                            };
+                            if allowed {
+                                els_for_user.push(el);
+                            }
+                        }
+                        if els_for_user.len() > 0 {
+                            elements.push((group_name, els_for_user));
+                        }
+                    }
+
                     let effects = effects::list_all(&stack).await;
                     let states = stack.elements.states.lock().await;
                     let values = stack.elements.values.lock().await;
                     let res = UIResponse {
-                        elements: &stack.elements.elements,
+                        elements,
                         states: &states,
                         values: &values,
                         effects,
@@ -105,18 +133,18 @@ impl Cli {
                 ListItems::Users => todo!(),
                 ListItems::UserGroups => todo!(),
                 ListItems::Providers => todo!(),
-                ListItems::Automations => todo!(),
+                ListItems::Scripts => todo!(),
                 ListItems::Zones => {
-                    let zones: Vec<_> = stack.lut.zid.keys().collect();
+                    let zones: Vec<_> = stack.dev_lut.zid.keys().collect();
                     Some(serde_json::to_string(&zones)?)
                 }
                 ListItems::Devices { zone } => {
                     let zid = stack
-                        .lut
+                        .dev_lut
                         .zid
                         .get(&zone)
                         .ok_or(DispatchError::UnknownZone(zone))?;
-                    let names: Vec<_> = stack.lut.did.get(*zid).unwrap().keys().collect();
+                    let names: Vec<_> = stack.dev_lut.did.get(*zid).unwrap().keys().collect();
                     Some(serde_json::to_string(&names)?)
                 }
                 ListItems::Subdevices { dev: _ } => {
@@ -124,7 +152,7 @@ impl Cli {
                 }
                 ListItems::Effects { target } => {
                     let selection = match target {
-                        Some(target) => Selection::from_str(&stack.lut, &target)?,
+                        Some(target) => Selection::from_str(&stack.dev_lut, &target)?,
                         None => Selection::All,
                     };
                     let res = effects::list(&stack, &selection).await;
@@ -133,13 +161,12 @@ impl Cli {
             },
             CliCommands::Logs(args) => match args.log_type {
                 LogType::System => todo!(),
-                LogType::User { user: _ } => todo!(),
-                LogType::Device { dev: _ } => {
+                LogType::Device { name: _ } => {
                     todo!()
                 }
-                LogType::Automation { automation: _ } => todo!(),
+                LogType::Script { name: _ } => todo!(),
             },
-            CliCommands::Automation(_) => todo!(),
+            CliCommands::Script(_) => todo!(),
             CliCommands::Reload => todo!(),
             CliCommands::Version => Some(serde_json::to_string(&VERSION)?),
         })

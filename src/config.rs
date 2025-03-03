@@ -15,8 +15,8 @@ pub struct IglooConfig {
     pub permissions: HashMap<String, String>,
     pub providers: Vec<ProviderConfig>,
     pub zones: ZonesConfig,
-    pub ui: HashMap<String, Vec<UIElementConfig>>,
-    pub automations: HashMap<String, Automation>,
+    pub ui: Vec<(String, Vec<UIElementConfig>)>,
+    pub scripts: HashMap<String, Vec<String>>,
 }
 
 pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
@@ -24,10 +24,9 @@ pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct User {
     pub password_hash: String,
-    pub api_key_hash: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum UIElementConfig {
     BasicLight(String),
     CTLight(String),
@@ -50,7 +49,7 @@ impl UIElementConfig {
         }
     }
 
-    pub fn get_default_value(&self) -> Option<ElementValue> {
+    pub fn get_def_val(&self) -> Option<ElementValue> {
         Some(match self {
             Self::TimeSelector(ref cfg) => {
                 ElementValue::Time(parse_time(&cfg.default).unwrap()) //FIXME
@@ -66,6 +65,29 @@ impl UIElementConfig {
             _ => return None,
         })
     }
+
+    pub fn get_commands(&self) -> Option<Vec<&str>> {
+        Some(match self {
+            Self::Button(c) => vec![&c.on_click],
+            _ => return None,
+        })
+    }
+
+    pub fn get_scripts(&self) -> Option<Vec<&str>> {
+        Some(match self {
+            Self::TimeSelector(c) => {
+                let mut v = Vec::new();
+                if let Some(s) = &c.on_trigger {
+                    v.push(s.as_str());
+                }
+                if let Some(s) = &c.on_change {
+                    v.push(s.as_str());
+                }
+                v
+            },
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -74,37 +96,23 @@ pub enum LightFeature {
     CT,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ButtonConfig {
     name: String,
     on_click: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeSelectorConfig {
     name: String,
     #[serde(skip_serializing)]
-    #[allow(dead_code)] //FIXME
     default: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum Automation {
-    Time(TimeAutomation),
-    None(NoneAutomation),
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct NoneAutomation {
-    pub on_trigger: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TimeAutomation {
-    pub selector: String,
+    #[serde(skip_serializing)]
     pub trigger_offset: Option<i32>,
-    pub on_trigger: Vec<String>,
-    pub on_change: Option<Vec<String>>,
+    #[serde(skip_serializing)]
+    pub on_trigger: Option<String>,
+    #[serde(skip_serializing)]
+    pub on_change: Option<String>,
 }
 
 impl IglooConfig {

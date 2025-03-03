@@ -1,34 +1,42 @@
 use std::{collections::HashMap, error::Error, iter, sync::Arc};
 
 use axum::extract::ws::Utf8Bytes;
+use bitvec::prelude::bitvec;
+use bitvec::vec::BitVec;
 use chrono::NaiveTime;
 use serde::{Serialize, Serializer};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::{
-    cli::model::SwitchState,
+    cli::model::{Cli, SwitchState},
     command::{LightState, SubdeviceState, SubdeviceType},
     config::UIElementConfig,
-    map::IDLut,
+    map::{Auth, DeviceIDLut, Permissions},
     selector::Selection,
 };
 
 pub struct Elements {
-    pub elements: HashMap<String, Vec<Element>>,
+    /// [(group name, element in group)]
+    pub elements: Vec<(String, Vec<Element>)>,
+    /// esid -> Option<state>
     pub states: ElementStatesLock,
+    /// evid -> Option<state>
     pub values: Mutex<Vec<ElementValue>>,
     pub evid_lut: HashMap<String, usize>,
 }
 
 pub type ElementStatesLock = Arc<Mutex<Vec<Option<AveragedSubdeviceState>>>>;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Element {
     pub cfg: UIElementConfig,
     // element state index (for elements tied to devices IE Lights)
     pub esid: Option<usize>,
     // element value index (for elements that hold a value IE TimeSelector)
     pub evid: Option<usize>,
+    /// if None, anyone can see
+    #[serde(skip_serializing)]
+    pub allowed_uids: Option<BitVec>
 }
 
 #[derive(Clone)]
@@ -80,57 +88,72 @@ pub struct DeviceUpdateSubscribers {
 
 impl Elements {
     pub fn init(
-        ui: HashMap<String, Vec<UIElementConfig>>,
-        lut: &IDLut,
+        ui: Vec<(String, Vec<UIElementConfig>)>,
+        lut: &DeviceIDLut,
         ws_broadcast: broadcast::Sender<Utf8Bytes>,
+        perms: &Permissions,
+        auth: &Auth,
     ) -> Result<(Self, DeviceUpdateSubscribers), Box<dyn Error>> {
         // Fill subscribers
         let mut subscribers = DeviceUpdateSubscribers {
-            of_types: vec![None; lut.did.len()],
-            subdev: vec![None; lut.did.len()],
+            of_types: vec![None; lut.num_devs],
+            subdev: vec![None; lut.num_devs],
         };
 
         // Make UI Elements
         let (mut elements, mut evid_lut, mut states, mut values) =
-            (HashMap::new(), HashMap::new(), Vec::new(), Vec::new());
+            (Vec::new(), HashMap::new(), Vec::new(), Vec::new());
         let (mut esid, mut evid) = (0, 0);
         for (group_name, cfgs) in ui {
             let mut group_elements = Vec::new();
             for cfg in cfgs {
-                if cfg.get_sel_and_subdev_type().is_some() {
-                    let el = Element {
-                        cfg,
-                        esid: Some(esid),
-                        evid: None,
-                    };
-                    group_elements.push(el);
+                let (mut el_esid, mut el_evid, mut allowed_uids) = (None, None, None);
+
+                if let Some((sel, _)) = cfg.get_sel_and_subdev_type() {
+                    allowed_uids = Selection::from_str(lut, sel)?.get_zid().and_then(|zid| perms.zone.get(zid)).cloned();
+                    el_esid = Some(esid);
                     states.push(None);
                     esid += 1;
-                } else if let Some(default_value) = cfg.get_default_value() {
+                } else if let Some(val) = cfg.get_def_val() {
                     evid_lut.insert(format!("{group_name}.{}", cfg.get_name().unwrap()), evid);
-                    group_elements.push(Element {
-                        cfg,
-                        esid: None,
-                        evid: Some(evid),
-                    });
-                    values.push(default_value);
+                    el_evid = Some(evid);
+                    values.push(val);
                     evid += 1;
-                } else {
-                    group_elements.push(Element {
-                        cfg,
-                        esid: None,
-                        evid: None,
-                    });
                 }
+
+                // if this calls commands, we have to parse them to see what they interact with for
+                // permissions
+                if let Some(cmd_strs) = cfg.get_commands() {
+                    let all = bitvec![1; auth.num_users];
+                    let mut uids = all.clone();
+                    for cmd_str in cmd_strs {
+                        let cmd = match Cli::parse(&cmd_str) {
+                            Ok(r) => r,
+                            Err(e) => return Err(format!("Element had invalid command: {}", e.render().to_string()).into())
+                        };
+                        if let Some(sel_str) = cmd.command.get_selection() {
+                            let new_uids = match Selection::from_str(lut, sel_str)?.get_zid() {
+                                Some(zid) => perms.zone.get(zid).unwrap().clone(),
+                                None => all.clone(),
+                            };
+                            uids &= new_uids;
+                        }
+                    }
+                    allowed_uids = Some(uids);
+                }
+
+                //TODO script perms
+
+                group_elements.push(Element { cfg, esid: el_esid, evid: el_evid, allowed_uids });
             }
-            elements.insert(group_name, group_elements);
+            elements.push((group_name, group_elements));
         }
 
         // Make element state trackers
         let states = Arc::new(Mutex::new(states));
         for el in elements
-            .values()
-            .flat_map(|group| group.iter())
+            .iter()
+            .flat_map(|(_, els)| els.iter())
             .filter(|el| el.esid.is_some())
         {
             let esid = el.esid.unwrap();

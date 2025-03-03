@@ -5,7 +5,6 @@ function Button(props) {
     const cmd = props.onclick;
 
     function handleClick() {
-        console.log("click");
         props.execute(cmd);
     }
 

@@ -138,7 +138,7 @@ pub async fn list_all(stack: &Arc<IglooStack>) -> Vec<EffectDisplay> {
         res.push(EffectDisplay {
             id: *id,
             effect: meta.effect.clone(),
-            selection: meta.sel.to_str(&stack.lut),
+            selection: meta.sel.to_str(&stack.dev_lut),
         });
     }
     res
@@ -155,7 +155,7 @@ pub async fn list(stack: &Arc<IglooStack>, selection: &Selection) -> Vec<EffectD
             res.push(EffectDisplay {
                 id: *id,
                 effect: meta.effect.clone(),
-                selection: meta.sel.to_str(&stack.lut),
+                selection: meta.sel.to_str(&stack.dev_lut),
             });
         }
     }
