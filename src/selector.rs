@@ -6,7 +6,7 @@ use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
     command::{SubdeviceCommand, TargetedSubdeviceCommand},
-    map::{DeviceIDLut, IglooStack},
+    stack::{DeviceIDLut, IglooStack},
 };
 
 #[derive(Error, Debug, Serialize)]

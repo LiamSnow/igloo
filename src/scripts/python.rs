@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::map::IglooStack;
+use crate::stack::IglooStack;
 
 pub fn spawn(
     _script_name: String,

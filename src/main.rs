@@ -11,7 +11,7 @@ use axum::{
 };
 use cli::model::Cli;
 use config::IglooConfig;
-use map::IglooStack;
+use stack::IglooStack;
 use tokio::{net::TcpListener, sync::Mutex};
 use futures_util::{SinkExt, StreamExt};
 use tower_sessions::{MemoryStore, SessionManagerLayer};
@@ -20,7 +20,7 @@ pub mod cli;
 pub mod command;
 pub mod config;
 pub mod scripts;
-pub mod map;
+pub mod stack;
 pub mod providers;
 pub mod selector;
 pub mod elements;

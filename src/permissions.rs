@@ -5,7 +5,7 @@ use bitvec::prelude::bitvec;
 use bitvec::vec::BitVec;
 
 use crate::auth::Auth;
-use crate::map::DeviceIDLut;
+use crate::stack::DeviceIDLut;
 use crate::selector::Selection;
 
 #[derive(Default)]

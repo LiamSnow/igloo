@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time};
 
 use crate::{
-    cli::model::LightAction, map::IglooStack, selector::Selection,
+    cli::model::LightAction, stack::IglooStack, selector::Selection,
 };
 
 pub async fn spawn(

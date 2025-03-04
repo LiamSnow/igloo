@@ -2,7 +2,7 @@ use std::{sync::OnceLock, collections::HashMap, error::Error, sync::Arc};
 
 use tokio::sync::oneshot;
 
-use crate::{command::SubdeviceType, map::IglooStack};
+use crate::{command::SubdeviceType, stack::IglooStack};
 use super::ScriptMeta;
 
 // lowkey getting the hang of rust macros

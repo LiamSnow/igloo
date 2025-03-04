@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use tokio::sync::oneshot;
 
-use crate::{cli::model::Cli, config::BasicScriptLine, map::IglooStack};
+use crate::{cli::model::Cli, config::BasicScriptLine, stack::IglooStack};
 
 pub fn spawn(
     script_name: String,

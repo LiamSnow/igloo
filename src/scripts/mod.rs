@@ -10,7 +10,7 @@ use tokio::sync::oneshot;
 use crate::{
     command::SubdeviceType,
     config::ScriptConfig,
-    map::{DeviceIDLut, IglooStack},
+    stack::{DeviceIDLut, IglooStack},
     selector::Selection,
 };
 

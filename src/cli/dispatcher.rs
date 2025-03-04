@@ -4,7 +4,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
-    command::SubdeviceCommand, elements::{parse_time, AveragedSubdeviceState, Element, ElementValue, ElementValueUpdate}, map::IglooStack, scripts::{self, error::ScriptError, ScriptCancelFailure}, selector::{DeviceChannelError, Selection, SelectorError}, VERSION
+    command::SubdeviceCommand, elements::{parse_time, AveragedSubdeviceState, Element, ElementValue, ElementValueUpdate}, stack::IglooStack, scripts::{self, error::ScriptError, ScriptCancelFailure}, selector::{DeviceChannelError, Selection, SelectorError}, VERSION
 };
 
 use super::model::{Cli, CliCommands, ListItems, LogType, ScriptAction, UICommand};
