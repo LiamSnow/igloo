@@ -19,7 +19,7 @@ use tower_sessions::{MemoryStore, SessionManagerLayer};
 pub mod cli;
 pub mod command;
 pub mod config;
-pub mod effects;
+pub mod scripts;
 pub mod map;
 pub mod providers;
 pub mod selector;
@@ -60,14 +60,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn post_cmd(State(stack): State<Arc<IglooStack>>, cmd_str: String) -> impl IntoResponse {
-    let uid = 0; //FIXME
+    let uid = *stack.auth.uid_lut.get("liams").unwrap(); //FIXME
 
     let cmd = match Cli::parse(&cmd_str) {
         Ok(r) => r,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e.render().to_string())).into_response(),
     };
 
-    match cmd.dispatch(&stack, uid).await {
+    match cmd.dispatch(&stack, uid, true).await {
         Ok(Some(body)) => (
             StatusCode::OK,
             AppendHeaders([(header::CONTENT_TYPE, "application/json")]),
@@ -88,7 +88,7 @@ async fn ws_handler(
 }
 
 async fn handle_socket(stack: Arc<IglooStack>, socket: WebSocket) {
-    let uid = 0; //FIXME
+    let uid = *stack.auth.uid_lut.get("liams").unwrap(); //FIXME
 
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
@@ -134,7 +134,7 @@ async fn parse_execute_wscmd(stack: &Arc<IglooStack>, cmd_str: &str, uid: usize)
         Err(e) => return Some(serde_json::to_string(&e.render().to_string()).unwrap()), //FIXME
     };
 
-    match cmd.dispatch(&stack, uid).await {
+    match cmd.dispatch(&stack, uid, true).await {
         Ok(r) => r,
         //TODO log
         Err(e) => Some(serde_json::to_string(&e).unwrap()), //FIXME

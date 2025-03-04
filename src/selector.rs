@@ -209,6 +209,29 @@ impl Selection {
         }
     }
 
+    //TODO make more efficient?
+    pub fn collides_with_any(&self, others: &Vec<Self>) -> bool {
+        if matches!(self, Self::All) {
+            return true;
+        }
+        for other in others {
+            if self.collides(other) {
+                return true
+            }
+        }
+        false
+    }
+
+    //TODO make more efficient?
+    pub fn any_collides_with_any(a: &Vec<Self>, other: &Vec<Self>) -> bool {
+        for a in a {
+            if a.collides_with_any(other) {
+                return true
+            }
+        }
+        false
+    }
+
     /// This is REALLY slow, use sparingly
     pub fn to_str(&self, lut: &DeviceIDLut) -> String {
         if let Some(zid) = self.get_zid() {

@@ -57,7 +57,7 @@ impl Permissions {
     }
 
 
-    /// Checks ...
+    /// Checks whether a user has permission to access a Selection
     pub fn has_perm(&self, sel: &Selection, uid: usize) -> bool {
         if matches!(sel, Selection::All) {
             // calls to all will only apply to those they have permission for

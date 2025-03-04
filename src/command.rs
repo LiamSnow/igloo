@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{cli::model::{LightAction, SwitchState}, elements::AveragedSubdeviceState};
 
@@ -20,7 +20,7 @@ pub enum SubdeviceState {
     Switch(SwitchState),
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
 pub enum SubdeviceType {
     Light,
     Switch,

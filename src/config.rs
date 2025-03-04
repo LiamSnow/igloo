@@ -1,13 +1,13 @@
-use std::{collections::HashMap, error::Error, fs};
+use std::{collections::HashMap, error::Error, fs, sync::Arc};
 
 use ron::{extensions::Extensions, Options};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    command::SubdeviceType, elements::{parse_time, ElementValue}, providers::{DeviceConfig, ProviderConfig}
+    command::SubdeviceType, elements::{parse_time, ElementValue}, providers::{DeviceConfig, ProviderConfig}, scripts::ScriptMeta
 };
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct IglooConfig {
     pub version: f32,
     pub users: HashMap<String, UserConfig>,
@@ -16,7 +16,21 @@ pub struct IglooConfig {
     pub providers: Vec<ProviderConfig>,
     pub zones: ZonesConfig,
     pub ui: Vec<(String, Vec<UIElementConfig>)>,
-    pub scripts: HashMap<String, Vec<String>>,
+    pub scripts: HashMap<String, ScriptConfig>,
+}
+
+impl IglooConfig {
+    pub fn from_file(file_path: &str) -> Result<Self, Box<dyn Error>> {
+        Self::parse(&fs::read_to_string(file_path)?)
+    }
+
+    pub fn parse(s: &str) -> Result<Self, Box<dyn Error>> {
+        let options = Options::default()
+            .with_default_extension(Extensions::IMPLICIT_SOME)
+            .with_default_extension(Extensions::UNWRAP_NEWTYPES)
+            .with_default_extension(Extensions::UNWRAP_VARIANT_NEWTYPES);
+        Ok(options.from_str(s)?)
+    }
 }
 
 pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
@@ -90,12 +104,6 @@ impl UIElementConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub enum LightFeature {
-    RGB,
-    CT,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ButtonConfig {
     name: String,
@@ -115,16 +123,38 @@ pub struct TimeSelectorConfig {
     pub on_change: Option<String>,
 }
 
-impl IglooConfig {
-    pub fn from_file(file_path: &str) -> Result<Self, Box<dyn Error>> {
-        Self::parse(&fs::read_to_string(file_path)?)
-    }
+#[derive(Deserialize)]
+pub enum ScriptConfig {
+    Python(PythonScriptConfig),
+    Basic(BasicScriptConfig),
+}
 
-    pub fn parse(s: &str) -> Result<Self, Box<dyn Error>> {
-        let options = Options::default()
-            .with_default_extension(Extensions::IMPLICIT_SOME)
-            .with_default_extension(Extensions::UNWRAP_NEWTYPES)
-            .with_default_extension(Extensions::UNWRAP_VARIANT_NEWTYPES);
-        Ok(options.from_str(s)?)
+impl ScriptConfig {
+    pub fn get_meta(&self) -> &ScriptMeta {
+        match self {
+            ScriptConfig::Python(cfg) => &cfg.meta,
+            ScriptConfig::Basic(cfg) => &cfg.meta,
+        }
     }
+}
+
+#[derive(Deserialize)]
+pub struct PythonScriptConfig {
+    meta: ScriptMeta,
+    pub file: String
+}
+
+#[derive(Deserialize)]
+pub struct BasicScriptConfig {
+    meta: ScriptMeta,
+    pub body: Arc<Vec<BasicScriptLine>>
+}
+
+#[derive(Deserialize, Clone)]
+pub enum BasicScriptLine {
+    Command(String),
+    HttpGet { url: String },
+    HttpPost { url: String, body: String },
+    Delay(u64),
+    Forever(Vec<BasicScriptLine>),
 }

@@ -3,6 +3,8 @@ use clap::Parser;
 use clap_derive::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
+use crate::command::SubdeviceType;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -23,9 +25,6 @@ pub enum CliCommands {
     /// Control lights
     #[command(alias = "lights")]
     Light(LightArgs),
-    /// Lighting effects
-    #[command(alias = "eff")]
-    Effect(LightEffectArgs),
     /// Control switches
     #[command(alias = "switches")]
     Switch(SwitchArgs),
@@ -52,10 +51,17 @@ impl CliCommands {
     pub fn get_selection(&self) -> Option<&str> {
         Some(match self {
             Self::Light(args) => &args.target,
-            Self::Effect(args) => &args.target,
             Self::Switch(args) => &args.target,
             Self::List(args) => return args.item.get_selection(),
             _ => return None,
+        })
+    }
+
+    pub fn get_subdev_type(&self) -> Option<SubdeviceType> {
+        Some(match self {
+            Self::Light(..) => SubdeviceType::Light,
+            Self::Switch(..) => SubdeviceType::Switch,
+            _ => return None
         })
     }
 }
@@ -86,57 +92,12 @@ pub enum LightAction {
 }
 
 #[derive(Args, Debug)]
-pub struct LightEffectArgs {
-    /// Target light
-    pub target: String,
-    #[command(subcommand)]
-    pub effect: LightEffect,
-}
-
-#[derive(Subcommand, Clone, Debug, Serialize)]
-pub enum LightEffect {
-    #[command(alias = "clear", alias = "stop")]
-    Cancel,
-    /// fade from one brightness to another
-    BrightnessFade {
-        start_brightness: u8,
-        end_brightness: u8,
-        length_ms: u32,
-    },
-    Rainbow {
-        speed: u8,
-        length_ms: Option<u32>,
-    },
-    // /// fade from one color to another
-    // ColorFade {
-    //     start_r: u8,
-    //     start_g: u8,
-    //     start_b: u8,
-    //     end_r: u8,
-    //     end_g: u8,
-    //     end_b: u8,
-    //     length_ms: u32
-    // },
-    // Wave {
-    //     start_r: u8,
-    //     start_g: u8,
-    //     start_b: u8,
-    //     end_r: u8,
-    //     end_g: u8,
-    //     end_b: u8,
-    //     wavelength: u32,
-    //     speed: u8,
-    //     length_ms: Option<u32>
-    // }
-}
-
-#[derive(Args, Debug)]
 pub struct SwitchArgs {
     /// Target switch
     pub target: String,
     /// Turn the switch on or off
     #[arg(value_enum)]
-    pub state: SwitchState,
+    pub action: SwitchState,
 }
 
 #[derive(ValueEnum, Clone, Debug, Serialize)]
@@ -209,9 +170,6 @@ pub enum ListItems {
     /// List providers
     #[command(alias = "pvds")]
     Providers,
-    /// List automations
-    #[command(alias = "atms")]
-    Scripts,
     /// List zones
     #[command(alias = "zns")]
     Zones,
@@ -221,9 +179,8 @@ pub enum ListItems {
     /// List subdevices in device
     #[command(alias = "subdevs")]
     Subdevices { dev: String },
-    /// List effects
-    #[command(alias = "eff")]
-    Effects { target: Option<String> },
+    /// List scripts running
+    Scripts,
 }
 
 impl ListItems {
@@ -231,7 +188,6 @@ impl ListItems {
         Some(match self {
             ListItems::Devices { zone } => &zone,
             ListItems::Subdevices { dev } => &dev,
-            ListItems::Effects { target } => return target.as_ref().map(|t| t.as_str()),
             _ => return None,
         })
     }
@@ -285,17 +241,28 @@ pub enum LogType {
 
 #[derive(Args, Debug)]
 pub struct ScriptArgs {
-    pub target: String,
     #[command(subcommand)]
     pub action: ScriptAction,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ScriptAction {
-    /// Run the script. If its already running it will be cancelled first.
-    Run,
-    /// Cancel the script if its running
-    Cancel
+    /// Run the script
+    Run {
+        /// Name of the script
+        name: String,
+        /// Script arguments
+        #[arg(trailing_var_arg = true)]
+        extra_args: Vec<String>,
+    },
+    /// Cancel script instance by ID
+    Cancel {
+        id: u32
+    },
+    /// Cancel all instances of this script
+    CancelAll {
+        name: String
+    }
 }
 
 #[derive(Args, Debug)]

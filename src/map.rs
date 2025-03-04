@@ -6,23 +6,22 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 use crate::{
     auth::Auth,
     command::TargetedSubdeviceCommand,
-    config::IglooConfig,
-    effects::EffectsState,
+    config::{IglooConfig, ScriptConfig},
     elements::Elements,
     permissions::Permissions,
-    providers::{esphome, DeviceConfig},
+    providers::{esphome, DeviceConfig}, scripts::ScriptStates,
 };
 
 pub struct IglooStack {
     /// did -> dev command channnel
     pub dev_chans: Vec<mpsc::Sender<TargetedSubdeviceCommand>>,
     pub dev_lut: DeviceIDLut,
-    pub effects_state: Mutex<EffectsState>,
     pub elements: Elements,
     pub ws_broadcast: broadcast::Sender<Utf8Bytes>,
     pub auth: Auth,
     pub perms: Permissions,
-    pub scripts: HashMap<String, Vec<String>>,
+    pub script_states: Mutex<ScriptStates>,
+    pub script_configs: HashMap<String, ScriptConfig>,
 }
 
 impl IglooStack {
@@ -33,7 +32,6 @@ impl IglooStack {
 
         let auth = Auth::init(icfg.users, icfg.user_groups);
         let perms = Permissions::init(icfg.permissions, &auth, &dev_lut)?;
-        let scripts = icfg.scripts;
         let (elements, mut subscribers) =
             Elements::init(icfg.ui, &dev_lut, ws_broadcast.clone(), &perms, &auth)?;
 
@@ -66,14 +64,15 @@ impl IglooStack {
             dev_chans,
             dev_lut,
             elements,
-            effects_state: Mutex::new(EffectsState::default()),
             ws_broadcast,
             auth,
             perms,
-            scripts,
+            script_states: Mutex::new(ScriptStates::default()),
+            script_configs: icfg.scripts,
         }))
     }
 }
+
 
 #[derive(Default)]
 pub struct DeviceIDLut {
