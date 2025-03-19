@@ -3,27 +3,25 @@ use light::{LightCommand, LightState};
 use serde::{Deserialize, Serialize, Serializer};
 use switch::{SwitchCommand, SwitchState};
 
-use crate::elements::AveragedSubdeviceState;
-
 pub mod light;
 pub mod switch;
 
 #[derive(Debug, Clone)]
-pub enum SubdeviceCommand {
+pub enum EntityCommand {
     Light(LightCommand),
     Switch(SwitchCommand),
     Time(NaiveTime),
     Int(i32)
 }
 
-pub struct TargetedSubdeviceCommand {
-    /// if None -> apply to all applicable subdevices
-    pub subdev_name: Option<String>,
-    pub cmd: SubdeviceCommand,
+pub struct TargetedEntityCommand {
+    /// if None -> apply to all applicable entities
+    pub entity_name: Option<String>,
+    pub cmd: EntityCommand,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub enum SubdeviceState {
+pub enum EntityState {
     Light(LightState),
     Switch(SwitchState),
     #[serde(serialize_with = "serialize_time")]
@@ -32,31 +30,38 @@ pub enum SubdeviceState {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
-pub enum SubdeviceType {
+pub enum EntityType {
     Light,
     Switch,
     Time,
     Int
 }
 
-impl SubdeviceType {
-    pub fn avg(&self, states: Vec<&SubdeviceState>) -> Option<AveragedSubdeviceState> {
+#[derive(Serialize, Clone)]
+pub struct AveragedEntityState {
+    pub value: EntityState,
+    pub homogeneous: bool,
+}
+
+
+impl EntityType {
+    pub fn avg(&self, states: Vec<&EntityState>) -> Option<AveragedEntityState> {
         match self {
-            SubdeviceType::Light => LightState::avg(states),
-            SubdeviceType::Switch => SwitchState::avg(states),
-            SubdeviceType::Time => todo!(),
-            SubdeviceType::Int => todo!(),
+            EntityType::Light => LightState::avg(states),
+            EntityType::Switch => SwitchState::avg(states),
+            EntityType::Time => todo!(),
+            EntityType::Int => todo!(),
         }
     }
 }
 
-impl SubdeviceState {
-    pub fn get_type(&self) -> SubdeviceType {
+impl EntityState {
+    pub fn get_type(&self) -> EntityType {
         match self {
-            Self::Light(..) => SubdeviceType::Light,
-            Self::Switch(..) => SubdeviceType::Switch,
-            Self::Time(..) => SubdeviceType::Time,
-            Self::Int(..) => SubdeviceType::Int,
+            Self::Light(..) => EntityType::Light,
+            Self::Switch(..) => EntityType::Switch,
+            Self::Time(..) => EntityType::Time,
+            Self::Int(..) => EntityType::Int,
         }
     }
 }

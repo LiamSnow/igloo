@@ -8,7 +8,7 @@ use thiserror::Error;
 use tokio::sync::{oneshot, Mutex};
 
 use crate::{
-    config::ScriptConfig, device::DeviceIDLut, selector::Selection, state::IglooState, subdevice::SubdeviceType
+    config::ScriptConfig, device::DeviceIDLut, selector::Selection, state::IglooState, entity::EntityType
 };
 
 mod basic;
@@ -36,7 +36,7 @@ pub struct ScriptStates {
     pub current: HashMap<u32, RunningScriptMeta>,
 }
 
-pub type ScriptClaims = HashMap<SubdeviceType, Vec<String>>;
+pub type ScriptClaims = HashMap<EntityType, Vec<String>>;
 
 pub struct ScriptMeta<'a> {
     pub claims: &'a ScriptClaims,
@@ -48,7 +48,7 @@ pub struct ScriptMeta<'a> {
 pub struct RunningScriptMeta {
     script_name: String,
     #[serde(skip_serializing)]
-    claims: HashMap<SubdeviceType, Vec<Selection>>,
+    claims: HashMap<EntityType, Vec<Selection>>,
     auto_cancel: bool,
     #[serde(skip_serializing)]
     cancel_tx: Option<oneshot::Sender<()>>,
@@ -145,11 +145,11 @@ async fn init_script<'a>(
 /// Replaces positional args (IE $1) with their values
 fn parse_claims(
     devids: &DeviceIDLut,
-    raw: &HashMap<SubdeviceType, Vec<String>>,
+    raw: &HashMap<EntityType, Vec<String>>,
     extra_args: &Vec<String>,
-) -> Result<HashMap<SubdeviceType, Vec<Selection>>, ScriptError> {
+) -> Result<HashMap<EntityType, Vec<Selection>>, ScriptError> {
     let mut res = HashMap::new();
-    for (subdev_type, sel_strs) in raw {
+    for (entity_type, sel_strs) in raw {
         let mut v = Vec::new();
         for sel_str in sel_strs {
             let sel_str = match sel_str.starts_with('$') {
@@ -166,7 +166,7 @@ fn parse_claims(
 
             v.push(Selection::from_str(devids, sel_str)?);
         }
-        res.insert(subdev_type.clone(), v);
+        res.insert(entity_type.clone(), v);
     }
     Ok(res)
 }
@@ -176,7 +176,7 @@ fn parse_claims(
 pub async fn clear_conflicting_for_cmd(
     state: &Arc<IglooState>,
     selection: &Selection,
-    for_type: &SubdeviceType,
+    for_type: &EntityType,
 ) -> Option<String> {
     let mut state = state.scripts.states.lock().await;
     for (_, meta) in &mut state.current {
@@ -197,7 +197,7 @@ pub async fn clear_conflicting_for_cmd(
 // TODO more efficient?
 async fn clear_conflicting_for_script(
     state: &Arc<IglooState>,
-    my_claims: &HashMap<SubdeviceType, Vec<Selection>>,
+    my_claims: &HashMap<EntityType, Vec<Selection>>,
 ) -> Option<String> {
     let mut state = state.scripts.states.lock().await;
 
@@ -268,7 +268,7 @@ pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: usize) -> Option<Scri
     Some(ScriptCancelFailure::DoesNotExist)
 }
 
-fn calc_perms(state: &IglooState, claims: &HashMap<SubdeviceType, Vec<Selection>>) -> BitVec {
+fn calc_perms(state: &IglooState, claims: &HashMap<EntityType, Vec<Selection>>) -> BitVec {
     let mut bv = bitvec![1; state.auth.num_users];
     for sel in claims.values().flat_map(|v| v.iter()) {
         if matches!(sel, Selection::All) {

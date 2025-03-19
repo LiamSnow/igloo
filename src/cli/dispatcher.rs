@@ -3,11 +3,8 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::{
-    elements::{AveragedSubdeviceState, Element},
-    scripts,
-    selector::Selection,
-    state::IglooState,
-    VERSION,
+    elements::Element, entity::AveragedEntityState, scripts, selector::Selection,
+    state::IglooState, VERSION,
 };
 
 use super::{
@@ -18,7 +15,7 @@ use super::{
 #[derive(Serialize)]
 struct UIResponse<'a> {
     elements: Vec<(&'a String, Vec<&'a Element>)>,
-    states: &'a Vec<Option<AveragedSubdeviceState>>,
+    states: &'a Vec<Option<AveragedEntityState>>,
 }
 
 impl Cli {
@@ -59,8 +56,8 @@ async fn precheck_selection(
 
             //try to cancel conflicting scripts
             if cancel_conflicting {
-                if let Some(subdev_type) = cmd.command.get_subdev_type() {
-                    let res = scripts::clear_conflicting_for_cmd(&state, &sel, &subdev_type).await;
+                if let Some(entity_type) = cmd.command.get_entity_type() {
+                    let res = scripts::clear_conflicting_for_cmd(&state, &sel, &entity_type).await;
                     if let Some(scr) = res {
                         return Err(DispatchError::UncancellableScript(scr));
                     }
@@ -140,14 +137,15 @@ impl ListItems {
             }
             ListItems::Devices { zone } => {
                 let zid = state
-                    .devices.lut
+                    .devices
+                    .lut
                     .zid
                     .get(&zone)
                     .ok_or(DispatchError::UnknownZone(zone))?;
                 let names: Vec<_> = state.devices.lut.did.get(*zid).unwrap().keys().collect();
                 Some(serde_json::to_string(&names)?)
             }
-            ListItems::Subdevices { dev: _ } => {
+            ListItems::Entities { dev: _ } => {
                 todo!()
             }
             ListItems::Scripts => {

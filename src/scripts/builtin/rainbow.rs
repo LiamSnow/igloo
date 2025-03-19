@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time};
 
 use crate::{
-    subdevice::light::LightCommand, state::IglooState, selector::Selection,
+    entity::light::LightCommand, state::IglooState, selector::Selection,
 };
 
 pub async fn spawn(

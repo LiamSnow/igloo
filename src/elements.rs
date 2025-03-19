@@ -6,12 +6,7 @@ use serde::Serialize;
 use tokio::sync::{broadcast, Mutex};
 
 use crate::{
-    auth::Auth,
-    cli::model::Cli,
-    config::UIElementConfig,
-    device::DeviceIDLut,
-    selector::Selection,
-    subdevice::{SubdeviceState, SubdeviceType},
+    auth::Auth, cli::model::Cli, config::UIElementConfig, device::DeviceIDLut, entity::{AveragedEntityState, EntityState, EntityType}, selector::Selection
 };
 
 pub struct Elements {
@@ -21,8 +16,8 @@ pub struct Elements {
     /// esid -> Option<state>
     pub states: ElementStatesLock,
 
-    /// esid -> start_did,end_did,subdev_type
-    esid_meta: Vec<(usize, usize, SubdeviceType)>,
+    /// esid -> start_did,end_did,entity_type
+    esid_meta: Vec<(usize, usize, EntityType)>,
 
     /// did -> subscription
     subscriptions: Vec<DeviceChangeSubscriptions>,
@@ -31,7 +26,7 @@ pub struct Elements {
     pub on_change: broadcast::Sender<Utf8Bytes>,
 }
 
-pub type ElementStatesLock = Mutex<Vec<Option<AveragedSubdeviceState>>>;
+pub type ElementStatesLock = Mutex<Vec<Option<AveragedEntityState>>>;
 
 #[derive(Serialize, Clone)]
 pub struct Element {
@@ -43,29 +38,16 @@ pub struct Element {
     pub allowed_uids: Option<BitVec>,
 }
 
-#[derive(Clone)]
-pub struct SubdeviceStateUpdate {
-    pub did: usize,
-    pub sid: usize,
-    pub value: SubdeviceState,
-}
-
 #[derive(Serialize)]
 struct ElementStateChange {
     esid: usize,
-    value: Option<AveragedSubdeviceState>,
-}
-
-#[derive(Serialize, Clone)]
-pub struct AveragedSubdeviceState {
-    pub value: SubdeviceState,
-    pub homogeneous: bool,
+    value: Option<AveragedEntityState>,
 }
 
 #[derive(Default, Clone)]
 pub struct DeviceChangeSubscriptions {
-    pub of_type: HashMap<SubdeviceType, Vec<usize>>,
-    pub subdev: HashMap<String, usize>,
+    pub of_type: HashMap<EntityType, Vec<usize>>,
+    pub entity: HashMap<String, usize>,
 }
 
 impl Elements {
@@ -84,7 +66,7 @@ impl Elements {
             for cfg in cfgs {
                 let (mut el_esid, mut allowed_uids) = (None, None);
 
-                if let Some((sel_str, subdev_type)) = cfg.get_meta() {
+                if let Some((sel_str, entity_type)) = cfg.get_meta() {
                     allowed_uids = Selection::from_str(lut, sel_str)?
                         .get_zid()
                         .and_then(|zid| auth.perms.get(zid))
@@ -94,9 +76,9 @@ impl Elements {
 
                     // add subscribers and did_ranges
                     let sel = Selection::from_str(&lut, sel_str)?;
-                    if let Selection::Subdevice(_, did, subdev_name) = sel {
-                        subscriptions[did].subdev.insert(subdev_name.clone(), esid);
-                        did_ranges.push((did, did, subdev_type));
+                    if let Selection::Entity(_, did, entity_name) = sel {
+                        subscriptions[did].entity.insert(entity_name.clone(), esid);
+                        did_ranges.push((did, did, entity_type));
                     } else {
                         let (start_did, end_did) = match sel {
                             Selection::All => (0, lut.did.len() - 1),
@@ -107,11 +89,11 @@ impl Elements {
                         for did in start_did..=end_did {
                             let v = subscriptions[did]
                                 .of_type
-                                .entry(subdev_type.clone())
+                                .entry(entity_type.clone())
                                 .or_insert(Vec::new());
                             v.push(esid);
                         }
-                        did_ranges.push((start_did, end_did, subdev_type));
+                        did_ranges.push((start_did, end_did, entity_type));
                     }
 
                     esid += 1;
@@ -157,31 +139,31 @@ impl Elements {
 }
 
 pub async fn on_device_update(
-    dev_states: &Arc<Mutex<Vec<HashMap<String, SubdeviceState>>>>,
+    dev_states: &Arc<Mutex<Vec<HashMap<String, EntityState>>>>,
     elements: &Arc<Elements>,
     did: usize,
-    subdev_name: &str,
-    subdev_state: &SubdeviceState,
+    entity_name: &str,
+    entity_state: &EntityState,
 ) {
     let subscriptions = &elements.subscriptions[did];
     let mut updates = Vec::new();
 
-    // subdev elements
+    // single entity elements
     for (_, esid) in subscriptions
-        .subdev
+        .entity
         .iter()
-        .filter(|(sn, _)| *sn == subdev_name)
+        .filter(|(sn, _)| *sn == entity_name)
     {
         let (_, _, expected_type) = &elements.esid_meta[*esid];
-        let (state, update) = calc_element_state_subdev(*esid, expected_type, subdev_state.clone());
+        let (state, update) = calc_element_state_single_entity(*esid, expected_type, entity_state.clone());
         updates.push(update);
         let mut states = elements.states.lock().await;
         states[*esid] = state;
     }
 
     // normal elements
-    let subdev_type = subdev_state.get_type();
-    if let Some(esids) = subscriptions.of_type.get(&subdev_type) {
+    let entity_type = entity_state.get_type();
+    if let Some(esids) = subscriptions.of_type.get(&entity_type) {
         for esid in esids {
             let (start_did, end_did, expected_type) = &elements.esid_meta[*esid];
             let (state, update) =
@@ -198,12 +180,12 @@ pub async fn on_device_update(
 }
 
 async fn calc_element_state(
-    dev_states: &Mutex<Vec<HashMap<String, SubdeviceState>>>,
+    dev_states: &Mutex<Vec<HashMap<String, EntityState>>>,
     esid: usize,
     start_did: usize,
     end_did: usize,
-    expected_type: &SubdeviceType,
-) -> (Option<AveragedSubdeviceState>, ElementStateChange) {
+    expected_type: &EntityType,
+) -> (Option<AveragedEntityState>, ElementStateChange) {
     let dev_states = dev_states.lock().await;
     let dev_states = &dev_states[start_did..=end_did];
     let vals: Vec<_> = dev_states.iter().flat_map(|h| h.values()).collect();
@@ -211,21 +193,21 @@ async fn calc_element_state(
     (state.clone(), ElementStateChange { esid, value: state })
 }
 
-fn calc_element_state_subdev(
+fn calc_element_state_single_entity(
     esid: usize,
-    expected_type: &SubdeviceType,
-    subdev_state: SubdeviceState,
-) -> (Option<AveragedSubdeviceState>, ElementStateChange) {
-    let typ = subdev_state.get_type();
+    expected_type: &EntityType,
+    entity_state: EntityState,
+) -> (Option<AveragedEntityState>, ElementStateChange) {
+    let typ = entity_state.get_type();
     if typ != *expected_type {
         println!(
-            "ERROR element type {:#?} does match subdev type {:#?}",
+            "ERROR element type {:#?} does match entity type {:#?}",
             expected_type, typ
         );
     }
 
-    let state = Some(AveragedSubdeviceState {
-        value: subdev_state,
+    let state = Some(AveragedEntityState {
+        value: entity_state,
         homogeneous: true,
     });
 

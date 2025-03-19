@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     providers::{DeviceConfig, ProviderConfig},
     scripts::{ScriptClaims, ScriptMeta},
-    subdevice::SubdeviceType,
+    entity::EntityType,
 };
 
 #[derive(Deserialize)]
@@ -60,16 +60,16 @@ pub enum UIElementConfig {
 }
 
 impl UIElementConfig {
-    /// returns (selection, subdev_type) if applicable
-    pub fn get_meta(&self) -> Option<(&str, SubdeviceType)> {
+    /// returns (selection, entity_type) if applicable
+    pub fn get_meta(&self) -> Option<(&str, EntityType)> {
         match self {
-            Self::BasicLight(s) => Some((s, SubdeviceType::Light)),
-            Self::CTLight(s) => Some((s, SubdeviceType::Light)),
-            Self::RGBLight(s) => Some((s, SubdeviceType::Light)),
-            Self::RGBCTLight(s) => Some((s, SubdeviceType::Light)),
-            Self::Switch(s) => Some((s, SubdeviceType::Switch)),
-            Self::Time(s) => Some((s, SubdeviceType::Time)),
-            Self::Int(s) => Some((s, SubdeviceType::Int)),
+            Self::BasicLight(s) => Some((s, EntityType::Light)),
+            Self::CTLight(s) => Some((s, EntityType::Light)),
+            Self::RGBLight(s) => Some((s, EntityType::Light)),
+            Self::RGBCTLight(s) => Some((s, EntityType::Light)),
+            Self::Switch(s) => Some((s, EntityType::Switch)),
+            Self::Time(s) => Some((s, EntityType::Time)),
+            Self::Int(s) => Some((s, EntityType::Int)),
             _ => None,
         }
     }

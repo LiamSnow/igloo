@@ -12,8 +12,8 @@ pub struct DeviceConfig {
     username: String,
     password: String,
     port: u16,
-    /// subdev_name -> mqtt path
-    /// creates `text` subdevices
+    /// entity_name -> mqtt path
+    /// creates `text` entities
     publish: HashMap<String, String>,
     /// mqtt path -> cmd
     subscribe: HashMap<String, String>,

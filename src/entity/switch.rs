@@ -3,17 +3,17 @@ use std::sync::Arc;
 use clap_derive::ValueEnum;
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, elements::AveragedSubdeviceState, selector::Selection, state::IglooState};
+use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
 
-use super::{SubdeviceCommand, SubdeviceState};
+use super::{EntityCommand, EntityState, AveragedEntityState};
 
-impl From<SwitchState> for SubdeviceCommand {
+impl From<SwitchState> for EntityCommand {
     fn from(value: SwitchState) -> Self {
         Self::Switch(value)
     }
 }
 
-impl From<SwitchState> for SubdeviceState {
+impl From<SwitchState> for EntityState {
     fn from(value: SwitchState) -> Self {
         Self::Switch(value)
     }
@@ -34,7 +34,7 @@ impl SwitchState {
         sel: Selection,
         state: &Arc<IglooState>,
     ) -> Result<Option<String>, DispatchError> {
-        sel.execute(&state, SubdeviceCommand::Switch(self))
+        sel.execute(&state, EntityCommand::Switch(self))
             .map_err(|e| DispatchError::DeviceChannelErorr(target, e))?;
         Ok(None)
     }
@@ -74,10 +74,10 @@ impl From<&SwitchState> for bool {
 }
 
 impl SwitchState {
-    pub fn avg(states: Vec<&SubdeviceState>) -> Option<AveragedSubdeviceState> {
+    pub fn avg(states: Vec<&EntityState>) -> Option<AveragedEntityState> {
         let (mut last_state, mut first, mut homogeneous) = (false, true, false);
         for state in states {
-            if let SubdeviceState::Switch(state) = state {
+            if let EntityState::Switch(state) = state {
                 let state: bool = state.into();
                 if homogeneous {
                     if first {
@@ -91,8 +91,8 @@ impl SwitchState {
         }
         match first {
             true => None,
-            false => Some(AveragedSubdeviceState {
-                value: SubdeviceState::Switch(last_state.into()),
+            false => Some(AveragedEntityState {
+                value: EntityState::Switch(last_state.into()),
                 homogeneous
             }),
         }

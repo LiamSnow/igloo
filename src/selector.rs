@@ -5,7 +5,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
-    device::DeviceIDLut, state::IglooState, subdevice::{SubdeviceCommand, TargetedSubdeviceCommand}
+    device::DeviceIDLut, state::IglooState, entity::{EntityCommand, TargetedEntityCommand}
 };
 
 #[derive(Error, Debug, Serialize)]
@@ -26,8 +26,8 @@ pub enum DeviceChannelError {
     Closed,
 }
 
-impl From<TrySendError<TargetedSubdeviceCommand>> for DeviceChannelError {
-    fn from(value: TrySendError<TargetedSubdeviceCommand>) -> Self {
+impl From<TrySendError<TargetedEntityCommand>> for DeviceChannelError {
+    fn from(value: TrySendError<TargetedEntityCommand>) -> Self {
         match value {
             TrySendError::Full(_) => Self::Full,
             TrySendError::Closed(_) => Self::Closed,
@@ -42,8 +42,8 @@ pub enum Selection {
     Zone(usize, usize, usize),
     /// zid, did
     Device(usize, usize),
-    /// zid, did, subdev_name
-    Subdevice(usize, usize, String),
+    /// zid, did, entity_name
+    Entity(usize, usize, String),
 }
 
 impl Selection {
@@ -74,7 +74,7 @@ impl Selection {
                 ))?;
                 Ok(Self::Device(*zid, *did))
             }
-            SelectionString::Subdevice(zone_name, subdev_name, dev_name) => {
+            SelectionString::Entity(zone_name, dev_name, entity_name) => {
                 let zid = lut
                     .zid
                     .get(*zone_name)
@@ -84,7 +84,7 @@ impl Selection {
                     zone_name.to_string(),
                     dev_name.to_string(),
                 ))?;
-                Ok(Self::Subdevice(*zid, *did, subdev_name.to_string()))
+                Ok(Self::Entity(*zid, *did, entity_name.to_string()))
             }
         }
     }
@@ -107,9 +107,9 @@ impl Selection {
         }
     }
 
-    pub fn get_subdevice(self) -> Option<(usize, usize, String)> {
+    pub fn get_entity(self) -> Option<(usize, usize, String)> {
         match self {
-            Self::Subdevice(zid, did, subdev_name) => Some((zid, did, subdev_name)),
+            Self::Entity(zid, did, entity_name) => Some((zid, did, entity_name)),
             _ => None,
         }
     }
@@ -117,37 +117,37 @@ impl Selection {
     pub fn execute(
         &self,
         state: &Arc<IglooState>,
-        cmd: SubdeviceCommand,
+        cmd: EntityCommand,
     ) -> Result<(), DeviceChannelError> {
         match self {
             Self::All => {
                 for dev_chan in &state.devices.channels {
-                    dev_chan.try_send(TargetedSubdeviceCommand {
+                    dev_chan.try_send(TargetedEntityCommand {
                         cmd: cmd.clone(),
-                        subdev_name: None,
+                        entity_name: None,
                     })?;
                 }
             }
             Self::Zone(_, start_did, end_did) => {
                 for dev_chan in &state.devices.channels[*start_did..=*end_did] {
-                    dev_chan.try_send(TargetedSubdeviceCommand {
+                    dev_chan.try_send(TargetedEntityCommand {
                         cmd: cmd.clone(),
-                        subdev_name: None,
+                        entity_name: None,
                     })?;
                 }
             }
             Self::Device(_, did) => {
                 let dev_chan = state.devices.channels.get(*did).unwrap();
-                dev_chan.try_send(TargetedSubdeviceCommand {
+                dev_chan.try_send(TargetedEntityCommand {
                     cmd: cmd.clone(),
-                    subdev_name: None,
+                    entity_name: None,
                 })?;
             }
-            Self::Subdevice(_, did, subdev_name) => {
+            Self::Entity(_, did, entity_name) => {
                 let dev_chan = state.devices.channels.get(*did).unwrap();
-                dev_chan.try_send(TargetedSubdeviceCommand {
+                dev_chan.try_send(TargetedEntityCommand {
                     cmd: cmd.clone(),
-                    subdev_name: Some(subdev_name.to_string()),
+                    entity_name: Some(entity_name.to_string()),
                 })?;
             }
         }
@@ -159,7 +159,7 @@ impl Selection {
             Self::All => 3,
             Self::Zone(..) => 2,
             Self::Device(..) => 1,
-            Self::Subdevice(..) => 0,
+            Self::Entity(..) => 0,
         }
     }
 
@@ -168,7 +168,7 @@ impl Selection {
             Self::All => None,
             Self::Zone(zid, _, _) => Some(*zid),
             Self::Device(zid, _) => Some(*zid),
-            Self::Subdevice(zid, _, _) => Some(*zid),
+            Self::Entity(zid, _, _) => Some(*zid),
         }
     }
 
@@ -177,16 +177,16 @@ impl Selection {
             Self::All => None,
             Self::Zone(..) => None,
             Self::Device(_, did) => Some(*did),
-            Self::Subdevice(_, did, _) => Some(*did),
+            Self::Entity(_, did, _) => Some(*did),
         }
     }
 
-    pub fn get_subdev_name(&self) -> Option<&str> {
+    pub fn get_entity_name(&self) -> Option<&str> {
         match self {
             Self::All => None,
             Self::Zone(..) => None,
             Self::Device(_, _) => None,
-            Self::Subdevice(_, _, subdev_name) => Some(&subdev_name),
+            Self::Entity(_, _, entity_name) => Some(&entity_name),
         }
     }
 
@@ -200,10 +200,10 @@ impl Selection {
             Self::Device(zid, did) => {
                 *zid == other.get_zid().unwrap() && *did == other.get_did().unwrap()
             }
-            Self::Subdevice(zid, did, subdev_name) => {
+            Self::Entity(zid, did, entity_name) => {
                 *zid == other.get_zid().unwrap()
                     && *did == other.get_did().unwrap()
-                    && subdev_name == other.get_subdev_name().unwrap()
+                    && entity_name == other.get_entity_name().unwrap()
             }
         }
     }
@@ -247,9 +247,9 @@ impl Selection {
                     None => "ERROR",
                 });
 
-                if let Some(subdev_name) = self.get_subdev_name() {
+                if let Some(entity_name) = self.get_entity_name() {
                     res.push('.');
-                    res.push_str(&subdev_name);
+                    res.push_str(&entity_name);
                 }
             }
 
@@ -262,9 +262,12 @@ impl Selection {
 
 pub enum SelectionString<'a> {
     All,
+    /// zone_name
     Zone(&'a str),
+    /// zone_name, dev_name
     Device(&'a str, &'a str),
-    Subdevice(&'a str, &'a str, &'a str),
+    /// zone_name, dev_name, entity_name
+    Entity(&'a str, &'a str, &'a str),
 }
 
 impl<'a> SelectionString<'a> {
@@ -281,8 +284,8 @@ impl<'a> SelectionString<'a> {
         let zone_name = parts.get(0).unwrap();
 
         if let Some(dev_name) = parts.get(1) {
-            if let Some(subdev_name) = parts.get(2) {
-                Ok(Self::Subdevice(zone_name, dev_name, subdev_name))
+            if let Some(entity_name) = parts.get(2) {
+                Ok(Self::Entity(zone_name, dev_name, entity_name))
             } else {
                 Ok(Self::Device(zone_name, dev_name))
             }
@@ -296,7 +299,7 @@ impl<'a> SelectionString<'a> {
             Self::All => None,
             Self::Zone(zone_name) => Some(zone_name),
             Self::Device(zone_name, _) => Some(zone_name),
-            Self::Subdevice(zone_name, _, _) => Some(zone_name),
+            Self::Entity(zone_name, _, _) => Some(zone_name),
         }
     }
 
@@ -305,16 +308,16 @@ impl<'a> SelectionString<'a> {
             Self::All => None,
             Self::Zone(..) => None,
             Self::Device(_, dev_name) => Some(dev_name),
-            Self::Subdevice(_, dev_name, _) => Some(dev_name),
+            Self::Entity(_, dev_name, _) => Some(dev_name),
         }
     }
 
-    pub fn get_subdev_name(&self) -> Option<&str> {
+    pub fn get_entity_name(&self) -> Option<&str> {
         match self {
             Self::All => None,
             Self::Zone(..) => None,
             Self::Device(_, _) => None,
-            Self::Subdevice(_, _, subdev_name) => Some(&subdev_name),
+            Self::Entity(_, _, entity_name) => Some(&entity_name),
         }
     }
 }

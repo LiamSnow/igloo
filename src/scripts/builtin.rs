@@ -2,7 +2,7 @@ use std::{sync::OnceLock, collections::HashMap, error::Error, sync::Arc};
 
 use tokio::sync::oneshot;
 
-use crate::{subdevice::SubdeviceType, state::IglooState};
+use crate::{entity::EntityType, state::IglooState};
 use super::ScriptMeta;
 
 // lowkey getting the hang of rust macros
@@ -10,7 +10,7 @@ macro_rules! gen_builtin_script_data {
     (
         $($script_name:ident(
             claims: {
-                $($subdev_type:ident: [$($sel_str:expr),*]),*
+                $($entity_type:ident: [$($sel_str:expr),*]),*
             },
             auto_cancel: $auto_cancel:expr,
             auto_run: $auto_run:expr
@@ -20,15 +20,15 @@ macro_rules! gen_builtin_script_data {
             pub mod $script_name;
         )*
 
-        static CLAIMS: OnceLock<HashMap<String, HashMap<SubdeviceType, Vec<String>>>> = OnceLock::new();
+        static CLAIMS: OnceLock<HashMap<String, HashMap<EntityType, Vec<String>>>> = OnceLock::new();
 
-        pub fn get_claims() -> &'static HashMap<String, HashMap<SubdeviceType, Vec<String>>> {
+        pub fn get_claims() -> &'static HashMap<String, HashMap<EntityType, Vec<String>>> {
             CLAIMS.get_or_init(|| {
                 let mut map = HashMap::new();
                 $(
                     let mut claims = HashMap::new();
                     $(
-                        claims.insert(SubdeviceType::$subdev_type, vec![
+                        claims.insert(EntityType::$entity_type, vec![
                             $($sel_str.to_string(),)*
                         ]);
                     )*

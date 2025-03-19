@@ -3,9 +3,9 @@ use std::sync::Arc;
 use clap_derive::Subcommand;
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, elements::AveragedSubdeviceState, selector::Selection, state::IglooState};
+use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
 
-use super::{SubdeviceCommand, SubdeviceState};
+use super::{EntityCommand, EntityState, AveragedEntityState};
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum LightCommand {
@@ -31,19 +31,19 @@ impl LightCommand {
         sel: Selection,
         state: &Arc<IglooState>,
     ) -> Result<Option<String>, DispatchError> {
-        sel.execute(&state, SubdeviceCommand::Light(self))
+        sel.execute(&state, EntityCommand::Light(self))
             .map_err(|e| DispatchError::DeviceChannelErorr(target, e))?;
         Ok(None)
     }
 }
 
-impl From<LightCommand> for SubdeviceCommand {
+impl From<LightCommand> for EntityCommand {
     fn from(value: LightCommand) -> Self {
         Self::Light(value)
     }
 }
 
-impl From<LightState> for SubdeviceState {
+impl From<LightState> for EntityState {
     fn from(value: LightState) -> Self {
         Self::Light(value)
     }
@@ -155,7 +155,7 @@ impl RGBF32 {
 impl LightState {
     /// Average a set of colors
     /// Only avgs Some colors, if there are no colors it returns None (same for temp and bri)
-    pub fn avg(states: Vec<&SubdeviceState>) -> Option<AveragedSubdeviceState> {
+    pub fn avg(states: Vec<&EntityState>) -> Option<AveragedEntityState> {
         let (mut total, mut on_sum, mut color_on_sum) = (0, 0, 0);
         let (mut total_hue, mut hue_sum) = (0, 0);
         let (mut total_temp, mut temp_sum) = (0, 0);
@@ -166,7 +166,7 @@ impl LightState {
         let mut homogeneous = true;
 
         for state in states {
-            if let SubdeviceState::Light(state) = state {
+            if let EntityState::Light(state) = state {
                 total += 1;
                 on_sum += state.on as u32;
                 color_on_sum += state.color_on as u32;
@@ -198,8 +198,8 @@ impl LightState {
             return None;
         }
 
-        Some(AveragedSubdeviceState {
-            value: SubdeviceState::Light(Self {
+        Some(AveragedEntityState {
+            value: EntityState::Light(Self {
                 on: (on_sum as f32 / total as f32) >= 0.5,
                 color_on: (color_on_sum as f32 / total as f32) >= 0.5,
                 hue: if total_hue > 0 {

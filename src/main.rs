@@ -11,7 +11,7 @@ pub mod providers;
 pub mod selector;
 pub mod elements;
 pub mod auth;
-pub mod subdevice;
+pub mod entity;
 pub mod device;
 pub mod api;
 

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
-    elements::{self, Elements}, providers::{esphome, DeviceConfig}, subdevice::{SubdeviceState, TargetedSubdeviceCommand}
+    elements::{self, Elements}, providers::{esphome, DeviceConfig}, entity::{EntityState, TargetedEntityCommand}
 };
 
 #[derive(Default)]
@@ -18,13 +18,13 @@ pub struct DeviceIDLut {
     pub zid: HashMap<String, usize>,
 }
 
-pub type DeviceChannels = Vec<mpsc::Sender<TargetedSubdeviceCommand>>;
+pub type DeviceChannels = Vec<mpsc::Sender<TargetedEntityCommand>>;
 
 pub struct Devices {
     /// did -> dev command channnel
     pub channels: DeviceChannels,
-    /// did, subdev -> state
-    pub states: Arc<Mutex<Vec<HashMap<String, SubdeviceState>>>>,
+    /// did, entity_name -> state
+    pub states: Arc<Mutex<Vec<HashMap<String, EntityState>>>>,
     pub lut: DeviceIDLut,
 }
 
@@ -36,7 +36,7 @@ impl Devices {
         for did in 0..lut.num_devs {
             let dev_sel = dev_sels.remove(0); //FIXME .get(did)?
             let dev_cfg = dev_cfgs.remove(0);
-            let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedSubdeviceCommand>(5);
+            let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedEntityCommand>(5);
 
             let task = match dev_cfg {
                 DeviceConfig::ESPHome(cfg) => {
@@ -91,17 +91,17 @@ impl DeviceIDLut {
 }
 
 async fn state_task(
-    dev_states: Arc<Mutex<Vec<HashMap<String, SubdeviceState>>>>,
-    mut on_change_rx: mpsc::Receiver<(usize, String, SubdeviceState)>,
+    dev_states: Arc<Mutex<Vec<HashMap<String, EntityState>>>>,
+    mut on_change_rx: mpsc::Receiver<(usize, String, EntityState)>,
     elements: Arc<Elements>
 ) {
     //TODO group changes?
-    while let Some((did, subdev_name, value)) = on_change_rx.recv().await {
+    while let Some((did, entity_name, value)) = on_change_rx.recv().await {
         //update elements
-        elements::on_device_update(&dev_states, &elements, did, &subdev_name, &value).await;
+        elements::on_device_update(&dev_states, &elements, did, &entity_name, &value).await;
 
         //push to states
         let mut states = dev_states.lock().await;
-        states[did].insert(subdev_name, value.clone());
+        states[did].insert(entity_name, value.clone());
     }
 }

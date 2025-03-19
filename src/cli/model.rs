@@ -2,9 +2,9 @@ use clap::command;
 use clap::Parser;
 use clap_derive::{Args, Parser, Subcommand};
 
-use crate::subdevice::SubdeviceType;
-use crate::subdevice::light::LightCommand;
-use crate::subdevice::switch::SwitchState;
+use crate::entity::EntityType;
+use crate::entity::light::LightCommand;
+use crate::entity::switch::SwitchState;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -58,10 +58,10 @@ impl CliCommands {
         })
     }
 
-    pub fn get_subdev_type(&self) -> Option<SubdeviceType> {
+    pub fn get_entity_type(&self) -> Option<EntityType> {
         Some(match self {
-            Self::Light(..) => SubdeviceType::Light,
-            Self::Switch(..) => SubdeviceType::Switch,
+            Self::Light(..) => EntityType::Light,
+            Self::Switch(..) => EntityType::Switch,
             _ => return None
         })
     }
@@ -107,9 +107,8 @@ pub enum ListItems {
     /// List devices in zone
     #[command(alias = "devs")]
     Devices { zone: String },
-    /// List subdevices in device
-    #[command(alias = "subdevs")]
-    Subdevices { dev: String },
+    /// List entities in device
+    Entities { dev: String },
     /// List scripts running
     Scripts,
 }
@@ -118,7 +117,7 @@ impl ListItems {
     pub fn get_selection(&self) -> Option<&str> {
         Some(match self {
             ListItems::Devices { zone } => &zone,
-            ListItems::Subdevices { dev } => &dev,
+            ListItems::Entities { dev } => &dev,
             _ => return None,
         })
     }

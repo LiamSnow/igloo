@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
 
-use crate::subdevice::{
+use crate::entity::{
     light::{LightCommand, LightState, RGBF32},
-    SubdeviceCommand, SubdeviceState, TargetedSubdeviceCommand,
+    EntityCommand, EntityState, TargetedEntityCommand,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -34,8 +34,8 @@ pub enum ESPHomeError {
     MissingAuth,
     #[error("`{0}`")]
     ESPHome(DeviceError),
-    #[error("Invalid Subdevice/Entity `{0}`")]
-    InvalidSubdevice(String),
+    #[error("Invalid Entity `{0}`")]
+    InvalidEntity(String),
 }
 
 impl From<DeviceError> for ESPHomeError {
@@ -59,8 +59,8 @@ pub async fn task(
     config: DeviceConfig,
     did: usize,
     selector: String,
-    mut cmd_rx: mpsc::Receiver<TargetedSubdeviceCommand>,
-    on_change_tx: mpsc::Sender<(usize, String, SubdeviceState)>,
+    mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
+    on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), ESPHomeError> {
     let mut dev = make_device(config)?;
     dev.connect().await?;
@@ -104,25 +104,25 @@ pub async fn task(
 
 async fn handle_cmd(
     dev: &mut ESPHomeDevice,
-    cmd: TargetedSubdeviceCommand,
+    cmd: TargetedEntityCommand,
 ) -> Result<(), ESPHomeError> {
     match cmd.cmd {
-        SubdeviceCommand::Light(light_cmd) => {
-            if let Some(subdev_name) = cmd.subdev_name {
+        EntityCommand::Light(light_cmd) => {
+            if let Some(entity_name) = cmd.entity_name {
                 let key = dev
-                    .get_light_key_from_name(&subdev_name)
-                    .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
+                    .get_light_key_from_name(&entity_name)
+                    .ok_or(ESPHomeError::InvalidEntity(entity_name))?;
                 dev.light_command(&light_cmd.to_esphome(key)).await?;
             } else {
                 let mut esp_cmd = light_cmd.clone().to_esphome(0);
                 dev.light_command_global(&mut esp_cmd).await?;
             }
         }
-        SubdeviceCommand::Switch(state) => {
-            if let Some(subdev_name) = cmd.subdev_name {
+        EntityCommand::Switch(state) => {
+            if let Some(entity_name) = cmd.entity_name {
                 let key = dev
-                    .get_switch_key_from_name(&subdev_name)
-                    .ok_or(ESPHomeError::InvalidSubdevice(subdev_name))?;
+                    .get_switch_key_from_name(&entity_name)
+                    .ok_or(ESPHomeError::InvalidEntity(entity_name))?;
                 dev.switch_command(&api::SwitchCommandRequest {
                     key,
                     state: state.into(),
@@ -225,9 +225,9 @@ impl From<LightStateResponse> for LightState {
     }
 }
 
-fn esphome_state_to_igloo(value: EntityStateUpdateValue) -> Option<SubdeviceState> {
+fn esphome_state_to_igloo(value: EntityStateUpdateValue) -> Option<EntityState> {
     Some(match value {
-        EntityStateUpdateValue::Light(v) => SubdeviceState::Light(v.into()),
+        EntityStateUpdateValue::Light(v) => EntityState::Light(v.into()),
         _ => return None,
     })
 }
