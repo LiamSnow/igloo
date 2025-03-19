@@ -2,32 +2,33 @@ use std::{sync::Arc, time::Duration};
 
 use tokio::sync::oneshot;
 
-use crate::{cli::model::Cli, config::BasicScriptLine, stack::IglooStack};
+use crate::{cli::model::Cli, config::BasicScriptLine, state::IglooState};
+
+const MAX_ARGS: usize = 9;
 
 pub fn spawn(
     script_name: String,
     id: u32,
-    istack: Arc<IglooStack>,
+    istate: Arc<IglooState>,
     uid: usize,
-    args: Vec<String>,
+    mut args: Vec<String>,
     mut cancel_rx: oneshot::Receiver<()>,
-    body: Arc<Vec<BasicScriptLine>>,
+    body: Vec<BasicScriptLine>,
 ) {
     tokio::spawn(async move {
-        let mut stack: &Vec<BasicScriptLine> = &body;
-        let mut stack_index = 0;
+        let mut state: &Vec<BasicScriptLine> = &body;
+        let mut state_index = 0;
         let mut is_forever = false;
 
-        while stack_index < stack.len() {
+        while state_index < state.len() {
             if cancel_rx.try_recv().is_ok() {
                 break;
             }
 
-            match stack.get(stack_index).unwrap() {
+            match state.get(state_index).unwrap() {
                 BasicScriptLine::Command(cmd) => {
-                    parse_execute(&istack, &script_name, uid, &args, cmd).await
+                    parse_execute(&istate, &script_name, uid, &args, cmd).await
                 }
-                // BasicScriptLine::HttpGet(req) => http_get(req).await,
                 BasicScriptLine::Delay(ms) => {
                     tokio::time::sleep(Duration::from_millis(*ms)).await
                 }
@@ -36,25 +37,36 @@ pub fn spawn(
                     http_post(&script_name, url, body, &args).await
                 },
                 BasicScriptLine::Forever(new_body) => {
-                    stack = new_body;
+                    state = new_body;
                     is_forever = true;
-                }
+                },
+                BasicScriptLine::Save(k, v) => {
+                    if *k > MAX_ARGS {
+                        panic!("Basic script {script_name}: save at index {k} is > max index {MAX_ARGS}");
+                    }
+
+                    if args.len() <= *k {
+                        args.resize(*k + 1, "NULL".to_string());
+                    }
+
+                    args[*k] = v.clone();
+                },
             }
 
-            stack_index += 1;
-            if is_forever && stack_index == stack.len() {
-                stack_index = 0;
+            state_index += 1;
+            if is_forever && state_index == state.len() {
+                state_index = 0;
             }
         }
 
         // clean up
-        let mut script_states = istack.script_states.lock().await;
+        let mut script_states = istate.scripts.states.lock().await;
         script_states.current.remove(&id);
     });
 }
 
 async fn parse_execute(
-    stack: &Arc<IglooStack>,
+    state: &Arc<IglooState>,
     script_name: &str,
     uid: usize,
     args: &Vec<String>,
@@ -79,7 +91,7 @@ async fn parse_execute(
         }
     };
 
-    if let Err(err) = cmd.dispatch(&stack, uid, false).await {
+    if let Err(err) = cmd.dispatch(&state, uid, false).await {
         println!("Basic script {script_name} cmd failed: {err}");
     }
 }
@@ -108,7 +120,7 @@ async fn http_post(script_name: &str, url: &str, body: &str, args: &Vec<String>)
 fn inject_args(s: &str, args: &Vec<String>) -> Result<String, String> {
     let mut result = s.to_string();
 
-    for i in 1..=9 {
+    for i in 1..=MAX_ARGS {
         let pos_arg = format!("${}", i);
         if result.contains(&pos_arg) {
             match args.get(i - 1) {

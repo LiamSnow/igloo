@@ -4,17 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ron = "0.8.1"
-serde = { version = "1.0.217", features = ["derive"] }
 esphomebridge-rs = { path = "../esphomebridge-rs/" }
-tokio = { version = "1.43.0", features = ["full"] }
-clap = "4.5.30"
-clap_derive = "4.5.28"
-thiserror = "2.0.11"
-chrono = "0.4.40"
 axum = { version = "0.8.1", features = ["ws"] }
-serde_json = "1.0.139"
+bitvec = "1.0.1"
+chrono = "0.4.40"
+clap = "4.5.31"
+clap_derive = "4.5.28"
 futures-util = "0.3.31"
-bitvec = { version = "1.0.1", features = ["serde"] }
-tower-sessions = "0.14.0"
 reqwest = "0.12.12"
+ron = "0.8.1"
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tokio = { version = "1.43.0", features = ["full"] }

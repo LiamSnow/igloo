@@ -3,12 +3,12 @@ use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time};
 
 use crate::{
-    cli::model::LightAction, stack::IglooStack, selector::Selection,
+    subdevice::light::LightCommand, state::IglooState, selector::Selection,
 };
 
 pub async fn spawn(
     id: u32,
-    stack: Arc<IglooStack>,
+    state: Arc<IglooState>,
     uid: usize,
     args: Vec<String>,
     mut cancel_rx: oneshot::Receiver<()>,
@@ -17,8 +17,8 @@ pub async fn spawn(
     if args.len() < 2 || args.len() > 3 {
         return Err("Usage `{selection} {speed} {length_ms (optional)}`".into());
     }
-    let sel = Selection::from_str(&stack.dev_lut, args.get(0).unwrap())?;
-    if !stack.perms.has_perm(&sel, uid) {
+    let sel = Selection::from_str(&state.devices.lut, args.get(0).unwrap())?;
+    if !state.auth.is_authorized(&sel, uid) {
         return Err("NOT AUTHORIZED".into());
     }
     let speed: u8 = args.get(1).unwrap().parse()?;
@@ -47,7 +47,7 @@ pub async fn spawn(
             }
 
             sel
-                .execute(&stack, LightAction::Color { hue: Some(hue) }.into())
+                .execute(&state, LightCommand::Color { hue: Some(hue) }.into())
                 .unwrap(); //FIXME
             hue = (hue + 1) % 255;
             if let Some(num_steps) = num_steps {
@@ -59,7 +59,7 @@ pub async fn spawn(
         }
 
         // clean up
-        let mut script_states = stack.script_states.lock().await;
+        let mut script_states = state.scripts.states.lock().await;
         script_states.current.remove(&id);
 
         println!("rainbow stopped!!");

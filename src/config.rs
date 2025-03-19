@@ -1,20 +1,20 @@
-use std::{collections::HashMap, error::Error, fs, sync::Arc};
+use std::{collections::HashMap, error::Error, fs};
 
 use ron::{extensions::Extensions, Options};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    command::SubdeviceType, elements::{parse_time, ElementValue}, providers::{DeviceConfig, ProviderConfig}, scripts::ScriptMeta
+    providers::{DeviceConfig, ProviderConfig},
+    scripts::{ScriptClaims, ScriptMeta},
+    subdevice::SubdeviceType,
 };
 
 #[derive(Deserialize)]
 pub struct IglooConfig {
     pub version: f32,
-    pub users: HashMap<String, UserConfig>,
-    pub user_groups: HashMap<String, Vec<String>>,
-    pub permissions: HashMap<String, String>,
+    pub auth: AuthConfig,
     pub providers: Vec<ProviderConfig>,
-    pub zones: ZonesConfig,
+    pub devices: DeviceConfigs,
     pub ui: Vec<(String, Vec<UIElementConfig>)>,
     pub scripts: HashMap<String, ScriptConfig>,
 }
@@ -33,7 +33,14 @@ impl IglooConfig {
     }
 }
 
-pub type ZonesConfig = HashMap<String, HashMap<String, DeviceConfig>>;
+pub type DeviceConfigs = HashMap<String, HashMap<String, DeviceConfig>>;
+
+#[derive(Deserialize)]
+pub struct AuthConfig {
+    pub users: HashMap<String, UserConfig>,
+    pub groups: HashMap<String, Vec<String>>,
+    pub permissions: HashMap<String, String>,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserConfig {
@@ -42,85 +49,37 @@ pub struct UserConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum UIElementConfig {
+    Button(String, String),
     BasicLight(String),
     CTLight(String),
     RGBLight(String),
     RGBCTLight(String),
     Switch(String),
-    Button(ButtonConfig),
-    TimeSelector(TimeSelectorConfig),
+    Time(String),
+    Int(String),
 }
 
 impl UIElementConfig {
-    pub fn get_sel_and_subdev_type(&self) -> Option<(&str, SubdeviceType)> {
+    /// returns (selection, subdev_type) if applicable
+    pub fn get_meta(&self) -> Option<(&str, SubdeviceType)> {
         match self {
             Self::BasicLight(s) => Some((s, SubdeviceType::Light)),
             Self::CTLight(s) => Some((s, SubdeviceType::Light)),
             Self::RGBLight(s) => Some((s, SubdeviceType::Light)),
             Self::RGBCTLight(s) => Some((s, SubdeviceType::Light)),
             Self::Switch(s) => Some((s, SubdeviceType::Switch)),
+            Self::Time(s) => Some((s, SubdeviceType::Time)),
+            Self::Int(s) => Some((s, SubdeviceType::Int)),
             _ => None,
         }
     }
 
-    pub fn get_def_val(&self) -> Option<ElementValue> {
+    pub fn get_command(&self) -> Option<&str> {
         Some(match self {
-            Self::TimeSelector(ref cfg) => {
-                ElementValue::Time(parse_time(&cfg.default).unwrap()) //FIXME
-            }
+            Self::Button(_name, cmd) => cmd,
             _ => return None,
         })
     }
-
-    pub fn get_name(&self) -> Option<&str> {
-        Some(match self {
-            Self::Button(c) => &c.name,
-            Self::TimeSelector(c) => &c.name,
-            _ => return None,
-        })
-    }
-
-    pub fn get_commands(&self) -> Option<Vec<&str>> {
-        Some(match self {
-            Self::Button(c) => vec![&c.on_click],
-            _ => return None,
-        })
-    }
-
-    pub fn get_scripts(&self) -> Option<Vec<&str>> {
-        Some(match self {
-            Self::TimeSelector(c) => {
-                let mut v = Vec::new();
-                if let Some(s) = &c.on_trigger {
-                    v.push(s.as_str());
-                }
-                if let Some(s) = &c.on_change {
-                    v.push(s.as_str());
-                }
-                v
-            },
-            _ => return None,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct ButtonConfig {
-    name: String,
-    on_click: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct TimeSelectorConfig {
-    name: String,
-    #[serde(skip_serializing)]
-    default: String,
-    #[serde(skip_serializing)]
-    pub trigger_offset: Option<i32>,
-    #[serde(skip_serializing)]
-    pub on_trigger: Option<String>,
-    #[serde(skip_serializing)]
-    pub on_change: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -130,31 +89,54 @@ pub enum ScriptConfig {
 }
 
 impl ScriptConfig {
-    pub fn get_meta(&self) -> &ScriptMeta {
+    /// returns claims, auto_cancel, auto_run
+    pub fn get_meta(&self) -> ScriptMeta {
         match self {
-            ScriptConfig::Python(cfg) => &cfg.meta,
-            ScriptConfig::Basic(cfg) => &cfg.meta,
+            ScriptConfig::Python(cfg) => ScriptMeta {
+                claims: &cfg.claims,
+                auto_cancel: cfg.auto_cancel,
+                auto_run: cfg.auto_run,
+            },
+            ScriptConfig::Basic(cfg) => ScriptMeta {
+                claims: &cfg.claims,
+                auto_cancel: cfg.auto_cancel,
+                auto_run: cfg.auto_run,
+            },
         }
     }
 }
 
 #[derive(Deserialize)]
 pub struct PythonScriptConfig {
-    meta: ScriptMeta,
-    pub file: String
+    #[serde(default)]
+    pub claims: ScriptClaims,
+    #[serde(default = "get_true")]
+    pub auto_cancel: bool,
+    #[serde(default = "get_false")]
+    pub auto_run: bool,
+    pub file: String,
 }
 
 #[derive(Deserialize)]
 pub struct BasicScriptConfig {
-    meta: ScriptMeta,
-    pub body: Arc<Vec<BasicScriptLine>>
+    #[serde(default)]
+    pub claims: ScriptClaims,
+    #[serde(default = "get_true")]
+    pub auto_cancel: bool,
+    #[serde(default = "get_false")]
+    pub auto_run: bool,
+    pub body: Vec<BasicScriptLine>,
 }
+
+fn get_false() -> bool { false }
+fn get_true() -> bool { false }
 
 #[derive(Deserialize, Clone)]
 pub enum BasicScriptLine {
     Command(String),
     HttpGet { url: String },
     HttpPost { url: String, body: String },
+    Save(usize, String),
     Delay(u64),
     Forever(Vec<BasicScriptLine>),
 }

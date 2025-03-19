@@ -1,61 +1,51 @@
-use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::{cli::model::{LightAction, SwitchState}, elements::AveragedSubdeviceState};
+use clap_derive::Subcommand;
+use serde::Serialize;
 
-#[derive(Debug, Clone)]
-pub enum SubdeviceCommand {
-    Light(LightAction),
-    Switch(SwitchState),
+use crate::{cli::error::DispatchError, elements::AveragedSubdeviceState, selector::Selection, state::IglooState};
+
+use super::{SubdeviceCommand, SubdeviceState};
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum LightCommand {
+    /// Turn the light on
+    On,
+    /// Turn the light off
+    Off,
+    /// Set the light color using an hue value
+    #[command(alias = "hue")]
+    Color { hue: Option<u16> },
+    /// Set the light temperature
+    #[command(alias = "temp")]
+    Temperature { temp: Option<u32> },
+    /// Set the light brightness
+    #[command(alias = "bri")]
+    Brightness { brightness: u8 },
 }
 
-pub struct TargetedSubdeviceCommand {
-    /// if None -> apply to all applicable subdevices
-    pub subdev_name: Option<String>,
-    pub cmd: SubdeviceCommand,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub enum SubdeviceState {
-    Light(LightState),
-    Switch(SwitchState),
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
-pub enum SubdeviceType {
-    Light,
-    Switch,
-}
-
-impl SubdeviceState {
-    pub fn get_type(&self) -> SubdeviceType {
-        match self {
-            Self::Light(..) => SubdeviceType::Light,
-            Self::Switch(..) => SubdeviceType::Switch,
-        }
+impl LightCommand {
+    pub fn dispatch(
+        self,
+        target: String,
+        sel: Selection,
+        state: &Arc<IglooState>,
+    ) -> Result<Option<String>, DispatchError> {
+        sel.execute(&state, SubdeviceCommand::Light(self))
+            .map_err(|e| DispatchError::DeviceChannelErorr(target, e))?;
+        Ok(None)
     }
 }
 
-impl From<LightAction> for SubdeviceCommand {
-    fn from(value: LightAction) -> Self {
+impl From<LightCommand> for SubdeviceCommand {
+    fn from(value: LightCommand) -> Self {
         Self::Light(value)
-    }
-}
-
-impl From<SwitchState> for SubdeviceCommand {
-    fn from(value: SwitchState) -> Self {
-        Self::Switch(value)
     }
 }
 
 impl From<LightState> for SubdeviceState {
     fn from(value: LightState) -> Self {
         Self::Light(value)
-    }
-}
-
-impl From<SwitchState> for SubdeviceState {
-    fn from(value: SwitchState) -> Self {
-        Self::Switch(value)
     }
 }
 
@@ -165,7 +155,7 @@ impl RGBF32 {
 impl LightState {
     /// Average a set of colors
     /// Only avgs Some colors, if there are no colors it returns None (same for temp and bri)
-    pub fn avg(states: &Vec<Vec<Option<Self>>>) -> Option<AveragedSubdeviceState> {
+    pub fn avg(states: Vec<&SubdeviceState>) -> Option<AveragedSubdeviceState> {
         let (mut total, mut on_sum, mut color_on_sum) = (0, 0, 0);
         let (mut total_hue, mut hue_sum) = (0, 0);
         let (mut total_temp, mut temp_sum) = (0, 0);
@@ -175,30 +165,32 @@ impl LightState {
         let mut first = true;
         let mut homogeneous = true;
 
-        for state in states.iter().flatten().filter_map(|s| s.as_ref()) {
-            total += 1;
-            on_sum += state.on as u32;
-            color_on_sum += state.color_on as u32;
-            if let Some(hue) = state.hue {
-                total_hue += 1;
-                hue_sum += hue as u32;
-            }
-            if let Some(temp) = state.temp {
-                total_temp += 1;
-                temp_sum += temp;
-            }
-            if let Some(bright) = state.brightness {
-                total_bright += 1;
-                bright_sum += bright as u32;
-            }
-
-            if homogeneous {
-                if first {
-                    first = false;
-                } else {
-                    homogeneous = last_state.visibly_equal(state);
+        for state in states {
+            if let SubdeviceState::Light(state) = state {
+                total += 1;
+                on_sum += state.on as u32;
+                color_on_sum += state.color_on as u32;
+                if let Some(hue) = state.hue {
+                    total_hue += 1;
+                    hue_sum += hue as u32;
                 }
-                last_state = state;
+                if let Some(temp) = state.temp {
+                    total_temp += 1;
+                    temp_sum += temp;
+                }
+                if let Some(bright) = state.brightness {
+                    total_bright += 1;
+                    bright_sum += bright as u32;
+                }
+
+                if homogeneous {
+                    if first {
+                        first = false;
+                    } else {
+                        homogeneous = last_state.visibly_equal(state);
+                    }
+                    last_state = state;
+                }
             }
         }
 
@@ -263,28 +255,5 @@ impl LightState {
         }
 
         true
-    }
-}
-
-impl SwitchState {
-    pub fn avg(states: &Vec<Vec<Option<bool>>>) -> Option<AveragedSubdeviceState> {
-        let (mut last_state, mut first, mut homogeneous) = (false, true, false);
-        for state in states.iter().flatten().filter_map(|s| s.as_ref()) {
-            if homogeneous {
-                if first {
-                    first = false;
-                } else {
-                    homogeneous = *state == last_state;
-                }
-                last_state = *state;
-            }
-        }
-        match first {
-            true => None,
-            false => Some(AveragedSubdeviceState {
-                value: SubdeviceState::Switch(last_state.into()),
-                homogeneous
-            }),
-        }
     }
 }

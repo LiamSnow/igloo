@@ -1,9 +1,10 @@
 use clap::command;
 use clap::Parser;
-use clap_derive::{Args, Parser, Subcommand, ValueEnum};
-use serde::Serialize;
+use clap_derive::{Args, Parser, Subcommand};
 
-use crate::command::SubdeviceType;
+use crate::subdevice::SubdeviceType;
+use crate::subdevice::light::LightCommand;
+use crate::subdevice::switch::SwitchState;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -28,8 +29,8 @@ pub enum CliCommands {
     /// Control switches
     #[command(alias = "switches")]
     Switch(SwitchArgs),
-    /// UI Interface
-    UI(UIArgs),
+    /// Get UI Interface
+    UI,
     /// List various items
     #[command(alias = "ls")]
     List(ListArgs),
@@ -71,24 +72,7 @@ pub struct LightArgs {
     /// Target light
     pub target: String,
     #[command(subcommand)]
-    pub action: LightAction,
-}
-
-#[derive(Subcommand, Debug, Clone)]
-pub enum LightAction {
-    /// Turn the light on
-    On,
-    /// Turn the light off
-    Off,
-    /// Set the light color using an hue value
-    #[command(alias = "hue")]
-    Color { hue: Option<u16> },
-    /// Set the light temperature
-    #[command(alias = "temp")]
-    Temperature { temp: Option<u32> },
-    /// Set the light brightness
-    #[command(alias = "bri")]
-    Brightness { brightness: u8 },
+    pub action: LightCommand,
 }
 
 #[derive(Args, Debug)]
@@ -98,59 +82,6 @@ pub struct SwitchArgs {
     /// Turn the switch on or off
     #[arg(value_enum)]
     pub action: SwitchState,
-}
-
-#[derive(ValueEnum, Clone, Debug, Serialize)]
-pub enum SwitchState {
-    On,
-    Off,
-}
-
-impl Default for SwitchState {
-    fn default() -> Self {
-        Self::Off
-    }
-}
-
-impl From<bool> for SwitchState {
-    fn from(value: bool) -> Self {
-        match value {
-            true => SwitchState::On,
-            false => SwitchState::Off,
-        }
-    }
-}
-
-impl From<SwitchState> for bool {
-    fn from(value: SwitchState) -> Self {
-        match value {
-            SwitchState::On => true,
-            SwitchState::Off => false,
-        }
-    }
-}
-
-impl From<&SwitchState> for bool {
-    fn from(value: &SwitchState) -> Self {
-        match value {
-            SwitchState::On => true,
-            SwitchState::Off => false,
-        }
-    }
-}
-
-#[derive(Args, Debug)]
-pub struct UIArgs {
-    #[command(subcommand)]
-    pub arg: UICommand,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum UICommand {
-    /// get UI element, states, and values
-    Get,
-    /// set a UI element's value
-    Set { selector: String, value: String },
 }
 
 #[derive(Args, Debug)]
@@ -263,18 +194,4 @@ pub enum ScriptAction {
     CancelAll {
         name: String
     }
-}
-
-#[derive(Args, Debug)]
-pub struct AutomationValue {
-    #[command(subcommand)]
-    pub action: AutomationValueAction,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum AutomationValueAction {
-    /// Set the automation value
-    Set { value: String },
-    /// Get the automation value
-    Get,
 }

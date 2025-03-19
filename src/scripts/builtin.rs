@@ -2,7 +2,7 @@ use std::{sync::OnceLock, collections::HashMap, error::Error, sync::Arc};
 
 use tokio::sync::oneshot;
 
-use crate::{command::SubdeviceType, stack::IglooStack};
+use crate::{subdevice::SubdeviceType, state::IglooState};
 use super::ScriptMeta;
 
 // lowkey getting the hang of rust macros
@@ -12,17 +12,18 @@ macro_rules! gen_builtin_script_data {
             claims: {
                 $($subdev_type:ident: [$($sel_str:expr),*]),*
             },
-            auto_cancel: $auto_cancel:expr
+            auto_cancel: $auto_cancel:expr,
+            auto_run: $auto_run:expr
         )),*
     ) => {
         $(
             pub mod $script_name;
         )*
 
-        static META: OnceLock<HashMap<String, ScriptMeta>> = OnceLock::new();
+        static CLAIMS: OnceLock<HashMap<String, HashMap<SubdeviceType, Vec<String>>>> = OnceLock::new();
 
-        pub fn get_meta() -> &'static HashMap<String, ScriptMeta> {
-            META.get_or_init(|| {
+        pub fn get_claims() -> &'static HashMap<String, HashMap<SubdeviceType, Vec<String>>> {
+            CLAIMS.get_or_init(|| {
                 let mut map = HashMap::new();
                 $(
                     let mut claims = HashMap::new();
@@ -31,27 +32,36 @@ macro_rules! gen_builtin_script_data {
                             $($sel_str.to_string(),)*
                         ]);
                     )*
-                    let config = ScriptMeta {
-                        claims,
-                        auto_cancel: $auto_cancel
-                    };
-                    map.insert(stringify!($script_name).to_string(), config);
+                    map.insert(stringify!($script_name).to_string(), claims);
                 )*
                 map
             })
         }
 
+        pub fn get_meta(name: &str) -> Option<ScriptMeta> {
+            match name {
+                $(
+                    stringify!($script_name) => Some(ScriptMeta {
+                        claims: get_claims().get(stringify!($script_name)).unwrap(),
+                        auto_cancel: $auto_cancel,
+                        auto_run: $auto_run,
+                    }),
+                )*
+                _ => None
+            }
+        }
+
         pub async fn spawn(
             script_name: &str,
             id: u32,
-            stack: Arc<IglooStack>,
+            state: Arc<IglooState>,
             uid: usize,
             args: Vec<String>,
             cancel_rx: oneshot::Receiver<()>,
         ) -> Result<(), Box<dyn Error>> {
             match script_name {
                 $(
-                    stringify!($script_name) => $script_name::spawn(id, stack, uid, args, cancel_rx).await?,
+                    stringify!($script_name) => $script_name::spawn(id, state, uid, args, cancel_rx).await?,
                 )*
                 _ => panic!("Mismatched builtin script run. THIS SHOULD NEVER HAPPEN")
             }
@@ -65,12 +75,14 @@ gen_builtin_script_data!(
         claims: {
             Light: ["$1"]
         },
-        auto_cancel: true
+        auto_cancel: true,
+        auto_run: false
     ),
     brightness_step(
         claims: {
             Light: ["$1"]
         },
-        auto_cancel: true
+        auto_cancel: true,
+        auto_run: false
     )
 );

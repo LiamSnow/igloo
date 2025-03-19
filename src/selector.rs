@@ -5,8 +5,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
-    command::{SubdeviceCommand, TargetedSubdeviceCommand},
-    stack::{DeviceIDLut, IglooStack},
+    device::DeviceIDLut, state::IglooState, subdevice::{SubdeviceCommand, TargetedSubdeviceCommand}
 };
 
 #[derive(Error, Debug, Serialize)]
@@ -117,12 +116,12 @@ impl Selection {
 
     pub fn execute(
         &self,
-        stack: &Arc<IglooStack>,
+        state: &Arc<IglooState>,
         cmd: SubdeviceCommand,
     ) -> Result<(), DeviceChannelError> {
         match self {
             Self::All => {
-                for dev_chan in &stack.dev_chans {
+                for dev_chan in &state.devices.channels {
                     dev_chan.try_send(TargetedSubdeviceCommand {
                         cmd: cmd.clone(),
                         subdev_name: None,
@@ -130,7 +129,7 @@ impl Selection {
                 }
             }
             Self::Zone(_, start_did, end_did) => {
-                for dev_chan in &stack.dev_chans[*start_did..=*end_did] {
+                for dev_chan in &state.devices.channels[*start_did..=*end_did] {
                     dev_chan.try_send(TargetedSubdeviceCommand {
                         cmd: cmd.clone(),
                         subdev_name: None,
@@ -138,14 +137,14 @@ impl Selection {
                 }
             }
             Self::Device(_, did) => {
-                let dev_chan = stack.dev_chans.get(*did).unwrap();
+                let dev_chan = state.devices.channels.get(*did).unwrap();
                 dev_chan.try_send(TargetedSubdeviceCommand {
                     cmd: cmd.clone(),
                     subdev_name: None,
                 })?;
             }
             Self::Subdevice(_, did, subdev_name) => {
-                let dev_chan = stack.dev_chans.get(*did).unwrap();
+                let dev_chan = state.devices.channels.get(*did).unwrap();
                 dev_chan.try_send(TargetedSubdeviceCommand {
                     cmd: cmd.clone(),
                     subdev_name: Some(subdev_name.to_string()),

@@ -1,5 +1,5 @@
 use core::str;
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use esphomebridge_rs::{
     api::{self, LightStateResponse},
@@ -11,20 +11,18 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
 
-use crate::{
-    cli::model::LightAction, command::{
-        LightState, SubdeviceCommand, SubdeviceState, SubdeviceType,
-        TargetedSubdeviceCommand, RGBF32,
-    }, elements::SubdeviceStateUpdate
+use crate::subdevice::{
+    light::{LightCommand, LightState, RGBF32},
+    SubdeviceCommand, SubdeviceState, TargetedSubdeviceCommand,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ESPHomeConfig {
+pub struct Config {
     pub default_port: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ESPHomeDeviceConfig {
+pub struct DeviceConfig {
     pub ip: String,
     pub password: Option<String>,
     pub noise_psk: Option<String>,
@@ -58,12 +56,11 @@ pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
 pub const KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub async fn task(
-    config: ESPHomeDeviceConfig,
+    config: DeviceConfig,
     did: usize,
     selector: String,
     mut cmd_rx: mpsc::Receiver<TargetedSubdeviceCommand>,
-    on_update_of_type: Option<HashMap<SubdeviceType, Vec<mpsc::Sender<SubdeviceStateUpdate>>>>,
-    on_subdev_update: Option<HashMap<String, mpsc::Sender<SubdeviceState>>>,
+    on_change_tx: mpsc::Sender<(usize, String, SubdeviceState)>,
 ) -> Result<(), ESPHomeError> {
     let mut dev = make_device(config)?;
     dev.connect().await?;
@@ -75,31 +72,16 @@ pub async fn task(
     tokio::spawn(async move {
         while let Some(update) = update_rx.recv().await {
             if let Some(value) = esphome_state_to_igloo(update.value) {
-                let subdev_type = value.get_type();
-
-                if let Some(ref on_update_of_type) = on_update_of_type {
-                    if let Some(on_update_of_type) = on_update_of_type.get(&subdev_type) {
-                        let u = SubdeviceStateUpdate {
-                            did,
-                            sid: update.entity_index,
-                            value: value.clone(),
-                        };
-                        for tx in on_update_of_type {
-                            tx.send(u.clone()).await.unwrap(); //FIXME
-                        }
-                    }
-                }
-
-                if let Some(ref on_subdev_update) = on_subdev_update {
-                    if let Some(tx) = on_subdev_update.get(&update.entity_name) {
-                        tx.send(value).await.unwrap(); //FIXME
-                    }
+                let res = on_change_tx.send((did, update.entity_name, value)).await;
+                if let Err(e) = res {
+                    println!("ESPHome error sending on_change: {e}");
                 }
             }
         }
     });
 
-    //TODO keep alive
+    //TODO keep alive ?? or is them pinging us fine?
+
     loop {
         match timeout(Duration::from_millis(100), cmd_rx.recv()).await {
             Ok(Some(cmd)) => {
@@ -154,12 +136,13 @@ async fn handle_cmd(
                 dev.switch_command_global(&mut esp_cmd).await?;
             }
         }
+        _ => todo!(),
     }
 
     Ok(())
 }
 
-fn make_device(config: ESPHomeDeviceConfig) -> Result<ESPHomeDevice, ESPHomeError> {
+fn make_device(config: DeviceConfig) -> Result<ESPHomeDevice, ESPHomeError> {
     let ip = if config.ip.contains(':') {
         config.ip
     } else {
@@ -174,7 +157,7 @@ fn make_device(config: ESPHomeDeviceConfig) -> Result<ESPHomeDevice, ESPHomeErro
     }
 }
 
-impl LightAction {
+impl LightCommand {
     pub fn to_esphome(self, key: u32) -> api::LightCommandRequest {
         let mut cmd = api::LightCommandRequest {
             key,
@@ -186,34 +169,32 @@ impl LightAction {
         };
 
         match self {
-            LightAction::On => {}
-            LightAction::Off => {
+            LightCommand::On => {}
+            LightCommand::Off => {
                 cmd.state = false;
             }
-            LightAction::Color { hue } => {
+            LightCommand::Color { hue } => {
                 if let Some(hue) = hue {
                     cmd.has_rgb = true;
                     let rgb = RGBF32::from_hue(hue);
                     cmd.red = rgb.r as f32;
                     cmd.green = rgb.g as f32;
                     cmd.blue = rgb.b as f32;
-                }
-                else {
+                } else {
                     cmd.has_color_mode = true;
                     cmd.color_mode = 35; //FIXME
                 }
             }
-            LightAction::Temperature { temp } => {
+            LightCommand::Temperature { temp } => {
                 if let Some(temp) = temp {
                     cmd.has_color_temperature = true;
                     cmd.color_temperature = temp as f32;
-                }
-                else {
+                } else {
                     cmd.has_color_mode = true;
                     cmd.color_mode = 11; //FIXME
                 }
             }
-            LightAction::Brightness { brightness } => {
+            LightCommand::Brightness { brightness } => {
                 cmd.has_brightness = true;
                 cmd.brightness = brightness as f32 / 100.;
             }
@@ -231,11 +212,14 @@ impl From<LightStateResponse> for LightState {
             temp: Some(value.color_temperature as u32),
             brightness: Some((value.brightness * 100.) as u8),
             //TODO use supported color modes
-            hue: Some(RGBF32 {
-                r: value.red,
-                g: value.green,
-                b: value.blue,
-            }.to_hue()),
+            hue: Some(
+                RGBF32 {
+                    r: value.red,
+                    g: value.green,
+                    b: value.blue,
+                }
+                .to_hue(),
+            ),
             color_on: (value.color_mode & 32) == 32,
         }
     }

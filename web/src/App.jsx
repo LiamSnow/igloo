@@ -11,19 +11,21 @@ function App() {
         const ws = new WebSocket('ws://localhost:3000/ws');
 
         ws.onopen = () => {
-            ws.send('ui get');
+            ws.send('ui');
         };
 
         ws.onmessage = (event) => {
             try {
                 let res = JSON.parse(event.data);
-                console.log(res);
+                console.log(res); //FIXME remove
 
                 if (res.elements !== undefined) {
                     setData(res);
                 }
-                else if (res.esid !== undefined) {
-                    setData('states', res.esid, res.value);
+                else if (Array.isArray(res)) {
+                    for (const update of res) {
+                        setData('states', update.esid, update.value);
+                    }
                 }
                 else if (res.evid !== undefined) {
                     setData('values', res.evid, res.value);

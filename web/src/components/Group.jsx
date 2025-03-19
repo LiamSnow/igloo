@@ -13,10 +13,11 @@ function Group(props) {
                 <For each={props.items}>
                     {(item) => {
                         const configType = Object.keys(item.cfg)[0];
+                        console.log(configType);
 
                         switch (configType) {
                             case "RGBCTLight":
-                                const state = () => props.data.states[item.esid].value.Light;
+                                const state = () => props.data.states[item.esid]?.value?.Light;
                                 return <Light name={item.cfg[configType]}
                                                 execute={props.execute}
                                                 state={state}

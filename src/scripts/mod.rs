@@ -3,15 +3,12 @@ use std::{collections::HashMap, sync::Arc};
 use bitvec::prelude::bitvec;
 use bitvec::vec::BitVec;
 use error::ScriptError;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use thiserror::Error;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex};
 
 use crate::{
-    command::SubdeviceType,
-    config::ScriptConfig,
-    stack::{DeviceIDLut, IglooStack},
-    selector::Selection,
+    config::ScriptConfig, device::DeviceIDLut, selector::Selection, state::IglooState, subdevice::SubdeviceType
 };
 
 mod basic;
@@ -19,16 +16,32 @@ mod builtin;
 pub mod error;
 mod python;
 
+pub struct Scripts {
+    pub states: Mutex<ScriptStates>,
+    pub configs: HashMap<String, ScriptConfig>,
+}
+
+impl Scripts {
+    pub fn init(configs: HashMap<String, ScriptConfig>) -> Self {
+        Self {
+            states: Mutex::new(ScriptStates::default()),
+            configs,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ScriptStates {
     pub next_id: u32,
     pub current: HashMap<u32, RunningScriptMeta>,
 }
 
-#[derive(Deserialize)]
-pub struct ScriptMeta {
-    pub claims: HashMap<SubdeviceType, Vec<String>>,
+pub type ScriptClaims = HashMap<SubdeviceType, Vec<String>>;
+
+pub struct ScriptMeta<'a> {
+    pub claims: &'a ScriptClaims,
     pub auto_cancel: bool,
+    pub auto_run: bool,
 }
 
 #[derive(Serialize)]
@@ -44,30 +57,30 @@ pub struct RunningScriptMeta {
 }
 
 pub async fn spawn(
-    stack: &Arc<IglooStack>,
+    state: &Arc<IglooState>,
     script_name: String,
     extra_args: Vec<String>,
     uid: usize,
 ) -> Result<(), ScriptError> {
-    if let Some(meta) = builtin::get_meta().get(&script_name) {
-        let (id, cancel_rx) = init_script(stack, uid, &script_name, &extra_args, meta).await?;
+    if let Some(meta) = builtin::get_meta(&script_name) {
+        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, meta).await?;
 
-        let res = builtin::spawn(&script_name, id, stack.clone(), uid, extra_args, cancel_rx).await;
+        let res = builtin::spawn(&script_name, id, state.clone(), uid, extra_args, cancel_rx).await;
         if let Err(err) = res {
             //TODO log
             return Err(ScriptError::BuiltInFailure(err.to_string()));
         }
 
         Ok(())
-    } else if let Some(cfg) = stack.script_configs.get(&script_name) {
+    } else if let Some(cfg) = state.scripts.configs.get(&script_name) {
         let meta = cfg.get_meta();
-        let (id, cancel_rx) = init_script(stack, uid, &script_name, &extra_args, meta).await?;
+        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, meta).await?;
 
         match cfg {
             ScriptConfig::Python(cfg) => python::spawn(
                 script_name,
                 id,
-                stack.clone(),
+                state.clone(),
                 uid,
                 extra_args,
                 cancel_rx,
@@ -76,7 +89,7 @@ pub async fn spawn(
             ScriptConfig::Basic(cfg) => basic::spawn(
                 script_name,
                 id,
-                stack.clone(),
+                state.clone(),
                 uid,
                 extra_args,
                 cancel_rx,
@@ -90,29 +103,29 @@ pub async fn spawn(
     }
 }
 
-async fn init_script(
-    stack: &Arc<IglooStack>,
+async fn init_script<'a>(
+    state: &Arc<IglooState>,
     uid: usize,
     script_name: &str,
     extra_args: &Vec<String>,
-    meta: &ScriptMeta,
+    meta: ScriptMeta<'a>,
 ) -> Result<(u32, oneshot::Receiver<()>), ScriptError> {
-    let claims = parse_claims(&stack.dev_lut, &meta.claims, &extra_args)?;
+    let claims = parse_claims(&state.devices.lut, &meta.claims, &extra_args)?;
 
-    let perms = calc_perms(&stack, &claims);
+    let perms = calc_perms(&state, &claims);
     if !*perms.get(uid).unwrap() {
         return Err(ScriptError::NotAuthorized);
     }
 
-    let res = clear_conflicting_for_script(stack, &claims).await;
+    let res = clear_conflicting_for_script(state, &claims).await;
     if let Some(scr) = res {
         return Err(ScriptError::CouldNotCancel(scr));
     }
 
     let (cancel_tx, cancel_rx) = oneshot::channel();
 
-    //push to stack
-    let mut states = stack.script_states.lock().await;
+    //push to state
+    let mut states = state.scripts.states.lock().await;
     let id = states.next_id;
     states.current.insert(
         id,
@@ -131,7 +144,7 @@ async fn init_script(
 /// Parses String claims into Selections.
 /// Replaces positional args (IE $1) with their values
 fn parse_claims(
-    dev_lut: &DeviceIDLut,
+    devids: &DeviceIDLut,
     raw: &HashMap<SubdeviceType, Vec<String>>,
     extra_args: &Vec<String>,
 ) -> Result<HashMap<SubdeviceType, Vec<Selection>>, ScriptError> {
@@ -151,7 +164,7 @@ fn parse_claims(
                 false => &sel_str,
             };
 
-            v.push(Selection::from_str(dev_lut, sel_str)?);
+            v.push(Selection::from_str(devids, sel_str)?);
         }
         res.insert(subdev_type.clone(), v);
     }
@@ -161,11 +174,11 @@ fn parse_claims(
 /// Tries to stop scripts that currently claim ownership over the same device(s)
 /// Returns Some(scripe_name) if that script is conflicting and cannot be cancelled
 pub async fn clear_conflicting_for_cmd(
-    stack: &Arc<IglooStack>,
+    state: &Arc<IglooState>,
     selection: &Selection,
     for_type: &SubdeviceType,
 ) -> Option<String> {
-    let mut state = stack.script_states.lock().await;
+    let mut state = state.scripts.states.lock().await;
     for (_, meta) in &mut state.current {
         if let Some(claim_sels) = meta.claims.get(for_type) {
             if selection.collides_with_any(claim_sels) {
@@ -183,10 +196,10 @@ pub async fn clear_conflicting_for_cmd(
 
 // TODO more efficient?
 async fn clear_conflicting_for_script(
-    stack: &Arc<IglooStack>,
+    state: &Arc<IglooState>,
     my_claims: &HashMap<SubdeviceType, Vec<Selection>>,
 ) -> Option<String> {
-    let mut state = stack.script_states.lock().await;
+    let mut state = state.scripts.states.lock().await;
 
     for (for_type, my_sels) in my_claims {
         for (_, meta) in &mut state.current {
@@ -218,12 +231,12 @@ pub enum ScriptCancelFailure {
 /// Cancel all instances of a script
 /// Returns if any attempts were not authorized
 pub async fn cancel_all(
-    stack: &Arc<IglooStack>,
+    state: &Arc<IglooState>,
     script_name: &str,
     uid: usize,
 ) -> Option<ScriptCancelFailure> {
     //TODO permissions
-    let mut state = stack.script_states.lock().await;
+    let mut state = state.scripts.states.lock().await;
     let mut not_authorized = false;
     for (_, meta) in &mut state.current {
         if meta.script_name == script_name {
@@ -241,9 +254,9 @@ pub async fn cancel_all(
 }
 
 /// Cancel instance of a script
-pub async fn cancel(stack: &Arc<IglooStack>, id: u32, uid: usize) -> Option<ScriptCancelFailure> {
+pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: usize) -> Option<ScriptCancelFailure> {
     //TODO permissions
-    let mut state = stack.script_states.lock().await;
+    let mut state = state.scripts.states.lock().await;
     if let Some(meta) = state.current.get_mut(&id) {
         if *meta.perms.get(uid).unwrap() {
             let _ = meta.cancel_tx.take().unwrap().send(());
@@ -255,14 +268,14 @@ pub async fn cancel(stack: &Arc<IglooStack>, id: u32, uid: usize) -> Option<Scri
     Some(ScriptCancelFailure::DoesNotExist)
 }
 
-fn calc_perms(stack: &IglooStack, claims: &HashMap<SubdeviceType, Vec<Selection>>) -> BitVec {
-    let mut bv = bitvec![1; stack.auth.num_users];
+fn calc_perms(state: &IglooState, claims: &HashMap<SubdeviceType, Vec<Selection>>) -> BitVec {
+    let mut bv = bitvec![1; state.auth.num_users];
     for sel in claims.values().flat_map(|v| v.iter()) {
         if matches!(sel, Selection::All) {
             continue;
         }
 
-        bv &= stack.perms.zone.get(sel.get_zid().unwrap()).unwrap();
+        bv &= state.auth.perms.get(sel.get_zid().unwrap()).unwrap();
     }
     bv
 }
