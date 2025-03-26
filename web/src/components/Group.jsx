@@ -30,9 +30,9 @@ function Group(props) {
                                                 value={value}
                                             />;
                             case "Button":
-                                return <Button name={item.cfg[configType].name}
+                                return <Button name={item.cfg[configType][0]}
                                                 execute={props.execute}
-                                                onclick={item.cfg[configType].on_click}
+                                                onclick={item.cfg[configType][1]}
                                             />;
                             default:
                                 return <p>Unknown component type: {configType}</p>;

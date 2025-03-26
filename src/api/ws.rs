@@ -2,24 +2,59 @@ use crate::cli::model::Cli;
 use crate::state::IglooState;
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
         State,
     },
     response::IntoResponse,
 };
+use axum_extra::{headers::Cookie, TypedHeader};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub async fn ws_handler(
     State(state): State<Arc<IglooState>>,
+    cookies: Option<TypedHeader<Cookie>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(state, socket))
+    ws.on_upgrade(move |socket| handle_socket(cookies, state, socket))
 }
 
-async fn handle_socket(state: Arc<IglooState>, socket: WebSocket) {
-    let uid = *state.auth.uid_lut.get("liams").unwrap(); //FIXME
+async fn close_socket(mut socket: WebSocket, code: u16, reason: String) {
+    let _ = socket
+        .send(Message::Close(Some(CloseFrame {
+            code,
+            reason: reason.into(),
+        })))
+        .await;
+
+    //wait for proper closure
+    loop {
+        if let Some(Ok(msg)) = socket.recv().await {
+            match msg {
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    }
+}
+
+async fn handle_socket(
+    cookies: Option<TypedHeader<Cookie>>,
+    state: Arc<IglooState>,
+    socket: WebSocket,
+) {
+    let uid = match cookies
+        .as_ref()
+        .and_then(|cookies| cookies.get("auth_token"))
+    {
+        Some(token) => match state.auth.token_db.validate(token.to_string()).await {
+            Ok(Some(uid)) => uid,
+            Ok(None) => return close_socket(socket, 1008, "Invalid token".to_string()).await,
+            Err(e) => return close_socket(socket, 1011, e.to_string()).await,
+        },
+        None => return close_socket(socket, 1008, "Not authenticated".to_string()).await,
+    };
 
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));

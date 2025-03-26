@@ -118,7 +118,7 @@ async fn handle_cmd(
                 dev.light_command_global(&mut esp_cmd).await?;
             }
         }
-        EntityCommand::Switch(state) => {
+        EntityCommand::Bool(state) => {
             if let Some(entity_name) = cmd.entity_name {
                 let key = dev
                     .get_switch_key_from_name(&entity_name)

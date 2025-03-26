@@ -1,8 +1,6 @@
- - login and sessions
  - scripts in UI (ID claiming)
- - MQTT, HomeKit
+ - MQTT
  - more subdevice types
- - organization
  - logging
  - readme
  - python scripting

@@ -5,7 +5,9 @@ use thiserror::Error;
 use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
-    device::DeviceIDLut, state::IglooState, entity::{EntityCommand, TargetedEntityCommand}
+    device::DeviceIDLut,
+    entity::{EntityCommand, TargetedEntityCommand},
+    state::IglooState,
 };
 
 #[derive(Error, Debug, Serialize)]
@@ -35,7 +37,7 @@ impl From<TrySendError<TargetedEntityCommand>> for DeviceChannelError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Selection {
     All,
     /// zid, start_did, end_did
@@ -215,7 +217,7 @@ impl Selection {
         }
         for other in others {
             if self.collides(other) {
-                return true
+                return true;
             }
         }
         false
@@ -225,7 +227,7 @@ impl Selection {
     pub fn any_collides_with_any(a: &Vec<Self>, other: &Vec<Self>) -> bool {
         for a in a {
             if a.collides_with_any(other) {
-                return true
+                return true;
             }
         }
         false

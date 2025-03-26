@@ -10,7 +10,7 @@ pub enum DispatchError {
     #[error("invalid element value selector `{0}`")]
     InvalidElementValueSelector(String),
     #[error("selector `{0}` had channel error `{1}`")]
-    DeviceChannelErorr(String, DeviceChannelError),
+    DeviceChannelError(String, DeviceChannelError),
     #[error("unknown zone `{0}`")]
     UnknownZone(String),
     #[error("json encoding error `{0}`")]

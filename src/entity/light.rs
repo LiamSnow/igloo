@@ -24,17 +24,15 @@ pub enum LightCommand {
     Brightness { brightness: u8 },
 }
 
-impl LightCommand {
-    pub fn dispatch(
-        self,
-        target: String,
-        sel: Selection,
-        state: &Arc<IglooState>,
-    ) -> Result<Option<String>, DispatchError> {
-        sel.execute(&state, EntityCommand::Light(self))
-            .map_err(|e| DispatchError::DeviceChannelErorr(target, e))?;
-        Ok(None)
-    }
+pub fn dispatch(
+    cmd: LightCommand,
+    sel_str: String,
+    sel: Selection,
+    state: &Arc<IglooState>,
+) -> Result<Option<String>, DispatchError> {
+    sel.execute(&state, cmd.into())
+        .map_err(|e| DispatchError::DeviceChannelError(sel_str, e))?;
+    Ok(None)
 }
 
 impl From<LightCommand> for EntityCommand {

@@ -1,17 +1,30 @@
-use chrono::NaiveTime;
+use chrono::{NaiveDateTime, NaiveTime};
+use float::FloatState;
+use int::IntState;
 use light::{LightCommand, LightState};
-use serde::{Deserialize, Serialize, Serializer};
-use switch::{SwitchCommand, SwitchState};
+use serde::{Deserialize, Serialize};
+use bool::{BoolCommand, BoolState};
+use text::TextState;
+use time::TimeState;
+use datetime::DateTimeState;
 
 pub mod light;
-pub mod switch;
+pub mod int;
+pub mod float;
+pub mod bool;
+pub mod text;
+pub mod time;
+pub mod datetime;
 
 #[derive(Debug, Clone)]
 pub enum EntityCommand {
     Light(LightCommand),
-    Switch(SwitchCommand),
+    Int(i32),
+    Float(f32),
+    Bool(BoolCommand),
+    Text(String),
     Time(NaiveTime),
-    Int(i32)
+    DateTime(NaiveDateTime),
 }
 
 pub struct TargetedEntityCommand {
@@ -23,18 +36,23 @@ pub struct TargetedEntityCommand {
 #[derive(Debug, Clone, Serialize)]
 pub enum EntityState {
     Light(LightState),
-    Switch(SwitchState),
-    #[serde(serialize_with = "serialize_time")]
-    Time(NaiveTime),
-    Int(i32)
+    Int(IntState),
+    Float(FloatState),
+    Bool(BoolState),
+    Text(TextState),
+    Time(TimeState),
+    DateTime(DateTimeState),
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
 pub enum EntityType {
     Light,
-    Switch,
+    Int,
+    Float,
+    Bool,
+    Text,
     Time,
-    Int
+    DateTime
 }
 
 #[derive(Serialize, Clone)]
@@ -48,9 +66,12 @@ impl EntityType {
     pub fn avg(&self, states: Vec<&EntityState>) -> Option<AveragedEntityState> {
         match self {
             EntityType::Light => LightState::avg(states),
-            EntityType::Switch => SwitchState::avg(states),
-            EntityType::Time => todo!(),
-            EntityType::Int => todo!(),
+            EntityType::Int => IntState::avg(states),
+            EntityType::Float => FloatState::avg(states),
+            EntityType::Bool => BoolState::avg(states),
+            EntityType::Text => TextState::avg(states),
+            EntityType::Time => TimeState::avg(states),
+            EntityType::DateTime => DateTimeState::avg(states),
         }
     }
 }
@@ -59,18 +80,12 @@ impl EntityState {
     pub fn get_type(&self) -> EntityType {
         match self {
             Self::Light(..) => EntityType::Light,
-            Self::Switch(..) => EntityType::Switch,
-            Self::Time(..) => EntityType::Time,
             Self::Int(..) => EntityType::Int,
+            Self::Float(..) => EntityType::Float,
+            Self::Bool(..) => EntityType::Bool,
+            Self::Text(..) => EntityType::Text,
+            Self::Time(..) => EntityType::Time,
+            Self::DateTime(..) => EntityType::DateTime,
         }
     }
-}
-
-pub fn serialize_time<S: Serializer>(time: &NaiveTime, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&time.format("%H:%M").to_string())
-}
-
-pub fn parse_time(time_str: &str) -> Result<NaiveTime, chrono::ParseError> {
-    NaiveTime::parse_from_str(&time_str, "%H:%M")
-        .or_else(|_| NaiveTime::parse_from_str(&time_str, "%I:%M %p"))
 }

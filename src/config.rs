@@ -54,9 +54,11 @@ pub enum UIElementConfig {
     CTLight(String),
     RGBLight(String),
     RGBCTLight(String),
-    Switch(String),
+    Bool(String),
     Time(String),
     Int(String),
+    Float(String),
+    Text(String),
 }
 
 impl UIElementConfig {
@@ -67,7 +69,7 @@ impl UIElementConfig {
             Self::CTLight(s) => Some((s, EntityType::Light)),
             Self::RGBLight(s) => Some((s, EntityType::Light)),
             Self::RGBCTLight(s) => Some((s, EntityType::Light)),
-            Self::Switch(s) => Some((s, EntityType::Switch)),
+            Self::Bool(s) => Some((s, EntityType::Bool)),
             Self::Time(s) => Some((s, EntityType::Time)),
             Self::Int(s) => Some((s, EntityType::Int)),
             _ => None,

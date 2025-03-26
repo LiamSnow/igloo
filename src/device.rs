@@ -3,7 +3,9 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{
-    elements::{self, Elements}, providers::{esphome, DeviceConfig}, entity::{EntityState, TargetedEntityCommand}
+    elements::{self, Elements},
+    entity::{EntityState, TargetedEntityCommand},
+    providers::{dummy, esphome, periodic, DeviceConfig},
 };
 
 #[derive(Default)]
@@ -29,7 +31,12 @@ pub struct Devices {
 }
 
 impl Devices {
-    pub fn init(lut: DeviceIDLut, mut dev_cfgs: Vec<DeviceConfig>, mut dev_sels: Vec<String>, elements: Arc<Elements>) -> Self {
+    pub fn init(
+        lut: DeviceIDLut,
+        mut dev_cfgs: Vec<DeviceConfig>,
+        mut dev_sels: Vec<String>,
+        elements: Arc<Elements>,
+    ) -> Self {
         let mut channels = Vec::new();
         let (on_change_tx, on_change_rx) = mpsc::channel(10); //FIXME size?
         let mut states = Vec::new();
@@ -38,16 +45,30 @@ impl Devices {
             let dev_cfg = dev_cfgs.remove(0);
             let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedEntityCommand>(5);
 
-            let task = match dev_cfg {
+            match dev_cfg {
                 DeviceConfig::ESPHome(cfg) => {
-                    esphome::task(cfg, did, dev_sel, cmd_rx, on_change_tx.clone())
+                    tokio::spawn(esphome::task(
+                        cfg,
+                        did,
+                        dev_sel,
+                        cmd_rx,
+                        on_change_tx.clone(),
+                    ));
                 }
-                DeviceConfig::HomeKit(_cfg) => todo!(),
-                DeviceConfig::DummyVariable(_cfg) => todo!(),
-                DeviceConfig::PeriodicTask(_cfg) => todo!(),
+                DeviceConfig::Dummy(cfg) => {
+                    tokio::spawn(dummy::task(cfg, did, dev_sel, cmd_rx, on_change_tx.clone()));
+                }
+                DeviceConfig::PeriodicTask(cfg) => {
+                    tokio::spawn(periodic::task(
+                        cfg,
+                        did,
+                        dev_sel,
+                        cmd_rx,
+                        on_change_tx.clone(),
+                    ));
+                }
                 DeviceConfig::MQTT(_cfg) => todo!(),
-            };
-            tokio::spawn(task);
+            }
 
             channels.push(cmd_tx);
             states.push(HashMap::new());
@@ -65,7 +86,9 @@ impl Devices {
 }
 
 impl DeviceIDLut {
-    pub fn init(devices: HashMap<String, HashMap<String, DeviceConfig>>) -> (Self, Vec<DeviceConfig>, Vec<String>) {
+    pub fn init(
+        devices: HashMap<String, HashMap<String, DeviceConfig>>,
+    ) -> (Self, Vec<DeviceConfig>, Vec<String>) {
         //make lut
         let (mut next_did, mut next_zid) = (0, 0);
         let mut lut = DeviceIDLut::default();
@@ -93,7 +116,7 @@ impl DeviceIDLut {
 async fn state_task(
     dev_states: Arc<Mutex<Vec<HashMap<String, EntityState>>>>,
     mut on_change_rx: mpsc::Receiver<(usize, String, EntityState)>,
-    elements: Arc<Elements>
+    elements: Arc<Elements>,
 ) {
     //TODO group changes?
     while let Some((did, entity_name, value)) = on_change_rx.recv().await {

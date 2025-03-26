@@ -4,7 +4,7 @@
 
     users: {
         "liams": (
-            // generate using openssl
+            // generate igloo hash PASSWD
             password_hash: "$6$xyz$IVL44asgjCQ0I2hQEd5yBF.fzuDD76Myox44EvwZE/v/ujPacqtw0le121WuQYkmg32JO/tG/EPss1/ih4TDB0",
         ),
         "maxg": (

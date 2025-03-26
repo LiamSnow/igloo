@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::{
-    elements::Element, entity::AveragedEntityState, scripts, selector::Selection,
+    elements::Element, entity::{self, AveragedEntityState}, scripts, selector::Selection,
     state::IglooState, VERSION,
 };
 
@@ -27,8 +27,12 @@ impl Cli {
     ) -> Result<Option<String>, DispatchError> {
         let sel = precheck_selection(&self, state, uid, cancel_conflicting).await?;
         Ok(match self.command {
-            CliCommands::Light(args) => args.action.dispatch(args.target, sel.unwrap(), state)?,
-            CliCommands::Switch(args) => args.action.dispatch(args.target, sel.unwrap(), state)?,
+            CliCommands::Light(args) => entity::light::dispatch(args.action, args.target, sel.unwrap(), state)?,
+            CliCommands::Int(args) => entity::int::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Float(args) => entity::float::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Bool(args) => entity::bool::dispatch(args.action, args.target, sel.unwrap(), state)?,
+            CliCommands::Text(args) => entity::text::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Time(args) => entity::time::dispatch(args.value, args.target, sel.unwrap(), state)?,
             CliCommands::Script(args) => args.action.dispatch(state, uid).await?,
             CliCommands::UI => get_ui_for_user(state, uid).await?,
             CliCommands::List(args) => args.item.dispatch(state).await?,

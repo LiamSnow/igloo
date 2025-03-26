@@ -2,7 +2,7 @@ import { createSignal, onMount, onCleanup, Show, For } from "solid-js";
 import { createStore } from "solid-js/store"
 import Group from "./components/Group";
 
-function App() {
+function Home() {
     const [data, setData] = createStore(null);
     const [error, setError] = createSignal(null);
     const [execute, setExecute] = createSignal(null);
@@ -17,7 +17,6 @@ function App() {
         ws.onmessage = (event) => {
             try {
                 let res = JSON.parse(event.data);
-                console.log(res); //FIXME remove
 
                 if (res.elements !== undefined) {
                     setData(res);
@@ -35,6 +34,13 @@ function App() {
                 setError(err);
             }
         };
+
+        ws.onclose = (event) => {
+            if (event.code == 1008) {
+                window.location.pathname = "/login";
+            }
+            console.log("Websocket closed", event);
+        }
 
         ws.onerror = (error) => {
             console.error('WebSocket error:', error);
@@ -82,4 +88,4 @@ function App() {
     );
 }
 
-export default App;
+export default Home;

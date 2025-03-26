@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{env, error::Error};
 
 use config::IglooConfig;
 use state::IglooState;
@@ -20,6 +20,17 @@ pub const CONFIG_VERSION: f32 = 0.1;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = env::args().collect();
+    match args.get(1) {
+        Some(arg) if arg == "hash" => {
+            let passwd = args.get(2).ok_or("Please provide password.")?;
+            let hashed = bcrypt::hash(passwd, bcrypt::DEFAULT_COST)?;
+            println!("{hashed}");
+            return Ok(())
+        },
+        _ => {},
+    }
+
     let cfg = IglooConfig::from_file("./config.ron").unwrap();
     if cfg.version != CONFIG_VERSION {
         panic!(

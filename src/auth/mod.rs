@@ -1,10 +1,16 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error};
 
 use bitvec::{bitvec, vec::BitVec};
+use login::TokenDatabase;
 
-use crate::{config::AuthConfig, device::DeviceIDLut, selector::{Selection, SelectorError}};
+use crate::{
+    config::AuthConfig,
+    device::DeviceIDLut,
+    selector::Selection,
+};
 
-#[derive(Default)]
+pub mod login;
+
 pub struct Auth {
     pub num_users: usize,
     pub uid_lut: HashMap<String, usize>,
@@ -12,39 +18,38 @@ pub struct Auth {
     /// uid -> pw hash
     pub pw_hashes: Vec<String>,
     /// gid -> [uid]
-    pub group: Vec<Vec<usize>>,
+    pub groups: Vec<Vec<usize>>,
     /// zid,uid -> allowed
     pub perms: Vec<BitVec>,
+    pub token_db: TokenDatabase,
 }
 
 impl Auth {
-    pub fn init(
-        cfg: AuthConfig,
-        dev_ids: &DeviceIDLut
-    ) -> Result<Self, SelectorError> {
-        let mut auth = Auth::default();
-        let mut all_uids = Vec::new();
-        let (mut uid, mut gid) = (0, 1);
-
+    pub async fn init(cfg: AuthConfig, dev_ids: &DeviceIDLut) -> Result<Self, Box<dyn Error>> {
+        let mut uid_lut = HashMap::new();
+        let (mut all_uids, mut pw_hashes) = (Vec::new(), Vec::new());
+        let mut uid = 0;
         for (username, user) in cfg.users {
-            auth.uid_lut.insert(username, uid);
-            auth.pw_hashes.push(user.password_hash);
+            uid_lut.insert(username, uid);
+            pw_hashes.push(user.password_hash);
             all_uids.push(uid);
             uid += 1;
         }
-        auth.num_users = uid;
+        let num_users = uid;
 
-        auth.gid_lut.insert("all".to_string(), 0);
-        auth.group.push(all_uids);
-
+        let mut gid = 0;
+        let mut gid_lut = HashMap::new();
+        let mut groups = Vec::new();
+        gid_lut.insert("all".to_string(), 0);
+        groups.push(all_uids);
         for (name, users) in cfg.groups {
-            auth.gid_lut.insert(name, gid);
+            gid_lut.insert(name, gid);
             let mut uids = Vec::new();
             for user in users {
-                let uid = auth.uid_lut.get(&user).unwrap(); //FIXME
+                let uid = uid_lut.get(&user).unwrap(); //FIXME
                 uids.push(*uid);
             }
-            auth.group.push(uids);
+            groups.push(uids);
             gid += 1;
         }
 
@@ -53,8 +58,8 @@ impl Auth {
         let mut zone_perms: HashMap<usize, BitVec> = HashMap::new();
         for (sel_str, target) in cfg.permissions {
             let sel = Selection::from_str(&dev_ids, &sel_str)?;
-            let uids = auth.get_uids(&target).unwrap(); //FIXME
-            let mut bv = bitvec![0; auth.num_users];
+            let uids = Self::get_uids_internal(&target, &uid_lut, &gid_lut, &groups).unwrap(); //FIXME
+            let mut bv = bitvec![0; num_users];
             for uid in uids {
                 bv.set(uid, true);
             }
@@ -68,30 +73,48 @@ impl Auth {
         }
 
         //default to allow all users
-        let all_perms = all_perms.unwrap_or(bitvec![1; auth.num_users]);
+        let all_perms = all_perms.unwrap_or(bitvec![1; num_users]);
 
         // build perms by zid
+        let mut perms = Vec::new();
         for zid in 0..dev_ids.num_zones {
             if let Some(bv) = zone_perms.get(&zid) {
-                auth.perms.push(bv.clone());
+                perms.push(bv.clone());
             } else {
-                auth.perms.push(all_perms.clone());
+                perms.push(all_perms.clone());
             }
         }
 
-        Ok(auth)
+        Ok(Auth {
+            num_users,
+            uid_lut,
+            gid_lut,
+            pw_hashes,
+            groups,
+            perms,
+            token_db: TokenDatabase::connect().await?,
+        })
+    }
+
+    fn get_uids_internal(
+        s: &str,
+        uid_lut: &HashMap<String, usize>,
+        gid_lut: &HashMap<String, usize>,
+        group: &Vec<Vec<usize>>,
+    ) -> Option<Vec<usize>> {
+        if let Some(gid) = gid_lut.get(s) {
+            Some(group.get(*gid).unwrap().clone())
+        } else if let Some(uid) = uid_lut.get(s) {
+            Some(vec![*uid])
+        } else {
+            None
+        }
     }
 
     /// if group name: returns all uids in group
     /// if user name: return their uid
     pub fn get_uids(&self, s: &str) -> Option<Vec<usize>> {
-        if let Some(gid) = self.gid_lut.get(s) {
-            Some(self.group.get(*gid).unwrap().clone())
-        } else if let Some(uid) = self.uid_lut.get(s) {
-            Some(vec![*uid])
-        } else {
-            None
-        }
+        Self::get_uids_internal(s, &self.uid_lut, &self.gid_lut, &self.groups)
     }
 
     /// Checks whether a user has authorization to access a Selection
