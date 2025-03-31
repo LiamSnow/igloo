@@ -1,4 +1,4 @@
-# igloo
+# Igloo
 
 WIP A lightweight, customizable smart home management platform.
 
@@ -8,7 +8,7 @@ WIP A lightweight, customizable smart home management platform.
  1. ESPHome (using my library `esphomebridge-rs`)
  2. MQTT (coming soon)
 
-## Technical Summary
+## Overview
 ### Hierarchy
  1. Zones
  2. Devices
@@ -70,7 +70,7 @@ Scripts are ran through the CLI.
 They can target hard-coded devices/entities or take arguments.
 
 Any scripting, regardless of language, has a bit of metadata:
- 1. `auto_run` (default: `false`) -> whether the script should be run a boot
+ 1. `auto_run` (default: `false`) -> whether the script should be run at boot
  2. `claims` -> what entities the script controls
  3. `auto_cancel` (default: `true`) -> whether the script should be cancelled if a command conflicts with its claims
     - for example, if this script claims `Light: ["kitchen.sink"]` and the user tries to turn that light off, should it cancel this script or reject their command
