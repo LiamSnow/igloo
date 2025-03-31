@@ -4,7 +4,7 @@
 
     users: {
         "liams": (
-            // generate igloo hash PASSWD
+            // generate with `igloo hash PASSWD`
             password_hash: "$6$xyz$IVL44asgjCQ0I2hQEd5yBF.fzuDD76Myox44EvwZE/v/ujPacqtw0le121WuQYkmg32JO/tG/EPss1/ih4TDB0",
         ),
         "maxg": (
@@ -25,17 +25,15 @@
 
     //Declare permissions in a cascading manner
     permissions: {
-        //"all"|ZONE:(USER|USER_GROUP)
+        //(all|ZONE):(USER|USER_GROUP)
         "all": "all",
         "crib": "gr-crib",
-        // "bar": "bar"
     },
 
     providers: [
         ESPHome(
             default_port: 6053
         ),
-        HomeKit(),
     ],
 
     zones: {
@@ -47,6 +45,20 @@
             "japan": ESPHome(
                 ip: "192.168.1.116",
                 noise_psk: ""
+            ),
+            "wakeup": PeriodicTask(
+                type: Time(
+                    default: "10:00 AM",
+                ),
+                on_change: "script run wakeup_change ${value}",
+                trigger_offset: -1200,
+                on_trigger: "script run brightness-change crib 100 0 1200",
+            ),
+            "sleep": PeriodicTask(
+                type: Time(
+                    default: "10:00 PM",
+                ),
+                on_trigger: "light crib off"
             ),
         },
 
@@ -116,39 +128,25 @@
             )
         ]),
         ("alarms", [
-            TimeSelector(
-                name: "sleep",
-                default: "10:00 PM",
-                on_trigger: "light crib off"
-            ),
-            TimeSelector(
-                name: "wakeup",
-                default: "10:00 AM",
-                trigger_offset: -1200,
-                on_trigger: "script run brightness-change crib 100 0 1200",
-                on_change: "script run wakeup_change ${time}"
-            ),
+            Time("crib.sleep"),
+            Time("crib.wakeup"),
         ])
     ],
 
+    // Use python, rust, or ron syntax to expand functionality
+    // Note: Rust scripts are declared in `src/scripts/builtin`
     scripts: {
         "example": Python(
-            meta: (
-                claims: {
-                    Light: ["$1"],
-                    Switch: ["$2"]
-                },
-                auto_cancel: true,
-            ),
+            claims: {
+                Light: ["$1"],
+                Switch: ["$2"]
+            },
             file: "example.py"
         ),
         "example_basic": Basic(
-            meta: (
-                claims: {
-                    Light: ["$1", "$2"]
-                },
-                auto_cancel: true,
-            ),
+            claims: {
+                Light: ["$1", "$2"]
+            },
             body: [
                 Forever([
                     Command("light $1 hue 0"),
@@ -161,10 +159,6 @@
             ]
         ),
         "wakeup_change": Basic(
-            meta: (
-                claims: {},
-                auto_cancel: false,
-            ),
             body: [
                 HttpPost(
                     url: "http://192.168.1.43/alarm/time",
