@@ -7,6 +7,8 @@ use bool::{BoolCommand, BoolState};
 use text::TextState;
 use time::TimeState;
 use datetime::DateTimeState;
+use weekly::{Weekly, WeeklyState};
+use weekly_mult::{MultipleWeekly, MultipleWeeklyState};
 
 pub mod light;
 pub mod int;
@@ -15,6 +17,8 @@ pub mod bool;
 pub mod text;
 pub mod time;
 pub mod datetime;
+pub mod weekly;
+pub mod weekly_mult;
 
 #[derive(Debug, Clone)]
 pub enum EntityCommand {
@@ -25,6 +29,8 @@ pub enum EntityCommand {
     Text(String),
     Time(NaiveTime),
     DateTime(NaiveDateTime),
+    Weekly(Weekly),
+    MultipleWeekly(MultipleWeekly)
 }
 
 pub struct TargetedEntityCommand {
@@ -42,6 +48,8 @@ pub enum EntityState {
     Text(TextState),
     Time(TimeState),
     DateTime(DateTimeState),
+    Weekly(WeeklyState),
+    MultipleWeekly(MultipleWeeklyState)
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
@@ -52,7 +60,9 @@ pub enum EntityType {
     Bool,
     Text,
     Time,
-    DateTime
+    DateTime,
+    Weekly,
+    MultipleWeekly
 }
 
 #[derive(Serialize, Clone)]
@@ -72,6 +82,8 @@ impl EntityType {
             EntityType::Text => TextState::avg(states),
             EntityType::Time => TimeState::avg(states),
             EntityType::DateTime => DateTimeState::avg(states),
+            EntityType::Weekly => Weekly::avg(states),
+            EntityType::MultipleWeekly => MultipleWeekly::avg(states)
         }
     }
 }
@@ -86,6 +98,8 @@ impl EntityState {
             Self::Text(..) => EntityType::Text,
             Self::Time(..) => EntityType::Time,
             Self::DateTime(..) => EntityType::DateTime,
+            Self::Weekly(..) => EntityType::Weekly,
+            Self::MultipleWeekly(..) => EntityType::MultipleWeekly,
         }
     }
 }
