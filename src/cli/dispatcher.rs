@@ -22,7 +22,7 @@ impl Cli {
     pub async fn dispatch(
         self,
         state: &Arc<IglooState>,
-        uid: usize,
+        uid: Option<usize>,
         cancel_conflicting: bool,
     ) -> Result<Option<String>, DispatchError> {
         let sel = precheck_selection(&self, state, uid, cancel_conflicting).await?;
@@ -46,7 +46,7 @@ impl Cli {
 async fn precheck_selection(
     cmd: &Cli,
     state: &Arc<IglooState>,
-    uid: usize,
+    uid: Option<usize>,
     cancel_conflicting: bool,
 ) -> Result<Option<Selection>, DispatchError> {
     Ok(match cmd.command.get_selection() {
@@ -54,8 +54,10 @@ async fn precheck_selection(
             let sel = Selection::from_str(&state.devices.lut, &sel_str)?;
 
             //check permissions
-            if !state.auth.is_authorized(&sel, uid) {
-                return Err(DispatchError::InvalidPermission);
+            if let Some(uid) = uid {
+                if !state.auth.is_authorized(&sel, uid) {
+                    return Err(DispatchError::InvalidPermission);
+                }
             }
 
             //try to cancel conflicting scripts
@@ -78,18 +80,21 @@ impl ScriptAction {
     async fn dispatch(
         self,
         state: &Arc<IglooState>,
-        uid: usize,
+        uid: Option<usize>,
     ) -> Result<Option<String>, DispatchError> {
         match self {
             ScriptAction::Run { extra_args, name } => {
-                scripts::spawn(&state.clone(), name, extra_args, uid).await?;
+                scripts::spawn(&state.clone(), name, extra_args, None, uid).await?;
+            }
+            ScriptAction::RunWithId { extra_args, name, sid } => {
+                scripts::spawn(&state.clone(), name, extra_args, Some(sid), uid).await?;
             }
             ScriptAction::CancelAll { name } => {
                 if let Some(failure) = scripts::cancel_all(state, &name, uid).await {
                     return Err(DispatchError::ScriptCancelFailure(failure));
                 }
             }
-            ScriptAction::Cancel { id } => {
+            ScriptAction::Cancel { sid: id } => {
                 if let Some(failure) = scripts::cancel(state, id, uid).await {
                     return Err(DispatchError::ScriptCancelFailure(failure));
                 }
@@ -101,15 +106,19 @@ impl ScriptAction {
 
 async fn get_ui_for_user(
     state: &Arc<IglooState>,
-    uid: usize,
+    uid: Option<usize>,
 ) -> Result<Option<String>, DispatchError> {
+    if uid.is_none() {
+        return Err(DispatchError::CommandRequiresUID)
+    }
+
     //remove unauthorized elements
     let mut elements = Vec::new();
     for (group_name, els) in &state.elements.elements {
         let mut els_for_user = Vec::new();
         for el in els {
             let allowed = match &el.allowed_uids {
-                Some(uids) => *uids.get(uid).unwrap(),
+                Some(uids) => *uids.get(uid.unwrap()).unwrap(),
                 None => true,
             };
             if allowed {

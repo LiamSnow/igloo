@@ -8,7 +8,7 @@ use crate::entity::bool::BoolCommand;
 use crate::entity::light::LightCommand;
 use crate::entity::EntityType;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -23,7 +23,7 @@ impl Cli {
     }
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
     /// Control lights
     #[command(alias = "lights")]
@@ -76,7 +76,7 @@ impl CliCommands {
     }
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct SelectorAndAction<T: Subcommand> {
     /// selector string
     pub target: String,
@@ -84,41 +84,41 @@ pub struct SelectorAndAction<T: Subcommand> {
     pub action: T,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct IntArgs {
     /// selector string
     pub target: String,
     pub value: i32,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct FloatArgs {
     /// selector string
     pub target: String,
     pub value: f32,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct TextArgs {
     /// selector string
     pub target: String,
     pub value: String,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct TimeArgs {
     /// selector string
     pub target: String,
     pub value: NaiveTime,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct ListArgs {
     #[command(subcommand)]
     pub item: ListItems,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum ListItems {
     /// List users
     #[command(alias = "usrs")]
@@ -151,13 +151,13 @@ impl ListItems {
     }
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct DescribeArgs {
     #[command(subcommand)]
     pub item: DescribeItems,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum DescribeItems {
     // /// Describe a user
     // #[command(alias = "usr")]
@@ -179,13 +179,13 @@ pub enum DescribeItems {
     Script { name: String },
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct LogsArgs {
     #[command(subcommand)]
     pub log_type: LogType,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum LogType {
     /// View system logs
     System,
@@ -197,13 +197,13 @@ pub enum LogType {
     Script { name: String },
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct ScriptArgs {
     #[command(subcommand)]
     pub action: ScriptAction,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum ScriptAction {
     /// Run the script
     Run {
@@ -213,8 +213,17 @@ pub enum ScriptAction {
         #[arg(trailing_var_arg = true)]
         extra_args: Vec<String>,
     },
+    RunWithId {
+        /// Name of the script
+        name: String,
+        /// ID for the script
+        sid: u32,
+        /// Script arguments
+        #[arg(trailing_var_arg = true)]
+        extra_args: Vec<String>,
+    },
     /// Cancel script instance by ID
-    Cancel { id: u32 },
+    Cancel { sid: u32 },
     /// Cancel all instances of this script
     CancelAll { name: String },
 }

@@ -1,4 +1,6 @@
 use chrono::{NaiveDateTime, NaiveTime};
+use climate::{ClimateCommand, ClimateState};
+use fan::{FanCommand, FanState};
 use float::FloatState;
 use int::IntState;
 use light::{LightCommand, LightState};
@@ -8,7 +10,6 @@ use text::TextState;
 use time::TimeState;
 use datetime::DateTimeState;
 use weekly::{Weekly, WeeklyState};
-use weekly_mult::{MultipleWeekly, MultipleWeeklyState};
 
 pub mod light;
 pub mod int;
@@ -18,7 +19,8 @@ pub mod text;
 pub mod time;
 pub mod datetime;
 pub mod weekly;
-pub mod weekly_mult;
+pub mod fan;
+pub mod climate;
 
 #[derive(Debug, Clone)]
 pub enum EntityCommand {
@@ -30,7 +32,8 @@ pub enum EntityCommand {
     Time(NaiveTime),
     DateTime(NaiveDateTime),
     Weekly(Weekly),
-    MultipleWeekly(MultipleWeekly)
+    Climate(ClimateCommand),
+    Fan(FanCommand),
 }
 
 pub struct TargetedEntityCommand {
@@ -49,7 +52,8 @@ pub enum EntityState {
     Time(TimeState),
     DateTime(DateTimeState),
     Weekly(WeeklyState),
-    MultipleWeekly(MultipleWeeklyState)
+    Climate(ClimateState),
+    Fan(FanState),
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
@@ -62,7 +66,8 @@ pub enum EntityType {
     Time,
     DateTime,
     Weekly,
-    MultipleWeekly
+    Climate,
+    Fan
 }
 
 #[derive(Serialize, Clone)]
@@ -83,7 +88,8 @@ impl EntityType {
             EntityType::Time => TimeState::avg(states),
             EntityType::DateTime => DateTimeState::avg(states),
             EntityType::Weekly => Weekly::avg(states),
-            EntityType::MultipleWeekly => MultipleWeekly::avg(states)
+            EntityType::Climate => ClimateState::avg(states),
+            EntityType::Fan => FanState::avg(states),
         }
     }
 }
@@ -99,7 +105,8 @@ impl EntityState {
             Self::Time(..) => EntityType::Time,
             Self::DateTime(..) => EntityType::DateTime,
             Self::Weekly(..) => EntityType::Weekly,
-            Self::MultipleWeekly(..) => EntityType::MultipleWeekly,
+            Self::Climate(..) => EntityType::Climate,
+            Self::Fan(..) => EntityType::Fan,
         }
     }
 }

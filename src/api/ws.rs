@@ -105,7 +105,7 @@ async fn parse_execute_wscmd(state: &Arc<IglooState>, cmd_str: &str, uid: usize)
         Err(e) => return Some(serde_json::to_string(&e.render().to_string()).unwrap()), //FIXME
     };
 
-    match cmd.dispatch(&state, uid, true).await {
+    match cmd.dispatch(&state, Some(uid), true).await {
         Ok(r) => r,
         //TODO log
         Err(e) => Some(serde_json::to_string(&e).unwrap()), //FIXME

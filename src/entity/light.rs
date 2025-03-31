@@ -24,6 +24,15 @@ pub enum LightCommand {
     Brightness { brightness: u8 },
 }
 
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct LightState {
+    pub on: bool,
+    pub color_on: bool,
+    pub hue: Option<u16>,
+    pub temp: Option<u32>,
+    pub brightness: Option<u8>,
+}
+
 pub fn dispatch(
     cmd: LightCommand,
     sel_str: String,
@@ -45,15 +54,6 @@ impl From<LightState> for EntityState {
     fn from(value: LightState) -> Self {
         Self::Light(value)
     }
-}
-
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
-pub struct LightState {
-    pub on: bool,
-    pub color_on: bool,
-    pub hue: Option<u16>,
-    pub temp: Option<u32>,
-    pub brightness: Option<u8>,
 }
 
 //Values as percentages (IE 0.-1.)
@@ -154,7 +154,8 @@ impl LightState {
     /// Average a set of colors
     /// Only avgs Some colors, if there are no colors it returns None (same for temp and bri)
     pub fn avg(states: Vec<&EntityState>) -> Option<AveragedEntityState> {
-        let (mut total, mut on_sum, mut color_on_sum) = (0, 0, 0);
+        let total = states.len();
+        let (mut on_sum, mut color_on_sum) = (0, 0);
         let (mut total_hue, mut hue_sum) = (0, 0);
         let (mut total_temp, mut temp_sum) = (0, 0);
         let (mut total_bright, mut bright_sum) = (0, 0);
@@ -165,7 +166,6 @@ impl LightState {
 
         for state in states {
             if let EntityState::Light(state) = state {
-                total += 1;
                 on_sum += state.on as u32;
                 color_on_sum += state.color_on as u32;
                 if let Some(hue) = state.hue {

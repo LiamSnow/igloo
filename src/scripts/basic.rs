@@ -10,7 +10,7 @@ pub fn spawn(
     script_name: String,
     id: u32,
     istate: Arc<IglooState>,
-    uid: usize,
+    uid: Option<usize>,
     mut args: Vec<String>,
     mut cancel_rx: oneshot::Receiver<()>,
     body: Vec<BasicScriptLine>,
@@ -40,7 +40,7 @@ pub fn spawn(
                     state = new_body;
                     is_forever = true;
                 },
-                BasicScriptLine::Save(k, v) => {
+                BasicScriptLine::Set(k, v) => {
                     if *k > MAX_ARGS {
                         panic!("Basic script {script_name}: save at index {k} is > max index {MAX_ARGS}");
                     }
@@ -68,7 +68,7 @@ pub fn spawn(
 async fn parse_execute(
     state: &Arc<IglooState>,
     script_name: &str,
-    uid: usize,
+    uid: Option<usize>,
     args: &Vec<String>,
     cmd_str: &str,
 ) {

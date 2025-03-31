@@ -1,6 +1,4 @@
- - scripts in UI (ID claiming)
+ - scripts in UI (frontend)
  - MQTT
- - more subdevice types
  - logging
- - readme
  - python scripting

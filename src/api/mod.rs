@@ -61,7 +61,7 @@ async fn post_cmd(
         Err(e) => return (StatusCode::BAD_REQUEST, Json(e.render().to_string())).into_response(),
     };
 
-    match cmd.dispatch(&state, uid, true).await {
+    match cmd.dispatch(&state, Some(uid), true).await {
         Ok(Some(body)) => (
             StatusCode::OK,
             AppendHeaders([(header::CONTENT_TYPE, "application/json")]),

@@ -60,10 +60,11 @@ pub async fn spawn(
     state: &Arc<IglooState>,
     script_name: String,
     extra_args: Vec<String>,
-    uid: usize,
+    id: Option<u32>,
+    uid: Option<usize>,
 ) -> Result<(), ScriptError> {
     if let Some(meta) = builtin::get_meta(&script_name) {
-        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, meta).await?;
+        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, id, meta).await?;
 
         let res = builtin::spawn(&script_name, id, state.clone(), uid, extra_args, cancel_rx).await;
         if let Err(err) = res {
@@ -74,7 +75,7 @@ pub async fn spawn(
         Ok(())
     } else if let Some(cfg) = state.scripts.configs.get(&script_name) {
         let meta = cfg.get_meta();
-        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, meta).await?;
+        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, id, meta).await?;
 
         match cfg {
             ScriptConfig::Python(cfg) => python::spawn(
@@ -105,15 +106,16 @@ pub async fn spawn(
 
 async fn init_script<'a>(
     state: &Arc<IglooState>,
-    uid: usize,
+    uid: Option<usize>,
     script_name: &str,
     extra_args: &Vec<String>,
+    id: Option<u32>,
     meta: ScriptMeta<'a>,
 ) -> Result<(u32, oneshot::Receiver<()>), ScriptError> {
     let claims = parse_claims(&state.devices.lut, &meta.claims, &extra_args)?;
 
     let perms = calc_perms(&state, &claims);
-    if !*perms.get(uid).unwrap() {
+    if uid.is_none() || !*perms.get(uid.unwrap()).unwrap() {
         return Err(ScriptError::NotAuthorized);
     }
 
@@ -126,7 +128,16 @@ async fn init_script<'a>(
 
     //push to state
     let mut states = state.scripts.states.lock().await;
-    let id = states.next_id;
+
+    let id = match id {
+        Some(id) => id,
+        None => {
+            let id = states.next_id;
+            states.next_id += 1;
+            id
+        },
+    };
+
     states.current.insert(
         id,
         RunningScriptMeta {
@@ -137,7 +148,6 @@ async fn init_script<'a>(
             perms,
         },
     );
-    states.next_id += 1;
     Ok((id, cancel_rx))
 }
 
@@ -233,14 +243,14 @@ pub enum ScriptCancelFailure {
 pub async fn cancel_all(
     state: &Arc<IglooState>,
     script_name: &str,
-    uid: usize,
+    uid: Option<usize>,
 ) -> Option<ScriptCancelFailure> {
     //TODO permissions
     let mut state = state.scripts.states.lock().await;
     let mut not_authorized = false;
     for (_, meta) in &mut state.current {
         if meta.script_name == script_name {
-            if *meta.perms.get(uid).unwrap() {
+            if uid.is_none() || *meta.perms.get(uid.unwrap()).unwrap() {
                 not_authorized = true
             } else {
                 let _ = meta.cancel_tx.take().unwrap().send(());
@@ -254,11 +264,11 @@ pub async fn cancel_all(
 }
 
 /// Cancel instance of a script
-pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: usize) -> Option<ScriptCancelFailure> {
+pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: Option<usize>) -> Option<ScriptCancelFailure> {
     //TODO permissions
     let mut state = state.scripts.states.lock().await;
     if let Some(meta) = state.current.get_mut(&id) {
-        if *meta.perms.get(uid).unwrap() {
+        if uid.is_none() || *meta.perms.get(uid.unwrap()).unwrap() {
             let _ = meta.cancel_tx.take().unwrap().send(());
             return None;
         } else {

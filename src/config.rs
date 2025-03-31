@@ -50,6 +50,8 @@ pub struct UserConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum UIElementConfig {
     Button(String, String),
+    Script(String),
+
     BasicLight(String),
     CTLight(String),
     RGBLight(String),
@@ -138,7 +140,7 @@ pub enum BasicScriptLine {
     Command(String),
     HttpGet { url: String },
     HttpPost { url: String, body: String },
-    Save(usize, String),
+    Set(usize, String),
     Delay(u64),
     Forever(Vec<BasicScriptLine>),
 }

@@ -23,6 +23,8 @@ pub enum DispatchError {
     ScriptError(ScriptError),
     #[error("script cancel error `${0}`")]
     ScriptCancelFailure(ScriptCancelFailure),
+    #[error("command requires UID")]
+    CommandRequiresUID,
 }
 
 impl From<serde_json::Error> for DispatchError {

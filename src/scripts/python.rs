@@ -8,7 +8,7 @@ pub fn spawn(
     _script_name: String,
     id: u32,
     state: Arc<IglooState>,
-    _uid: usize,
+    _uid: Option<usize>,
     _args: Vec<String>,
     _cancel_rx: oneshot::Receiver<()>,
     _filename: String,

@@ -55,7 +55,7 @@ macro_rules! gen_builtin_script_data {
             script_name: &str,
             id: u32,
             state: Arc<IglooState>,
-            uid: usize,
+            uid: Option<usize>,
             args: Vec<String>,
             cancel_rx: oneshot::Receiver<()>,
         ) -> Result<(), Box<dyn Error>> {

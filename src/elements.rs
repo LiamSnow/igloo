@@ -31,8 +31,10 @@ pub type ElementStatesLock = Mutex<Vec<Option<AveragedEntityState>>>;
 #[derive(Serialize, Clone)]
 pub struct Element {
     pub cfg: UIElementConfig,
-    // element state index (for elements tied to devices IE Lights)
+    /// element state ID (for elements tied to devices IE Lights)
     pub esid: Option<usize>,
+    /// script ID
+    pub sid: Option<u32>,
     /// if None, anyone can see
     #[serde(skip_serializing)]
     pub allowed_uids: Option<BitVec>,
@@ -60,24 +62,24 @@ impl Elements {
 
         // Make UI Elements
         let (mut elements, mut states, mut did_ranges) = (Vec::new(), Vec::new(), Vec::new());
-        let mut esid = 0;
+        let (mut next_esid, mut next_sid) = (0, 0);
         for (group_name, cfgs) in ui {
             let mut group_elements = Vec::new();
             for cfg in cfgs {
-                let (mut el_esid, mut allowed_uids) = (None, None);
+                let (mut esid, mut sid, mut allowed_uids) = (None, None, None);
 
                 if let Some((sel_str, entity_type)) = cfg.get_meta() {
                     allowed_uids = Selection::from_str(lut, sel_str)?
                         .get_zid()
                         .and_then(|zid| auth.perms.get(zid))
                         .cloned();
-                    el_esid = Some(esid);
+                    esid = Some(next_esid);
                     states.push(None);
 
                     // add subscribers and did_ranges
                     let sel = Selection::from_str(&lut, sel_str)?;
                     if let Selection::Entity(_, did, entity_name) = sel {
-                        subscriptions[did].entity.insert(entity_name.clone(), esid);
+                        subscriptions[did].entity.insert(entity_name.clone(), next_esid);
                         did_ranges.push((did, did, entity_type));
                     } else {
                         let (start_did, end_did) = match sel {
@@ -91,12 +93,12 @@ impl Elements {
                                 .of_type
                                 .entry(entity_type.clone())
                                 .or_insert(Vec::new());
-                            v.push(esid);
+                            v.push(next_esid);
                         }
                         did_ranges.push((start_did, end_did, entity_type));
                     }
 
-                    esid += 1;
+                    next_esid += 1;
                 }
 
                 // parse commands to find required perms (IE for buttons)
@@ -119,9 +121,16 @@ impl Elements {
                     //TODO script perms
                 }
 
+                // claim script ID
+                if matches!(cfg, UIElementConfig::Script(..)) {
+                    sid = Some(next_sid);
+                    next_sid += 1;
+                }
+
                 group_elements.push(Element {
                     cfg,
-                    esid: el_esid,
+                    esid,
+                    sid,
                     allowed_uids,
                 });
             }

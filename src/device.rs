@@ -1,11 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::{
+    cli::model::Cli,
     elements::{self, Elements},
     entity::{EntityState, TargetedEntityCommand},
-    providers::{dummy, esphome, periodic, DeviceConfig},
+    providers::{dummy, esphome, periodic, DeviceConfig}, state::IglooState,
 };
 
 #[derive(Default)]
@@ -36,12 +37,19 @@ impl Devices {
         mut dev_cfgs: Vec<DeviceConfig>,
         mut dev_sels: Vec<String>,
         elements: Arc<Elements>,
+        igloo_state_rx: oneshot::Receiver<Arc<IglooState>>
     ) -> Self {
-        let mut channels = Vec::new();
+        let states = Arc::new(Mutex::new(vec![HashMap::new(); lut.num_devs]));
         let (on_change_tx, on_change_rx) = mpsc::channel(10); //FIXME size?
-        let mut states = Vec::new();
+        tokio::spawn(state_task(states.clone(), on_change_rx, elements.clone()));
+
+        let (back_cmd_tx, back_cmd_rx) = mpsc::channel::<Cli>(5);
+        tokio::spawn(back_cmd_task(back_cmd_rx, igloo_state_rx));
+
+        let mut channels = Vec::new();
+
         for did in 0..lut.num_devs {
-            let dev_sel = dev_sels.remove(0); //FIXME .get(did)?
+            let dev_sel = dev_sels.remove(0);
             let dev_cfg = dev_cfgs.remove(0);
             let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedEntityCommand>(5);
 
@@ -51,18 +59,27 @@ impl Devices {
                         cfg,
                         did,
                         dev_sel,
+                        back_cmd_tx.clone(),
                         cmd_rx,
                         on_change_tx.clone(),
                     ));
                 }
                 DeviceConfig::Dummy(cfg) => {
-                    tokio::spawn(dummy::task(cfg, did, dev_sel, cmd_rx, on_change_tx.clone()));
+                    tokio::spawn(dummy::task(
+                        cfg,
+                        did,
+                        dev_sel,
+                        back_cmd_tx.clone(),
+                        cmd_rx,
+                        on_change_tx.clone(),
+                    ));
                 }
                 DeviceConfig::PeriodicTask(cfg) => {
                     tokio::spawn(periodic::task(
                         cfg,
                         did,
                         dev_sel,
+                        back_cmd_tx.clone(),
                         cmd_rx,
                         on_change_tx.clone(),
                     ));
@@ -71,11 +88,8 @@ impl Devices {
             }
 
             channels.push(cmd_tx);
-            states.push(HashMap::new());
         }
 
-        let states = Arc::new(Mutex::new(states));
-        tokio::spawn(state_task(states.clone(), on_change_rx, elements.clone()));
 
         Self {
             channels,
@@ -126,5 +140,23 @@ async fn state_task(
         //push to states
         let mut states = dev_states.lock().await;
         states[did].insert(entity_name, value.clone());
+    }
+}
+
+async fn back_cmd_task(
+    mut back_cmd_rx: mpsc::Receiver<Cli>,
+    state_rx: oneshot::Receiver<Arc<IglooState>>
+) {
+    let state = state_rx.await.unwrap();
+
+    while let Some(cmd) = back_cmd_rx.recv().await {
+        match cmd.dispatch(&state, None, true).await {
+            Ok(_) => {
+                //TODO log
+            },
+            Err(_) => {
+                // TODO log serde_json::to_string(&e).unwrap())
+            }
+        }
     }
 }

@@ -9,7 +9,7 @@ use crate::{
 pub async fn spawn(
     id: u32,
     state: Arc<IglooState>,
-    uid: usize,
+    uid: Option<usize>,
     args: Vec<String>,
     mut cancel_rx: oneshot::Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
@@ -18,7 +18,7 @@ pub async fn spawn(
         return Err("Usage `{selection} {speed} {length_ms (optional)}`".into());
     }
     let sel = Selection::from_str(&state.devices.lut, args.get(0).unwrap())?;
-    if !state.auth.is_authorized(&sel, uid) {
+    if uid.is_none() || !state.auth.is_authorized(&sel, uid.unwrap()) {
         return Err("NOT AUTHORIZED".into());
     }
     let speed: u8 = args.get(1).unwrap().parse()?;

@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
 
-use crate::entity::{
+use crate::{cli::model::Cli, entity::{
     light::{LightCommand, LightState, RGBF32},
     EntityCommand, EntityState, TargetedEntityCommand,
-};
+}};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -59,6 +59,7 @@ pub async fn task(
     config: DeviceConfig,
     did: usize,
     selector: String,
+    _cmd_tx: mpsc::Sender<Cli>,
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), ESPHomeError> {

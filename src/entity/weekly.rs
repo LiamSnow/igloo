@@ -9,7 +9,7 @@ use super::{AveragedEntityState, EntityCommand, EntityState, time::{deserialize_
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Weekly {
-    pub day: Weekday,
+    pub days: Vec<Weekday>,
     #[serde(
         deserialize_with = "deserialize_time",
         serialize_with = "serialize_time"
@@ -19,9 +19,36 @@ pub struct Weekly {
 
 impl Default for Weekly {
     fn default() -> Self {
+        Self::work_days(NaiveTime::default())
+    }
+}
+
+impl Weekly {
+    pub fn work_days(time: NaiveTime) -> Self {
         Self {
-            day: Weekday::Sun,
-            time: NaiveTime::default()
+            days: vec![
+                Weekday::Mon,
+                Weekday::Tue,
+                Weekday::Wed,
+                Weekday::Thu,
+                Weekday::Fri,
+            ],
+            time
+        }
+    }
+
+    pub fn all_days(time: NaiveTime) -> Self {
+        Self {
+            days: vec![
+                Weekday::Sun,
+                Weekday::Mon,
+                Weekday::Tue,
+                Weekday::Wed,
+                Weekday::Thu,
+                Weekday::Fri,
+                Weekday::Sat
+            ],
+            time
         }
     }
 }
