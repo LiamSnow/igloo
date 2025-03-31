@@ -36,7 +36,7 @@
         ),
     ],
 
-    zones: {
+    devices: {
         "crib": {
             "surf": ESPHome(
                 ip: "192.168.1.18",

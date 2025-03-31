@@ -67,6 +67,10 @@ pub async fn task(
 
     println!("{selector} ({did}) connected");
 
+    for e in dev.entities.get_all() {
+        println!("{} .. {}", e.name, e.typ);
+    }
+
     //push state up
     let mut update_rx = dev.subscribe_states(5).await?;
     tokio::spawn(async move {

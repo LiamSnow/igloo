@@ -176,7 +176,7 @@ pub enum DescribeItems {
     // Device { dev: String },
     /// Describe an automation
     #[command(alias = "atm")]
-    Automation { automation: String },
+    Script { name: String },
 }
 
 #[derive(Args, Debug)]
