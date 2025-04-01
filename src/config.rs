@@ -1,12 +1,12 @@
-use std::{collections::HashMap, error::Error, fs};
+use std::{collections::HashMap, fs};
 
 use ron::{extensions::Extensions, Options};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    entity::EntityType,
     providers::{DeviceConfig, ProviderConfig},
     scripts::{ScriptClaims, ScriptMeta},
-    entity::EntityType,
 };
 
 #[derive(Deserialize)]
@@ -20,16 +20,29 @@ pub struct IglooConfig {
 }
 
 impl IglooConfig {
-    pub fn from_file(file_path: &str) -> Result<Self, Box<dyn Error>> {
-        Self::parse(&fs::read_to_string(file_path)?)
+    pub fn from_file(file_path: &str) -> Self {
+        let file_res = fs::read_to_string(file_path);
+        if let Err(e) = file_res {
+            panic!("Failed reading config file: {e}")
+        }
+
+        Self::parse(file_res.unwrap())
     }
 
-    pub fn parse(s: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn parse(s: String) -> Self {
         let options = Options::default()
             .with_default_extension(Extensions::IMPLICIT_SOME)
             .with_default_extension(Extensions::UNWRAP_NEWTYPES)
             .with_default_extension(Extensions::UNWRAP_VARIANT_NEWTYPES);
-        Ok(options.from_str(s)?)
+        match options.from_str(&s) {
+            Ok(r) => r,
+            Err(e) => {
+                panic!(
+                    "Failed parsing config file:\n {} at {}",
+                    e.code, e.position
+                );
+            }
+        }
     }
 }
 
@@ -132,8 +145,12 @@ pub struct BasicScriptConfig {
     pub body: Vec<BasicScriptLine>,
 }
 
-fn get_false() -> bool { false }
-fn get_true() -> bool { false }
+fn get_false() -> bool {
+    false
+}
+fn get_true() -> bool {
+    false
+}
 
 #[derive(Deserialize, Clone)]
 pub enum BasicScriptLine {

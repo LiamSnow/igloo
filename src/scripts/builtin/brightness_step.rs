@@ -18,7 +18,7 @@ pub async fn spawn(
         return Err("Wrong number of args".into());
     }
     let sel = Selection::from_str(&state.devices.lut, args.get(0).unwrap())?;
-    if uid.is_none() || !state.auth.is_authorized(&sel, uid.unwrap()) {
+    if uid.is_some() && !state.auth.is_authorized(&sel, uid.unwrap()) {
         return Err("NOT AUTHORIZED".into());
     }
     let start_brightness: u8 = args.get(1).unwrap().parse()?;

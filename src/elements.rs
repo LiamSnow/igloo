@@ -4,9 +4,15 @@ use axum::extract::ws::Utf8Bytes;
 use bitvec::vec::BitVec;
 use serde::Serialize;
 use tokio::sync::{broadcast, Mutex};
+use tracing::{error, info, span, Level};
 
 use crate::{
-    auth::Auth, cli::model::Cli, config::UIElementConfig, device::DeviceIDLut, entity::{AveragedEntityState, EntityState, EntityType}, selector::Selection
+    auth::Auth,
+    cli::model::Cli,
+    config::UIElementConfig,
+    device::DeviceIDLut,
+    entity::{AveragedEntityState, EntityState, EntityType},
+    selector::Selection,
 };
 
 pub struct Elements {
@@ -58,6 +64,10 @@ impl Elements {
         lut: &DeviceIDLut,
         auth: &Auth,
     ) -> Result<Self, Box<dyn Error>> {
+        let span = span!(Level::INFO, "Elements");
+        let _enter = span.enter();
+        info!("initializing");
+
         let mut subscriptions = vec![DeviceChangeSubscriptions::default(); lut.num_devs];
 
         // Make UI Elements
@@ -79,7 +89,9 @@ impl Elements {
                     // add subscribers and did_ranges
                     let sel = Selection::from_str(&lut, sel_str)?;
                     if let Selection::Entity(_, did, entity_name) = sel {
-                        subscriptions[did].entity.insert(entity_name.clone(), next_esid);
+                        subscriptions[did]
+                            .entity
+                            .insert(entity_name.clone(), next_esid);
                         did_ranges.push((did, did, entity_type));
                     } else {
                         let (start_did, end_did) = match sel {
@@ -164,7 +176,8 @@ pub async fn on_device_update(
         .filter(|(sn, _)| *sn == entity_name)
     {
         let (_, _, expected_type) = &elements.esid_meta[*esid];
-        let (state, update) = calc_element_state_single_entity(*esid, expected_type, entity_state.clone());
+        let (state, update) =
+            calc_element_state_single_entity(*esid, expected_type, entity_state.clone());
         updates.push(update);
         let mut states = elements.states.lock().await;
         states[*esid] = state;
@@ -209,8 +222,8 @@ fn calc_element_state_single_entity(
 ) -> (Option<AveragedEntityState>, ElementStateChange) {
     let typ = entity_state.get_type();
     if typ != *expected_type {
-        println!(
-            "ERROR element type {:#?} does match entity type {:#?}",
+        error!(
+            "element type {:#?} does match entity type {:#?}",
             expected_type, typ
         );
     }

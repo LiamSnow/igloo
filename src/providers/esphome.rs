@@ -10,11 +10,15 @@ use esphomebridge_rs::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
+use tracing::{error, info, span, Level};
 
-use crate::{cli::model::Cli, entity::{
-    light::{LightCommand, LightState, RGBF32},
-    EntityCommand, EntityState, TargetedEntityCommand,
-}};
+use crate::{
+    cli::model::Cli,
+    entity::{
+        light::{LightCommand, LightState, RGBF32},
+        EntityCommand, EntityState, TargetedEntityCommand,
+    },
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -63,14 +67,14 @@ pub async fn task(
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), ESPHomeError> {
+    let span = span!(Level::INFO, "Device ESPHome", s=selector, did);
+    let _enter = span.enter();
+    info!("initializing");
+
     let mut dev = make_device(config)?;
     dev.connect().await?;
-
-    println!("{selector} ({did}) connected");
-
-    for e in dev.entities.get_all() {
-        println!("{} .. {}", e.name, e.typ);
-    }
+    let _enter = span.enter(); // 🤷
+    info!("connected");
 
     //push state up
     let mut update_rx = dev.subscribe_states(5).await?;
@@ -79,7 +83,7 @@ pub async fn task(
             if let Some(value) = esphome_state_to_igloo(update.value) {
                 let res = on_change_tx.send((did, update.entity_name, value)).await;
                 if let Err(e) = res {
-                    println!("ESPHome error sending on_change: {e}");
+                    error!("sending on_change: {e}");
                 }
             }
         }
@@ -90,15 +94,15 @@ pub async fn task(
     loop {
         match timeout(Duration::from_millis(100), cmd_rx.recv()).await {
             Ok(Some(cmd)) => {
-                //TODO replace ? with log
-                handle_cmd(&mut dev, cmd).await?;
+                if let Err(e) = handle_cmd(&mut dev, cmd).await {
+                    error!("{e}");
+                }
             }
             Err(_) => {
-                //TODO log error
                 dev.process_incoming().await?;
             }
             Ok(None) => {
-                //TODO log
+                error!("command channel closed");
                 break;
             }
         }

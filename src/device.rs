@@ -1,12 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tracing::{error, info, span, Level};
 
 use crate::{
     cli::model::Cli,
     elements::{self, Elements},
     entity::{EntityState, TargetedEntityCommand},
-    providers::{dummy, esphome, periodic, DeviceConfig}, state::IglooState,
+    providers::{dummy, esphome, periodic, DeviceConfig},
+    state::IglooState,
 };
 
 #[derive(Default)]
@@ -37,8 +39,12 @@ impl Devices {
         mut dev_cfgs: Vec<DeviceConfig>,
         mut dev_sels: Vec<String>,
         elements: Arc<Elements>,
-        igloo_state_rx: oneshot::Receiver<Arc<IglooState>>
+        igloo_state_rx: oneshot::Receiver<Arc<IglooState>>,
     ) -> Self {
+        let span = span!(Level::INFO, "Devices");
+        let _enter = span.enter();
+        info!("initializing");
+
         let states = Arc::new(Mutex::new(vec![HashMap::new(); lut.num_devs]));
         let (on_change_tx, on_change_rx) = mpsc::channel(10); //FIXME size?
         tokio::spawn(state_task(states.clone(), on_change_rx, elements.clone()));
@@ -90,7 +96,6 @@ impl Devices {
             channels.push(cmd_tx);
         }
 
-
         Self {
             channels,
             states,
@@ -132,6 +137,10 @@ async fn state_task(
     mut on_change_rx: mpsc::Receiver<(usize, String, EntityState)>,
     elements: Arc<Elements>,
 ) {
+    let span = span!(Level::INFO, "Devices State Update Task");
+    let _enter = span.enter();
+    info!("running");
+
     //TODO group changes?
     while let Some((did, entity_name, value)) = on_change_rx.recv().await {
         //update elements
@@ -145,18 +154,17 @@ async fn state_task(
 
 async fn back_cmd_task(
     mut back_cmd_rx: mpsc::Receiver<Cli>,
-    state_rx: oneshot::Receiver<Arc<IglooState>>
+    state_rx: oneshot::Receiver<Arc<IglooState>>,
 ) {
+    let span = span!(Level::INFO, "Devices Back Command Task");
+    let _enter = span.enter();
+    info!("running");
+
     let state = state_rx.await.unwrap();
 
     while let Some(cmd) = back_cmd_rx.recv().await {
-        match cmd.dispatch(&state, None, true).await {
-            Ok(_) => {
-                //TODO log
-            },
-            Err(_) => {
-                // TODO log serde_json::to_string(&e).unwrap())
-            }
+        if let Err(e) = cmd.dispatch(&state, None, true).await {
+            error!("{}", serde_json::to_string(&e).unwrap());
         }
     }
 }

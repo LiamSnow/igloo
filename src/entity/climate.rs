@@ -5,12 +5,12 @@ use serde::Serialize;
 
 use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
 
-use super::{EntityCommand, EntityState, AveragedEntityState};
+use super::{AveragedEntityState, EntityCommand, EntityState};
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum ClimateCommand {
     Mode(ClimateModeArgs),
-    Temperature { value: i32 }
+    Temperature { value: i32 },
 }
 
 #[derive(Args, Debug, Clone)]
@@ -28,13 +28,13 @@ pub enum ClimateMode {
     Cool,
     HeatCool,
     Fan,
-    Dry
+    Dry,
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 pub struct ClimateState {
     temp: i32,
-    mode: ClimateMode
+    mode: ClimateMode,
 }
 
 impl From<u8> for ClimateMode {

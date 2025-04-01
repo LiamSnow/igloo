@@ -3,6 +3,7 @@ use std::cmp::{max, min};
 use chrono::{Duration, Local, NaiveTime, Datelike};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+use tracing::{error, info, span, Level};
 
 use crate::{
     cli::model::Cli,
@@ -48,6 +49,10 @@ pub async fn task(
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), String> {
+    let span = span!(Level::INFO, "Device Periodic", s=selector, did);
+    let _enter = span.enter();
+    info!("initializing");
+
     let on_trigger = parse_cmd(config.on_trigger)?;
     let on_change = config.on_change.map(parse_cmd).transpose()?;
 
@@ -63,12 +68,12 @@ pub async fn task(
                 .send((did, ENTITY_NAME.to_string(), WeeklyState::from(weekly.clone()).into()))
                 .await
             {
-                println!("Periodic task {selector} error sending on_change: {e}");
+                error!("sending on_change: {e}");
             }
 
             if let Some(ref cmd) = on_change {
                 if let Err(e) = cmd_tx.send(cmd.clone()).await {
-                    println!("Periodic task {selector} error sending on_change command: {e}");
+                    error!("sending on_change command: {e}");
                 }
             }
         }
@@ -81,7 +86,7 @@ pub async fn task(
         tokio::select! {
             _ = tokio::time::sleep(sleep_duration) => {
                 if let Err(e) = cmd_tx.send(on_trigger.clone()).await {
-                    println!("Periodic task {selector} error sending on_trigger: {e}");
+                    error!("sending on_trigger: {e}");
                 }
                 notify_change = false;
             }

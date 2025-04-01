@@ -1,6 +1,7 @@
 use std::{error::Error, sync::Arc, time::Duration};
 
 use tokio::{sync::oneshot, time};
+use tracing::info;
 
 use crate::{
     entity::light::LightCommand, state::IglooState, selector::Selection,
@@ -18,8 +19,8 @@ pub async fn spawn(
         return Err("Usage `{selection} {speed} {length_ms (optional)}`".into());
     }
     let sel = Selection::from_str(&state.devices.lut, args.get(0).unwrap())?;
-    if uid.is_none() || !state.auth.is_authorized(&sel, uid.unwrap()) {
-        return Err("NOT AUTHORIZED".into());
+    if uid.is_some() && !state.auth.is_authorized(&sel, uid.unwrap()) {
+        return Err(format!("Not authorized uid={}", uid.unwrap()).into());
     }
     let speed: u8 = args.get(1).unwrap().parse()?;
     let length_ms: Option<u32>;
@@ -62,7 +63,7 @@ pub async fn spawn(
         let mut script_states = state.scripts.states.lock().await;
         script_states.current.remove(&id);
 
-        println!("rainbow stopped!!");
+        info!("rainbow stopped!!");
     });
 
     Ok(())

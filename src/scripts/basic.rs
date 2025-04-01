@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use tokio::sync::oneshot;
+use tracing::{error, info, span, Level};
 
 use crate::{cli::model::Cli, config::BasicScriptLine, state::IglooState};
 
@@ -16,6 +17,10 @@ pub fn spawn(
     body: Vec<BasicScriptLine>,
 ) {
     tokio::spawn(async move {
+        let span = span!(Level::INFO, "Builtin Script", script_name, id);
+        let _enter = span.enter();
+        info!("running uid={:#?}, args={:#?}", uid, args);
+
         let mut state: &Vec<BasicScriptLine> = &body;
         let mut state_index = 0;
         let mut is_forever = false;
@@ -27,19 +32,15 @@ pub fn spawn(
 
             match state.get(state_index).unwrap() {
                 BasicScriptLine::Command(cmd) => {
-                    parse_execute(&istate, &script_name, uid, &args, cmd).await
+                    parse_execute(&istate, uid, &args, cmd).await
                 }
-                BasicScriptLine::Delay(ms) => {
-                    tokio::time::sleep(Duration::from_millis(*ms)).await
-                }
-                BasicScriptLine::HttpGet { url } => http_get(&script_name, url).await,
-                BasicScriptLine::HttpPost { url, body } => {
-                    http_post(&script_name, url, body, &args).await
-                },
+                BasicScriptLine::Delay(ms) => tokio::time::sleep(Duration::from_millis(*ms)).await,
+                BasicScriptLine::HttpGet { url } => http_get(url).await,
+                BasicScriptLine::HttpPost { url, body } => http_post(url, body, &args).await,
                 BasicScriptLine::Forever(new_body) => {
                     state = new_body;
                     is_forever = true;
-                },
+                }
                 BasicScriptLine::Set(k, v) => {
                     if *k > MAX_ARGS {
                         panic!("Basic script {script_name}: save at index {k} is > max index {MAX_ARGS}");
@@ -50,7 +51,7 @@ pub fn spawn(
                     }
 
                     args[*k] = v.clone();
-                },
+                }
             }
 
             state_index += 1;
@@ -67,7 +68,6 @@ pub fn spawn(
 
 async fn parse_execute(
     state: &Arc<IglooState>,
-    script_name: &str,
     uid: Option<usize>,
     args: &Vec<String>,
     cmd_str: &str,
@@ -75,7 +75,7 @@ async fn parse_execute(
     let cmd_str = match inject_args(cmd_str, args) {
         Ok(s) => s,
         Err(e) => {
-            println!("Basic script {script_name} inject args into cmd error {e}");
+            error!("argument injection: {e}");
             return;
         }
     };
@@ -83,37 +83,34 @@ async fn parse_execute(
     let cmd = match Cli::parse(&cmd_str) {
         Ok(r) => r,
         Err(e) => {
-            println!(
-                "Basic script {script_name} cmd parsing error: {}",
-                e.render().to_string()
-            );
+            error!("command parsing error: {}", e.render().to_string());
             return;
         }
     };
 
     if let Err(err) = cmd.dispatch(&state, uid, false).await {
-        println!("Basic script {script_name} cmd failed: {err}");
+        error!("command dispatch: {err}");
     }
 }
 
-async fn http_get(script_name: &str, url: &str) {
+async fn http_get(url: &str) {
     if let Err(err) = reqwest::get(url).await {
-        println!("Basic script {} http get error: {}", script_name, err);
+        error!("HTTP GET: {}", err);
     }
 }
 
-async fn http_post(script_name: &str, url: &str, body: &str, args: &Vec<String>) {
+async fn http_post(url: &str, body: &str, args: &Vec<String>) {
     let body = match inject_args(body, args) {
         Ok(s) => s,
         Err(e) => {
-            println!("Basic script {script_name} inject args into post body error {e}");
+            error!("HTTP POST inject arguments: {e}");
             return;
         }
     };
     let client = reqwest::Client::new();
     let res = client.post(url).body(body).send().await;
     if let Err(err) = res {
-        println!("Basic script {} http post error: {}", script_name, err);
+        error!("HTTP POST: {}", err);
     }
 }
 
@@ -126,7 +123,7 @@ fn inject_args(s: &str, args: &Vec<String>) -> Result<String, String> {
             match args.get(i - 1) {
                 Some(arg) => {
                     result = result.replace(&pos_arg, arg);
-                },
+                }
                 None => {
                     return Err(format!("Missing pos arg ${}", i));
                 }

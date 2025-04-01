@@ -6,6 +6,7 @@ use error::ScriptError;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::{oneshot, Mutex};
+use tracing::{info, span, Level};
 
 use crate::{
     config::ScriptConfig, device::DeviceIDLut, selector::Selection, state::IglooState, entity::EntityType
@@ -23,6 +24,8 @@ pub struct Scripts {
 
 impl Scripts {
     pub fn init(configs: HashMap<String, ScriptConfig>) -> Self {
+        //TODO run boot scripts
+
         Self {
             states: Mutex::new(ScriptStates::default()),
             configs,
@@ -59,23 +62,27 @@ pub struct RunningScriptMeta {
 pub async fn spawn(
     state: &Arc<IglooState>,
     script_name: String,
-    extra_args: Vec<String>,
+    args: Vec<String>,
     id: Option<u32>,
     uid: Option<usize>,
 ) -> Result<(), ScriptError> {
     if let Some(meta) = builtin::get_meta(&script_name) {
-        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, id, meta).await?;
+        let span = span!(Level::INFO, "Builtin Script", script_name, id);
+        let _enter = span.enter();
+        info!("running uid={:#?}, args={:#?}", uid, args);
 
-        let res = builtin::spawn(&script_name, id, state.clone(), uid, extra_args, cancel_rx).await;
+        let (id, cancel_rx) = init_script(state, uid, &script_name, &args, id, meta).await?;
+
+        let res = builtin::spawn(&script_name, id, state.clone(), uid, args, cancel_rx).await;
         if let Err(err) = res {
-            //TODO log
+            tracing::error!("{}", err.to_string());
             return Err(ScriptError::BuiltInFailure(err.to_string()));
         }
 
         Ok(())
     } else if let Some(cfg) = state.scripts.configs.get(&script_name) {
         let meta = cfg.get_meta();
-        let (id, cancel_rx) = init_script(state, uid, &script_name, &extra_args, id, meta).await?;
+        let (id, cancel_rx) = init_script(state, uid, &script_name, &args, id, meta).await?;
 
         match cfg {
             ScriptConfig::Python(cfg) => python::spawn(
@@ -83,7 +90,7 @@ pub async fn spawn(
                 id,
                 state.clone(),
                 uid,
-                extra_args,
+                args,
                 cancel_rx,
                 cfg.file.clone(),
             ),
@@ -92,7 +99,7 @@ pub async fn spawn(
                 id,
                 state.clone(),
                 uid,
-                extra_args,
+                args,
                 cancel_rx,
                 cfg.body.clone(),
             ),
@@ -115,7 +122,7 @@ async fn init_script<'a>(
     let claims = parse_claims(&state.devices.lut, &meta.claims, &extra_args)?;
 
     let perms = calc_perms(&state, &claims);
-    if uid.is_none() || !*perms.get(uid.unwrap()).unwrap() {
+    if uid.is_some() && !*perms.get(uid.unwrap()).unwrap() {
         return Err(ScriptError::NotAuthorized);
     }
 
@@ -250,7 +257,7 @@ pub async fn cancel_all(
     let mut not_authorized = false;
     for (_, meta) in &mut state.current {
         if meta.script_name == script_name {
-            if uid.is_none() || *meta.perms.get(uid.unwrap()).unwrap() {
+            if uid.is_some() && !*meta.perms.get(uid.unwrap()).unwrap() {
                 not_authorized = true
             } else {
                 let _ = meta.cancel_tx.take().unwrap().send(());
@@ -268,7 +275,7 @@ pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: Option<usize>) -> Opt
     //TODO permissions
     let mut state = state.scripts.states.lock().await;
     if let Some(meta) = state.current.get_mut(&id) {
-        if uid.is_none() || *meta.perms.get(uid.unwrap()).unwrap() {
+        if uid.is_some() && !*meta.perms.get(uid.unwrap()).unwrap() {
             let _ = meta.cancel_tx.take().unwrap().send(());
             return None;
         } else {

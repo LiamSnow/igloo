@@ -22,7 +22,7 @@ use crate::api::ws::ws_handler;
 
 pub mod ws;
 
-pub async fn init(state: Arc<IglooState>) -> Result<(), Box<dyn Error>> {
+pub async fn run(state: Arc<IglooState>) -> Result<(), Box<dyn Error>> {
     let solid = ServeFile::new("./web/dist/index.html");
     let app = Router::new()
         .route("/", get_service(solid.clone()).post(post_cmd))

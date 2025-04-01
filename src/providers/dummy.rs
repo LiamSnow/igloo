@@ -1,6 +1,7 @@
 use chrono::NaiveTime;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+use tracing::{error, info, span, Level};
 
 use crate::{cli::model::Cli, entity::{
     bool::BoolState,
@@ -49,11 +50,16 @@ pub enum VarType {
 pub async fn task(
     config: DeviceConfig,
     did: usize,
-    _selector: String,
+    selector: String,
     _cmd_tx: mpsc::Sender<Cli>,
     cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) {
+
+    let span = span!(Level::INFO, "Device Dummy", s=selector, did);
+    let _enter = span.enter();
+    info!("initializing");
+
     match config.r#type {
         VarType::Int { default, range } => {
             int_task(default, range, did, cmd_rx, on_change_tx).await
@@ -82,7 +88,7 @@ pub async fn bool_task(
         ))
         .await;
     if let Err(e) = res {
-        println!("Dummy error sending on_change: {e}");
+        error!("sending on_change: {e}");
     }
 
     while let Some(cmd) = cmd_rx.recv().await {
@@ -91,10 +97,10 @@ pub async fn bool_task(
                 .send((did, ENTITY_NAME.to_string(), value.into()))
                 .await;
             if let Err(e) = res {
-                println!("Dummy error sending on_change: {e}");
+                error!("sending on_change: {e}");
             }
         } else {
-            println!("Dummy invalid entity command type");
+            error!("invalid entity command type");
         }
     }
 }
@@ -111,14 +117,14 @@ pub async fn int_task(
         .send((did, ENTITY_NAME.to_string(), IntState::from(default).into()))
         .await;
     if let Err(e) = res {
-        println!("Dummy error sending on_change: {e}");
+        error!("sending on_change: {e}");
     }
 
     while let Some(cmd) = cmd_rx.recv().await {
         if let EntityCommand::Int(value) = cmd.cmd {
             if let Some((min, max)) = range {
                 if value < min || value > max {
-                    println!("Dummy int out of range (value:{value},min:{min}:max{max}). Skipping");
+                    error!("int out of range (value:{value},min:{min}:max{max}). Skipping");
                     continue;
                 }
             }
@@ -127,10 +133,10 @@ pub async fn int_task(
                 .send((did, ENTITY_NAME.to_string(), IntState::from(value).into()))
                 .await;
             if let Err(e) = res {
-                println!("Dummy error sending on_change: {e}");
+                error!("sending on_change: {e}");
             }
         } else {
-            println!("Dummy invalid entity command type");
+            error!("invalid entity command type");
         }
     }
 }
@@ -151,15 +157,15 @@ pub async fn float_task(
         ))
         .await;
     if let Err(e) = res {
-        println!("Dummy error sending on_change: {e}");
+        error!("sending on_change: {e}");
     }
 
     while let Some(cmd) = cmd_rx.recv().await {
         if let EntityCommand::Float(value) = cmd.cmd {
             if let Some((min, max)) = range {
                 if value < min || value > max {
-                    println!(
-                        "Dummy float out of range (value:{value},min:{min}:max{max}). Skipping"
+                    error!(
+                        "float out of range (value:{value},min:{min}:max{max}). Skipping"
                     );
                     continue;
                 }
@@ -169,10 +175,10 @@ pub async fn float_task(
                 .send((did, ENTITY_NAME.to_string(), FloatState::from(value).into()))
                 .await;
             if let Err(e) = res {
-                println!("Dummy error sending on_change: {e}");
+                error!("sending on_change: {e}");
             }
         } else {
-            println!("Dummy invalid entity command type");
+            error!("invalid entity command type");
         }
     }
 }
@@ -192,7 +198,7 @@ pub async fn text_task(
         ))
         .await;
     if let Err(e) = res {
-        println!("Dummy error sending on_change: {e}");
+        error!("sending on_change: {e}");
     }
 
     while let Some(cmd) = cmd_rx.recv().await {
@@ -201,10 +207,10 @@ pub async fn text_task(
                 .send((did, ENTITY_NAME.to_string(), TextState::from(value).into()))
                 .await;
             if let Err(e) = res {
-                println!("Dummy error sending on_change: {e}");
+                error!("sending on_change: {e}");
             }
         } else {
-            println!("Dummy invalid entity command type");
+            error!("invalid entity command type");
         }
     }
 }
@@ -224,7 +230,7 @@ pub async fn time_task(
         ))
         .await;
     if let Err(e) = res {
-        println!("Dummy error sending on_change: {e}");
+        error!("sending on_change: {e}");
     }
 
     while let Some(cmd) = cmd_rx.recv().await {
@@ -233,10 +239,10 @@ pub async fn time_task(
                 .send((did, ENTITY_NAME.to_string(), TimeState::from(value).into()))
                 .await;
             if let Err(e) = res {
-                println!("Dummy error sending on_change: {e}");
+                error!("sending on_change: {e}");
             }
         } else {
-            println!("Dummy invalid entity command type");
+            error!("invalid entity command type");
         }
     }
 }

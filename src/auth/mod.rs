@@ -1,7 +1,9 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
 use bitvec::{bitvec, vec::BitVec};
+use error::AuthError;
 use login::TokenDatabase;
+use tracing::{info, span, Level};
 
 use crate::{
     config::AuthConfig,
@@ -10,6 +12,7 @@ use crate::{
 };
 
 pub mod login;
+pub mod error;
 
 pub struct Auth {
     pub num_users: usize,
@@ -25,7 +28,11 @@ pub struct Auth {
 }
 
 impl Auth {
-    pub async fn init(cfg: AuthConfig, dev_ids: &DeviceIDLut) -> Result<Self, Box<dyn Error>> {
+    pub async fn init(cfg: AuthConfig, dev_ids: &DeviceIDLut) -> Result<Self, AuthError> {
+        let span = span!(Level::INFO, "Auth");
+        let _enter = span.enter();
+        info!("initializing");
+
         let mut uid_lut = HashMap::new();
         let (mut all_uids, mut pw_hashes) = (Vec::new(), Vec::new());
         let mut uid = 0;
@@ -68,7 +75,7 @@ impl Auth {
                 Selection::Zone(zid, _, _) => {
                     zone_perms.insert(zid, bv);
                 }
-                _ => println!("Permissions can only be applied to zones and all. Skipping."),
+                _ => info!("Permissions can only be applied to zones and all. Skipping."),
             }
         }
 

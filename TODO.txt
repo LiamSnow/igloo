@@ -1,4 +1,3 @@
  - scripts in UI (frontend)
  - MQTT
- - logging
  - python scripting

@@ -19,7 +19,6 @@ pub struct IglooState {
 
 impl IglooState {
     pub async fn init(icfg: IglooConfig) -> Result<Arc<Self>, Box<dyn Error>> {
-
         let (dev_lut, dev_cfgs, dev_sels) = DeviceIDLut::init(icfg.devices);
 
         let auth = Auth::init(icfg.auth, &dev_lut).await?;
