@@ -17,17 +17,31 @@ function Home() {
         ws.onmessage = (event) => {
             try {
                 let res = JSON.parse(event.data);
+                // console.log("got", res);
 
+                // init
                 if (res.elements !== undefined) {
                     setData(res);
+                    setData('scripts', {});
                 }
-                else if (Array.isArray(res)) {
-                    for (const update of res) {
+
+                // partial updates
+
+                else if (res.header === "states") {
+                    for (const update of res.body) {
                         setData('states', update.esid, update.value);
                     }
                 }
-                else if (res.evid !== undefined) {
-                    setData('values', res.evid, res.value);
+
+                else if (res.header === "scripts") {
+                    if ("Add" in res.body) {
+                        setData('scripts', res.body.Add, true);
+                    }
+                    else {
+                        setData('scripts', res.body.Remove, false);
+                    }
+                    console.log(res.body);
+                    console.log("now scripts", data.scripts);
                 }
             } catch (err) {
                 console.error('Error processing message:', err);

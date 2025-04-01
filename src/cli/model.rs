@@ -214,10 +214,10 @@ pub enum ScriptAction {
         extra_args: Vec<String>,
     },
     RunWithId {
-        /// Name of the script
-        name: String,
         /// ID for the script
         sid: u32,
+        /// Name of the script
+        name: String,
         /// Script arguments
         #[arg(trailing_var_arg = true)]
         extra_args: Vec<String>,

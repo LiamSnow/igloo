@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 use tracing::{error, info, span, Level};
 
-use crate::{cli::model::Cli, config::BasicScriptLine, state::IglooState};
+use crate::{cli::model::Cli, config::BasicScriptLine, scripts::{send_change_to_ui, ScriptStateChange}, state::IglooState};
 
 const MAX_ARGS: usize = 9;
 
@@ -17,7 +17,7 @@ pub fn spawn(
     body: Vec<BasicScriptLine>,
 ) {
     tokio::spawn(async move {
-        let span = span!(Level::INFO, "Builtin Script", script_name, id);
+        let span = span!(Level::INFO, "Basic Script", script_name, id);
         let _enter = span.enter();
         info!("running uid={:#?}, args={:#?}", uid, args);
 
@@ -63,6 +63,7 @@ pub fn spawn(
         // clean up
         let mut script_states = istate.scripts.states.lock().await;
         script_states.current.remove(&id);
+        send_change_to_ui(&istate, ScriptStateChange::Remove(id));
     });
 }
 

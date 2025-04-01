@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time};
 
 use crate::{
-    entity::light::LightCommand, state::IglooState, selector::Selection,
+    entity::light::LightCommand, scripts::{send_change_to_ui, ScriptStateChange}, selector::Selection, state::IglooState
 };
 
 pub async fn spawn(
@@ -50,6 +50,7 @@ pub async fn spawn(
         // clean up
         let mut script_states = state.scripts.states.lock().await;
         script_states.current.remove(&id);
+        send_change_to_ui(&state, ScriptStateChange::Remove(id));
     });
 
     Ok(())

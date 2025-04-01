@@ -9,7 +9,7 @@ use tokio::sync::{oneshot, Mutex};
 use tracing::{info, span, Level};
 
 use crate::{
-    config::ScriptConfig, device::DeviceIDLut, selector::Selection, state::IglooState, entity::EntityType
+    config::ScriptConfig, device::DeviceIDLut, elements, entity::EntityType, selector::Selection, state::IglooState
 };
 
 mod basic;
@@ -25,6 +25,7 @@ pub struct Scripts {
 impl Scripts {
     pub fn init(configs: HashMap<String, ScriptConfig>) -> Self {
         //TODO run boot scripts
+
 
         Self {
             states: Mutex::new(ScriptStates::default()),
@@ -155,7 +156,20 @@ async fn init_script<'a>(
             perms,
         },
     );
+
+    send_change_to_ui(state, ScriptStateChange::Add(id));
+
     Ok((id, cancel_rx))
+}
+
+#[derive(Serialize)]
+pub enum ScriptStateChange {
+    Add(u32),
+    Remove(u32)
+}
+
+pub fn send_change_to_ui(state: &Arc<IglooState>, change: ScriptStateChange) {
+    elements::send_change(&state.elements, "scripts", &change);
 }
 
 /// Parses String claims into Selections.
@@ -276,10 +290,10 @@ pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: Option<usize>) -> Opt
     let mut state = state.scripts.states.lock().await;
     if let Some(meta) = state.current.get_mut(&id) {
         if uid.is_some() && !*meta.perms.get(uid.unwrap()).unwrap() {
+            return Some(ScriptCancelFailure::NotAuthorized);
+        } else {
             let _ = meta.cancel_tx.take().unwrap().send(());
             return None;
-        } else {
-            return Some(ScriptCancelFailure::NotAuthorized);
         }
     }
     Some(ScriptCancelFailure::DoesNotExist)

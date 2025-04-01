@@ -8,3 +8,7 @@ export function killSnake(s) {
         })
         .join(' ');
 }
+
+export function firstWord(s) {
+    return s.split(' ')[0];
+}

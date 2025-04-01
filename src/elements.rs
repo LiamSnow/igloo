@@ -159,6 +159,17 @@ impl Elements {
     }
 }
 
+#[derive(Serialize)]
+struct WSChangeBody<'a, T: ?Sized + Serialize> {
+    pub header: &'a str,
+    pub body: &'a T,
+}
+
+pub fn send_change<T: ?Sized + Serialize>(elements: &Arc<Elements>, header: &str, body: &T) {
+    let json = serde_json::to_string(&WSChangeBody { header, body }).unwrap(); //FIXME ?
+    let _ = elements.on_change.send(json.into()); //ignore error (nobody is listening right now)
+}
+
 pub async fn on_device_update(
     dev_states: &Arc<Mutex<Vec<HashMap<String, EntityState>>>>,
     elements: &Arc<Elements>,
@@ -197,8 +208,7 @@ pub async fn on_device_update(
     }
 
     // broadcast updates
-    let json = serde_json::to_string(&updates).unwrap(); //FIXME ?
-    let _ = elements.on_change.send(json.into()); //ignore error (nobody is listening right now)
+    send_change(&elements, "states", &updates);
 }
 
 async fn calc_element_state(

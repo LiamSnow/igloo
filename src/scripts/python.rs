@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::{info, span, Level};
 
-use crate::state::IglooState;
+use crate::{scripts::{send_change_to_ui, ScriptStateChange}, state::IglooState};
 
 pub fn spawn(
     script_name: String,
@@ -15,7 +15,7 @@ pub fn spawn(
     _filename: String,
 ) {
     tokio::spawn(async move {
-        let span = span!(Level::INFO, "Builtin Script", script_name, id);
+        let span = span!(Level::INFO, "Python Script", script_name, id);
         let _enter = span.enter();
         info!("running uid={:#?}, args={:#?}", uid, args);
 
@@ -24,5 +24,6 @@ pub fn spawn(
         // clean up
         let mut script_states = state.scripts.states.lock().await;
         script_states.current.remove(&id);
+        send_change_to_ui(&state, ScriptStateChange::Remove(id));
     });
 }

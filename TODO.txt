@@ -1,3 +1,2 @@
- - scripts in UI (frontend)
  - MQTT
  - python scripting
