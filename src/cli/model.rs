@@ -1,8 +1,8 @@
-use chrono::NaiveTime;
 use clap::command;
 use clap::Parser;
 use clap::Subcommand;
 use clap_derive::{Args, Parser, Subcommand};
+use jiff::civil::Time;
 
 use crate::entity::bool::BoolCommand;
 use crate::entity::light::LightCommand;
@@ -109,7 +109,7 @@ pub struct TextArgs {
 pub struct TimeArgs {
     /// selector string
     pub target: String,
-    pub value: NaiveTime,
+    pub value: Time,
 }
 
 #[derive(Args, Debug, Clone)]

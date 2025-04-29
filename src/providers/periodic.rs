@@ -1,14 +1,13 @@
-use std::cmp::{max, min};
+use std::cmp::min;
 
-use chrono::{Duration, Local, NaiveTime, Datelike};
+use jiff::{civil::Time, Span, Zoned};
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::{time::Duration, sync::mpsc};
 use tracing::{error, info, span, Level};
 
 use crate::{
     cli::model::Cli,
     entity::{
-        time::{deserialize_time, serialize_time},
         weekly::{Weekly, WeeklyState},
         EntityCommand, EntityState, TargetedEntityCommand,
     },
@@ -27,12 +26,8 @@ pub struct DeviceConfig {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum TaskType {
-    #[serde(
-        deserialize_with = "deserialize_time",
-        serialize_with = "serialize_time"
-    )]
     Time {
-        default: NaiveTime,
+        default: Time,
     },
     Weekly {
         default: Weekly,
@@ -78,13 +73,10 @@ pub async fn task(
             }
         }
 
-        let now = Local::now().naive_local();
-        let next_trigger = calc_next_trigger(&weekly, &now);
-        let sleep_seconds = (next_trigger - now).num_seconds() + config.trigger_offset.unwrap_or(0) as i64;
-        let sleep_duration = tokio::time::Duration::from_secs(max(0, sleep_seconds) as u64);
+        let sleep_seconds = calc_next_trigger(&weekly) + config.trigger_offset.unwrap_or(0) as i64;
 
         tokio::select! {
-            _ = tokio::time::sleep(sleep_duration) => {
+            _ = tokio::time::sleep(Duration::from_secs(sleep_seconds as u64)) => {
                 if let Err(e) = cmd_tx.send(on_trigger.clone()).await {
                     error!("sending on_trigger: {e}");
                 }
@@ -108,28 +100,29 @@ pub async fn task(
     }
 }
 
-fn calc_next_trigger(weekly: &Weekly, now: &chrono::NaiveDateTime) -> chrono::NaiveDateTime {
+fn calc_next_trigger(weekly: &Weekly) -> i64 {
+    let now = Zoned::now();
     let cur_day = now.weekday();
     let cur_time = now.time();
 
-    let mut min_days_to_wait = 7;
+    let mut days_until_next = 7;
     for day in &weekly.days {
-        let days_to_wait = (day.num_days_from_monday() as i32 - cur_day.num_days_from_monday() as i32 + 7) % 7;
-
-        if days_to_wait == 0 {
-            if cur_time < weekly.time {
-                min_days_to_wait = 0;
-                break;
-            } else {
-                min_days_to_wait = min(min_days_to_wait, 7);
-            }
-        } else {
-            min_days_to_wait = min(min_days_to_wait, days_to_wait);
+        let days_until = cur_day.until(*day);
+        match days_until {
+            0 if cur_time < weekly.time => days_until_next = 0,
+            0 => {},
+            _ => days_until_next = min(days_until_next, days_until)
         }
     }
 
-    let target_date = now.date() + Duration::days(min_days_to_wait as i64);
-    target_date.and_time(weekly.time)
+    let trigger = now.time_zone().to_zoned(
+            now.date()
+                .saturating_add(Span::new().days(days_until_next))
+                .to_datetime(weekly.time)
+        )
+        .unwrap();
+
+    now.until(&trigger).unwrap().get_seconds() //FIXME
 }
 
 pub fn parse_cmd(cmd_str: String) -> Result<Cli, String> {

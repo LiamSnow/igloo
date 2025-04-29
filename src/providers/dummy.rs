@@ -1,4 +1,4 @@
-use chrono::NaiveTime;
+use jiff::civil::Time;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{error, info, span, Level};
@@ -8,7 +8,7 @@ use crate::{cli::model::Cli, entity::{
     float::FloatState,
     int::IntState,
     text::TextState,
-    time::{deserialize_time, serialize_time, TimeState},
+    time::TimeState,
     EntityCommand, EntityState, TargetedEntityCommand,
 }};
 
@@ -39,11 +39,7 @@ pub enum VarType {
         default: String,
     },
     Time {
-        #[serde(
-            deserialize_with = "deserialize_time",
-            serialize_with = "serialize_time"
-        )]
-        default: NaiveTime,
+        default: Time,
     },
 }
 
@@ -72,6 +68,8 @@ pub async fn task(
         VarType::Time { default } => time_task(default, did, cmd_rx, on_change_tx).await,
     }
 }
+
+// TODO -- reduce all this repeated code plz
 
 pub async fn bool_task(
     default: bool,
@@ -216,7 +214,7 @@ pub async fn text_task(
 }
 
 pub async fn time_task(
-    default: NaiveTime,
+    default: Time,
     did: usize,
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,

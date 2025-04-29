@@ -1,52 +1,52 @@
 use std::sync::Arc;
 
-use chrono::{NaiveTime, Weekday};
-use serde::{Deserialize, Serialize};
+use jiff::civil::{Time, Weekday};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
 
-use super::{AveragedEntityState, EntityCommand, EntityState, time::{deserialize_time, serialize_time}};
+use super::{AveragedEntityState, EntityCommand, EntityState};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Weekly {
-    pub days: Vec<Weekday>,
     #[serde(
-        deserialize_with = "deserialize_time",
-        serialize_with = "serialize_time"
+        deserialize_with = "deserialize_weekdays",
+        serialize_with = "serialize_weekdays"
     )]
-    pub time: NaiveTime,
+    pub days: Vec<Weekday>,
+    pub time: Time,
 }
 
 impl Default for Weekly {
     fn default() -> Self {
-        Self::work_days(NaiveTime::default())
+        Self::work_days(Time::default())
     }
 }
 
 impl Weekly {
-    pub fn work_days(time: NaiveTime) -> Self {
+    pub fn work_days(time: Time) -> Self {
         Self {
             days: vec![
-                Weekday::Mon,
-                Weekday::Tue,
-                Weekday::Wed,
-                Weekday::Thu,
-                Weekday::Fri,
+                Weekday::Monday,
+                Weekday::Tuesday,
+                Weekday::Wednesday,
+                Weekday::Thursday,
+                Weekday::Friday,
             ],
             time
         }
     }
 
-    pub fn all_days(time: NaiveTime) -> Self {
+    pub fn all_days(time: Time) -> Self {
         Self {
             days: vec![
-                Weekday::Sun,
-                Weekday::Mon,
-                Weekday::Tue,
-                Weekday::Wed,
-                Weekday::Thu,
-                Weekday::Fri,
-                Weekday::Sat
+                Weekday::Sunday,
+                Weekday::Monday,
+                Weekday::Tuesday,
+                Weekday::Wednesday,
+                Weekday::Thursday,
+                Weekday::Friday,
+                Weekday::Saturday
             ],
             time
         }
@@ -109,4 +109,41 @@ impl Weekly {
             None => None,
         }
     }
+}
+
+pub fn deserialize_weekdays<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Weekday>, D::Error> {
+    let strs = Vec::<String>::deserialize(deserializer)?;
+
+    let mut weekdays = Vec::with_capacity(strs.len());
+    for s in strs {
+        let weekday = match s.to_lowercase().as_str() {
+            "monday" => Weekday::Monday,
+            "tuesday" => Weekday::Tuesday,
+            "wednesday" => Weekday::Wednesday,
+            "thursday" => Weekday::Thursday,
+            "friday" => Weekday::Friday,
+            "saturday" => Weekday::Saturday,
+            "sunday" => Weekday::Sunday,
+            _ => return Err(serde::de::Error::custom(format!("Unknown weekday: {}", s))),
+        };
+        weekdays.push(weekday);
+    }
+
+    Ok(weekdays)
+}
+
+pub fn serialize_weekdays<S: Serializer>(weekdays: &Vec<Weekday>, serializer: S) -> Result<S::Ok, S::Error> {
+    let v: Vec<String> = weekdays.iter().map(|weekday| {
+        match weekday {
+            Weekday::Monday => "Monday".to_string(),
+            Weekday::Tuesday => "Tuesday".to_string(),
+            Weekday::Wednesday => "Wednesday".to_string(),
+            Weekday::Thursday => "Thursday".to_string(),
+            Weekday::Friday => "Friday".to_string(),
+            Weekday::Saturday => "Saturday".to_string(),
+            Weekday::Sunday => "Sunday".to_string(),
+        }
+    }).collect();
+
+    v.serialize(serializer)
 }

@@ -7,7 +7,6 @@ edition = "2024"
 esphomebridge-rs = { path = "../esphomebridge-rs/" }
 axum = { version = "0.8.1", features = ["ws"] }
 bitvec = "1.0.1"
-chrono = { version = "0.4.40", features = ["serde"] }
 clap = "4.5.31"
 clap_derive = "4.5.28"
 futures-util = "0.3.31"
@@ -26,3 +25,4 @@ axum-extra = { version = "0.10.0", features = ["typed-header"] }
 # pyo3 = { version = "0.24.0", features = ["auto-initialize"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+jiff = { version = "0.2.10", features = ["serde"] }

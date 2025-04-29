@@ -1,3 +1,5 @@
+ - FINISH JIFF TRANSITION - periodic.rs
  - MQTT
  - python scripting
  - Show disconnected devices
+ - TESTING!!

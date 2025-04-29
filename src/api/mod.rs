@@ -11,7 +11,7 @@ use axum_extra::{
     headers::{authorization::Basic, Authorization, Cookie},
     TypedHeader,
 };
-use chrono::{Duration, Utc};
+use jiff::{Span, Zoned};
 use reqwest::header::{LOCATION, SET_COOKIE};
 use serde::Deserialize;
 use tracing::{info, span, warn, Level};
@@ -101,11 +101,11 @@ async fn post_login(
                 }
             };
 
-            let expiry = Utc::now() + Duration::days(30);
+            let expiry = Zoned::now().saturating_add(Span::new().days(30));
             let cookie = format!(
                 "auth_token={}; Path=/; Expires={}; HttpOnly; SameSite=Strict",
                 token,
-                expiry.format("%a, %d %b %Y %H:%M:%S GMT")
+                expiry.strftime("%a, %d %b %Y %H:%M:%S %Z")
             );
 
             (

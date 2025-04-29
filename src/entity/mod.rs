@@ -1,8 +1,8 @@
-use chrono::{NaiveDateTime, NaiveTime};
 use climate::{ClimateCommand, ClimateState};
 use fan::{FanCommand, FanState};
 use float::FloatState;
 use int::IntState;
+use jiff::civil::{DateTime, Time};
 use light::{LightCommand, LightState};
 use serde::{Deserialize, Serialize};
 use bool::{BoolCommand, BoolState};
@@ -29,8 +29,8 @@ pub enum EntityCommand {
     Float(f32),
     Bool(BoolCommand),
     Text(String),
-    Time(NaiveTime),
-    DateTime(NaiveDateTime),
+    Time(Time),
+    DateTime(DateTime),
     Weekly(Weekly),
     Climate(ClimateCommand),
     Fan(FanCommand),
