@@ -67,7 +67,6 @@ impl From<WeeklyState> for EntityState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct WeeklyState {
-    //TODO serialize+de
     value: Weekly,
 }
 

@@ -9,9 +9,10 @@ use tracing::{error, info, span, Level};
 use crate::{
     auth::Auth,
     cli::model::Cli,
-    config::UIElementConfig,
+    config::{ScriptConfig, UIElementConfig},
     device::DeviceIDLut,
     entity::{AveragedEntityState, EntityState, EntityType},
+    scripts,
     selector::Selection,
 };
 
@@ -63,6 +64,7 @@ impl Elements {
         ui: Vec<(String, Vec<UIElementConfig>)>,
         lut: &DeviceIDLut,
         auth: &Auth,
+        script_configs: &HashMap<String, ScriptConfig>,
     ) -> Result<Self, Box<dyn Error>> {
         let span = span!(Level::INFO, "Elements");
         let _enter = span.enter();
@@ -125,18 +127,29 @@ impl Elements {
                             .into())
                         }
                     };
-                    if let Some(sel_str) = cmd.command.get_selection() {
+                    if let Some(sel_str) = cmd.cmd.get_selection() {
                         if let Some(zid) = Selection::from_str(lut, sel_str)?.get_zid() {
                             allowed_uids = Some(auth.perms.get(zid).unwrap().clone());
                         }
                     }
-                    //TODO script perms
                 }
 
-                // claim script ID
-                if matches!(cfg, UIElementConfig::Script(..)) {
+                if let UIElementConfig::Script(args) = &cfg {
+                    //claim ID
                     sid = Some(next_sid);
                     next_sid += 1;
+
+                    let mut args: Vec<String> =
+                        args.split_whitespace().map(str::to_string).collect();
+                    let script_name = args.remove(0);
+
+                    allowed_uids = Some(scripts::calc_perms(
+                        lut,
+                        auth,
+                        script_configs,
+                        script_name,
+                        args,
+                    )?);
                 }
 
                 group_elements.push(Element {

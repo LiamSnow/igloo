@@ -9,6 +9,7 @@ use axum::{
 };
 use axum_extra::{headers::Cookie, TypedHeader};
 use futures_util::{SinkExt, StreamExt};
+use tracing::{debug, span, warn, Level};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -44,17 +45,29 @@ async fn handle_socket(
     state: Arc<IglooState>,
     socket: WebSocket,
 ) {
+    let span = span!(Level::INFO, "WebSocket");
+    let _enter = span.enter();
+    debug!("checking permissions");
+
     let uid = match cookies
         .as_ref()
         .and_then(|cookies| cookies.get("auth_token"))
     {
         Some(token) => match state.auth.token_db.validate(token.to_string()).await {
-            Ok(Some(uid)) => uid,
-            Ok(None) => return close_socket(socket, 1008, "Invalid token".to_string()).await,
+            Ok(username_opt) => {
+                match username_opt.and_then(|username| state.auth.uid_lut.get(&username)) {
+                    Some(uid) => *uid,
+                    None => {
+                        return close_socket(socket, 1008, "Invalid token".to_string()).await;
+                    }
+                }
+            }
             Err(e) => return close_socket(socket, 1011, e.to_string()).await,
         },
         None => return close_socket(socket, 1008, "Not authenticated".to_string()).await,
     };
+
+    debug!("uid={uid}");
 
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
@@ -101,13 +114,19 @@ async fn handle_socket(
 async fn parse_execute_wscmd(state: &Arc<IglooState>, cmd_str: &str, uid: usize) -> Option<String> {
     let cmd = match Cli::parse(cmd_str) {
         Ok(r) => r,
-        //TODO log
-        Err(e) => return Some(serde_json::to_string(&e.render().to_string()).unwrap()), //FIXME
+        Err(e) => {
+            let e = serde_json::to_string(&e.render().to_string()).unwrap();
+            warn!("command failed: {e}");
+            return Some(e)
+        },
     };
 
     match cmd.dispatch(&state, Some(uid), true).await {
         Ok(r) => r,
-        //TODO log
-        Err(e) => Some(serde_json::to_string(&e).unwrap()), //FIXME
+        Err(e) => {
+            let e = serde_json::to_string(&e).unwrap(); //FIXME
+            warn!("command failed: {e}");
+            Some(e)
+        }
     }
 }

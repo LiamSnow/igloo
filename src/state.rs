@@ -7,7 +7,7 @@ use crate::{
     config::IglooConfig,
     device::{DeviceIDLut, Devices},
     elements::Elements,
-    scripts::Scripts,
+    scripts::{self, Scripts},
 };
 
 pub struct IglooState {
@@ -23,7 +23,7 @@ impl IglooState {
 
         let auth = Auth::init(icfg.auth, &dev_lut).await?;
 
-        let elements = Arc::new(Elements::init(icfg.ui, &dev_lut, &auth)?);
+        let elements = Arc::new(Elements::init(icfg.ui, &dev_lut, &auth, &icfg.scripts)?);
 
         let (state_tx, state_rx) = oneshot::channel();
         let devices = Devices::init(dev_lut, dev_cfgs, dev_sels, elements.clone(), state_rx);
@@ -39,6 +39,8 @@ impl IglooState {
 
         state_tx.send(res.clone())
             .unwrap_or_else(|_| panic!("IglooState: Could not send state to Devices"));
+
+        scripts::spawn_boot(&res).await?;
 
         Ok(res)
     }

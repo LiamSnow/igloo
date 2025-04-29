@@ -9,7 +9,8 @@ use tokio::sync::{oneshot, Mutex};
 use tracing::{info, span, Level};
 
 use crate::{
-    config::ScriptConfig, device::DeviceIDLut, elements, entity::EntityType, selector::Selection, state::IglooState
+    auth::Auth, config::ScriptConfig, device::DeviceIDLut, elements, entity::EntityType,
+    selector::Selection, state::IglooState,
 };
 
 mod basic;
@@ -24,9 +25,6 @@ pub struct Scripts {
 
 impl Scripts {
     pub fn init(configs: HashMap<String, ScriptConfig>) -> Self {
-        //TODO run boot scripts
-
-
         Self {
             states: Mutex::new(ScriptStates::default()),
             configs,
@@ -58,6 +56,20 @@ pub struct RunningScriptMeta {
     cancel_tx: Option<oneshot::Sender<()>>,
     #[serde(skip_serializing)]
     perms: BitVec,
+}
+
+pub async fn spawn_boot(state: &Arc<IglooState>) -> Result<(), ScriptError> {
+    for (name, cfg) in &state.scripts.configs {
+        if cfg.get_meta().auto_run {
+            spawn(&state.clone(), name.to_string(), vec![], None, None).await?;
+        }
+    }
+
+    for name in builtin::get_boot() {
+        spawn(&state.clone(), name.to_string(), vec![], None, None).await?;
+    }
+
+    Ok(())
 }
 
 pub async fn spawn(
@@ -112,17 +124,36 @@ pub async fn spawn(
     }
 }
 
+pub fn calc_perms(
+    dev_lut: &DeviceIDLut,
+    auth: &Auth,
+    script_configs: &HashMap<String, ScriptConfig>,
+    script_name: String,
+    args: Vec<String>,
+) -> Result<BitVec, ScriptError> {
+    let meta = match builtin::get_meta(&script_name) {
+        Some(meta) => meta,
+        None => match script_configs.get(&script_name) {
+            Some(cfg) => cfg.get_meta(),
+            None => return Err(ScriptError::UnknownScript(script_name)),
+        },
+    };
+
+    let claims = parse_claims(&dev_lut, &meta.claims, &args)?;
+    Ok(claims_to_perms(&auth, &claims))
+}
+
 async fn init_script<'a>(
     state: &Arc<IglooState>,
     uid: Option<usize>,
     script_name: &str,
-    extra_args: &Vec<String>,
+    args: &Vec<String>,
     id: Option<u32>,
     meta: ScriptMeta<'a>,
 ) -> Result<(u32, oneshot::Receiver<()>), ScriptError> {
-    let claims = parse_claims(&state.devices.lut, &meta.claims, &extra_args)?;
+    let claims = parse_claims(&state.devices.lut, &meta.claims, &args)?;
 
-    let perms = calc_perms(&state, &claims);
+    let perms = claims_to_perms(&state.auth, &claims);
     if uid.is_some() && !*perms.get(uid.unwrap()).unwrap() {
         return Err(ScriptError::NotAuthorized);
     }
@@ -143,7 +174,7 @@ async fn init_script<'a>(
             let id = states.next_id;
             states.next_id += 1;
             id
-        },
+        }
     };
 
     states.current.insert(
@@ -165,7 +196,7 @@ async fn init_script<'a>(
 #[derive(Serialize)]
 pub enum ScriptStateChange {
     Add(u32),
-    Remove(u32)
+    Remove(u32),
 }
 
 pub fn send_change_to_ui(state: &Arc<IglooState>, change: ScriptStateChange) {
@@ -266,7 +297,6 @@ pub async fn cancel_all(
     script_name: &str,
     uid: Option<usize>,
 ) -> Option<ScriptCancelFailure> {
-    //TODO permissions
     let mut state = state.scripts.states.lock().await;
     let mut not_authorized = false;
     for (_, meta) in &mut state.current {
@@ -285,8 +315,11 @@ pub async fn cancel_all(
 }
 
 /// Cancel instance of a script
-pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: Option<usize>) -> Option<ScriptCancelFailure> {
-    //TODO permissions
+pub async fn cancel(
+    state: &Arc<IglooState>,
+    id: u32,
+    uid: Option<usize>,
+) -> Option<ScriptCancelFailure> {
     let mut state = state.scripts.states.lock().await;
     if let Some(meta) = state.current.get_mut(&id) {
         if uid.is_some() && !*meta.perms.get(uid.unwrap()).unwrap() {
@@ -299,14 +332,14 @@ pub async fn cancel(state: &Arc<IglooState>, id: u32, uid: Option<usize>) -> Opt
     Some(ScriptCancelFailure::DoesNotExist)
 }
 
-fn calc_perms(state: &IglooState, claims: &HashMap<EntityType, Vec<Selection>>) -> BitVec {
-    let mut bv = bitvec![1; state.auth.num_users];
+fn claims_to_perms(auth: &Auth, claims: &HashMap<EntityType, Vec<Selection>>) -> BitVec {
+    let mut bv = bitvec![1; auth.num_users];
     for sel in claims.values().flat_map(|v| v.iter()) {
         if matches!(sel, Selection::All) {
             continue;
         }
 
-        bv &= state.auth.perms.get(sel.get_zid().unwrap()).unwrap();
+        bv &= auth.perms.get(sel.get_zid().unwrap()).unwrap();
     }
     bv
 }

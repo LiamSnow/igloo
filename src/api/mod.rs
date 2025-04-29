@@ -14,6 +14,7 @@ use axum_extra::{
 use chrono::{Duration, Utc};
 use reqwest::header::{LOCATION, SET_COOKIE};
 use serde::Deserialize;
+use tracing::{info, span, warn, Level};
 use std::{error::Error, sync::Arc};
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
@@ -23,6 +24,10 @@ use crate::api::ws::ws_handler;
 pub mod ws;
 
 pub async fn run(state: Arc<IglooState>) -> Result<(), Box<dyn Error>> {
+    let span = span!(Level::INFO, "API");
+    let _enter = span.enter();
+    info!("running");
+
     let solid = ServeFile::new("./web/dist/index.html");
     let app = Router::new()
         .route("/", get_service(solid.clone()).post(post_cmd))
@@ -69,8 +74,10 @@ async fn post_cmd(
         )
             .into_response(),
         Ok(None) => (StatusCode::OK).into_response(),
-        //TODO log error
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e)).into_response(),
+        Err(e) => {
+            warn!("{username}'s command failed: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(e)).into_response()
+        },
     }
 }
 
@@ -85,8 +92,8 @@ async fn post_login(
     Form(form): Form<LoginForm>,
 ) -> impl IntoResponse {
     match state.auth.validate_login(&form.username, &form.password) {
-        Ok(Some(uid)) => {
-            let token = match state.auth.token_db.add(uid).await {
+        Ok(Some(_)) => {
+            let token = match state.auth.token_db.add(form.username).await {
                 Ok(t) => t,
                 Err(e) => {
                     return (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}"))

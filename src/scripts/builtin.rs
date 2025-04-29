@@ -51,6 +51,16 @@ macro_rules! gen_builtin_script_data {
             }
         }
 
+        pub fn get_boot() -> Vec<String> {
+            let mut res = vec![];
+            $(
+                if $auto_run {
+                    res.push(stringify!($script_name).to_string());
+                }
+            )*
+            res
+        }
+
         pub async fn spawn(
             script_name: &str,
             id: u32,

@@ -12,7 +12,7 @@ use crate::entity::EntityType;
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: CliCommands,
+    pub cmd: CliCommands,
 }
 
 impl Cli {
@@ -227,3 +227,6 @@ pub enum ScriptAction {
     /// Cancel all instances of this script
     CancelAll { name: String },
 }
+
+
+

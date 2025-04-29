@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -21,7 +21,10 @@ impl From<DateTimeState> for EntityState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct DateTimeState {
-    //TODO serialize+de
+    #[serde(
+        deserialize_with = "deserialize_datetime",
+        serialize_with = "serialize_datetime"
+    )]
     value: NaiveDateTime,
 }
 
@@ -69,18 +72,13 @@ impl DateTimeState {
 }
 
 
-pub fn deserialize_time<'de, D: Deserializer<'de>>(deserializer: D) -> Result<NaiveDateTime, D::Error> {
+pub fn deserialize_datetime<'de, D: Deserializer<'de>>(deserializer: D) -> Result<NaiveDateTime, D::Error> {
     let time_str = String::deserialize(deserializer)?;
-    NaiveDateTime::parse_from_str(&time_str, "%I:%M %p")
-        .or_else(|_| NaiveDateTime::parse_from_str(&time_str, "%H:%M"))
+    NaiveDateTime::parse_from_str(&time_str, "%m/%d/%y %I:%M %p")
+        .or_else(|_| NaiveDateTime::parse_from_str(&time_str, "%m/%d/%y %H:%M"))
         .map_err(serde::de::Error::custom)
 }
 
-pub fn parse_time(time_str: &str) -> Result<NaiveDateTime, Box<dyn Error>> {
-    Ok(NaiveDateTime::parse_from_str(&time_str, "%I:%M %p")
-        .or_else(|_| NaiveDateTime::parse_from_str(&time_str, "%H:%M"))?)
-}
-
-pub fn serialize_time<S: Serializer>(time: &NaiveDateTime, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&time.format("%I:%M %p").to_string())
+pub fn serialize_datetime<S: Serializer>(datetime: &NaiveDateTime, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&datetime.format("%m/%d/%y %H:%M").to_string())
 }

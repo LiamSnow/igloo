@@ -14,9 +14,9 @@ impl TokenDatabase {
         conn.call(|conn| {
             Ok(conn.execute(
                 "CREATE TABLE IF NOT EXISTS tokens (
-                token   TEXT PRIMARY KEY,
-                uid     INTEGER,
-                created DATETIME DEFAULT CURRENT_TIMESTAMP
+                token    TEXT PRIMARY KEY,
+                username TEXT,
+                created  DATETIME DEFAULT CURRENT_TIMESTAMP
             )",
                 (),
             )?)
@@ -25,15 +25,15 @@ impl TokenDatabase {
         Ok(Self(conn))
     }
 
-    /// creates and returns new token for uid
-    pub async fn add(&self, uid: usize) -> Result<String, tokio_rusqlite::Error> {
+    /// creates and returns new token for username
+    pub async fn add(&self, username: String) -> Result<String, tokio_rusqlite::Error> {
         let token = Uuid::now_v7().to_string();
         let token_copy = token.clone();
         self.0
             .call(move |conn| {
                 Ok(conn.execute(
-                    "INSERT INTO tokens (token, uid) VALUES (?1, ?2)",
-                    (token_copy, uid),
+                    "INSERT INTO tokens (token, username) VALUES (?1, ?2)",
+                    (token_copy, username),
                 )?)
             })
             .await?;
@@ -47,14 +47,14 @@ impl TokenDatabase {
         Ok(())
     }
 
-    /// returns Some(uid) if valid
-    pub async fn validate(&self, token: String) -> Result<Option<usize>, tokio_rusqlite::Error> {
+    /// returns Some(username) if valid
+    pub async fn validate(&self, token: String) -> Result<Option<String>, tokio_rusqlite::Error> {
         let token_copy = token.clone();
         let res = self.0.call(move |conn| {
             Ok(conn.query_row(
-                "SELECT uid, julianday(CURRENT_TIMESTAMP) - julianday(created) as days_diff FROM tokens WHERE token = ?1",
+                "SELECT username, julianday(CURRENT_TIMESTAMP) - julianday(created) as days_diff FROM tokens WHERE token = ?1",
                 [token_copy],
-                |row| Ok((row.get::<_, usize>(0)?, row.get::<_, f64>(1)?))
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
             )?)
         }).await;
 
@@ -65,14 +65,14 @@ impl TokenDatabase {
             }
         }
 
-        let (uid, days_diff) = res.unwrap();
+        let (username, days_diff) = res.unwrap();
         if days_diff > TOKEN_EXPIRATION_DAYS as f64 {
             self.0.call(move |conn| {
                 Ok(conn.execute("DELETE FROM tokens WHERE token = ?1", [token])?)
             }).await?;
             Ok(None)
         } else {
-            Ok(Some(uid))
+            Ok(Some(username))
         }
     }
 }

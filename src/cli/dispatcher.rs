@@ -26,7 +26,7 @@ impl Cli {
         cancel_conflicting: bool,
     ) -> Result<Option<String>, DispatchError> {
         let sel = precheck_selection(&self, state, uid, cancel_conflicting).await?;
-        Ok(match self.command {
+        Ok(match self.cmd {
             CliCommands::Light(args) => entity::light::dispatch(args.action, args.target, sel.unwrap(), state)?,
             CliCommands::Int(args) => entity::int::dispatch(args.value, args.target, sel.unwrap(), state)?,
             CliCommands::Float(args) => entity::float::dispatch(args.value, args.target, sel.unwrap(), state)?,
@@ -49,7 +49,7 @@ async fn precheck_selection(
     uid: Option<usize>,
     cancel_conflicting: bool,
 ) -> Result<Option<Selection>, DispatchError> {
-    Ok(match cmd.command.get_selection() {
+    Ok(match cmd.cmd.get_selection() {
         Some(sel_str) => {
             let sel = Selection::from_str(&state.devices.lut, &sel_str)?;
 
@@ -62,7 +62,7 @@ async fn precheck_selection(
 
             //try to cancel conflicting scripts
             if cancel_conflicting {
-                if let Some(entity_type) = cmd.command.get_entity_type() {
+                if let Some(entity_type) = cmd.cmd.get_entity_type() {
                     let res = scripts::clear_conflicting_for_cmd(&state, &sel, &entity_type).await;
                     if let Some(scr) = res {
                         return Err(DispatchError::UncancellableScript(scr));
