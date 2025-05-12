@@ -1,0 +1,72 @@
+.Input {
+  margin-top: 8px;
+  padding: 6px 6px !important;
+  border: none;
+  border-radius: 8px;
+  background: #222;
+  color: white;
+
+  //TODO theme number picker
+}
+
+.Button {
+    background: none;
+    color: white;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 16px;
+    border: 1px solid #333;
+    cursor: pointer;
+}
+
+.Switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 22px;
+  margin: 8px 0;
+
+  input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  span {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #222;
+    border-radius: 11px;
+    transition: 0.3s;
+    border: 1px solid #333;
+
+    &:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 4px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+  }
+
+  input:checked + span {
+    background-color: #444;
+
+    &:before {
+      transform: translateX(20px);
+    }
+  }
+
+  input:focus + span {
+    box-shadow: 0 0 1px #444;
+  }
+}

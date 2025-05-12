@@ -1,4 +1,4 @@
-import styles from './Script.module.scss';
+import styles from './Input.module.scss';
 import { killSnake, firstWord } from '../util';
 
 function Script(props) {
@@ -12,7 +12,7 @@ function Script(props) {
     }
 
     return (
-        <div class={styles.Container}>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
             {killSnake(firstWord(props.name))}
 
             <Show when={props.running()} fallback={

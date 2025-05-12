@@ -143,12 +143,14 @@ async fn state_task(
 
     //TODO group changes?
     while let Some((did, entity_name, value)) = on_change_rx.recv().await {
+        //push to states
+        {
+            let mut states = dev_states.lock().await;
+            states[did].insert(entity_name.clone(), value.clone());
+        }
+
         //update elements
         elements::on_device_update(&dev_states, &elements, did, &entity_name, &value).await;
-
-        //push to states
-        let mut states = dev_states.lock().await;
-        states[did].insert(entity_name, value.clone());
     }
 }
 

@@ -9,7 +9,7 @@ use bool::{BoolCommand, BoolState};
 use text::TextState;
 use time::TimeState;
 use datetime::DateTimeState;
-use weekly::{Weekly, WeeklyState};
+use weekly::{Weekly, WeeklyCommand, WeeklyState};
 
 pub mod light;
 pub mod int;
@@ -31,7 +31,7 @@ pub enum EntityCommand {
     Text(String),
     Time(Time),
     DateTime(DateTime),
-    Weekly(Weekly),
+    Weekly(WeeklyCommand),
     Climate(ClimateCommand),
     Fan(FanCommand),
 }
@@ -70,7 +70,7 @@ pub enum EntityType {
     Fan
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct AveragedEntityState {
     pub value: EntityState,
     pub homogeneous: bool,
@@ -95,6 +95,23 @@ impl EntityType {
 }
 
 impl EntityState {
+    pub fn get_type(&self) -> EntityType {
+        match self {
+            Self::Light(..) => EntityType::Light,
+            Self::Int(..) => EntityType::Int,
+            Self::Float(..) => EntityType::Float,
+            Self::Bool(..) => EntityType::Bool,
+            Self::Text(..) => EntityType::Text,
+            Self::Time(..) => EntityType::Time,
+            Self::DateTime(..) => EntityType::DateTime,
+            Self::Weekly(..) => EntityType::Weekly,
+            Self::Climate(..) => EntityType::Climate,
+            Self::Fan(..) => EntityType::Fan,
+        }
+    }
+}
+
+impl EntityCommand {
     pub fn get_type(&self) -> EntityType {
         match self {
             Self::Light(..) => EntityType::Light,

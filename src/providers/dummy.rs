@@ -1,16 +1,21 @@
-use jiff::civil::Time;
+use jiff::civil::{DateTime, Time};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{error, info, span, Level};
 
-use crate::{cli::model::Cli, entity::{
-    bool::BoolState,
-    float::FloatState,
-    int::IntState,
-    text::TextState,
-    time::TimeState,
-    EntityCommand, EntityState, TargetedEntityCommand,
-}};
+use crate::{
+    cli::model::Cli,
+    entity::{
+        bool::BoolState,
+        datetime::DateTimeState,
+        float::FloatState,
+        int::IntState,
+        text::TextState,
+        time::TimeState,
+        weekly::{Weekly, WeeklyState},
+        EntityCommand, EntityState, TargetedEntityCommand,
+    },
+};
 
 const ENTITY_NAME: &str = "value";
 
@@ -41,6 +46,12 @@ pub enum VarType {
     Time {
         default: Time,
     },
+    DateTime {
+        default: DateTime,
+    },
+    Weekly {
+        default: Weekly,
+    },
 }
 
 pub async fn task(
@@ -51,8 +62,7 @@ pub async fn task(
     cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) {
-
-    let span = span!(Level::INFO, "Device Dummy", s=selector, did);
+    let span = span!(Level::INFO, "Device Dummy", s = selector, did);
     let _enter = span.enter();
     info!("initializing");
 
@@ -66,6 +76,8 @@ pub async fn task(
         VarType::Bool { default } => bool_task(default, did, cmd_rx, on_change_tx).await,
         VarType::Text { default } => text_task(default, did, cmd_rx, on_change_tx).await,
         VarType::Time { default } => time_task(default, did, cmd_rx, on_change_tx).await,
+        VarType::DateTime { default } => datetime_task(default, did, cmd_rx, on_change_tx).await,
+        VarType::Weekly { default } => weekly_task(default, did, cmd_rx, on_change_tx).await,
     }
 }
 
@@ -98,7 +110,7 @@ pub async fn bool_task(
                 error!("sending on_change: {e}");
             }
         } else {
-            error!("invalid entity command type");
+            error!("dummy expected type Bool, found {:#?}", cmd.cmd.get_type());
         }
     }
 }
@@ -134,7 +146,7 @@ pub async fn int_task(
                 error!("sending on_change: {e}");
             }
         } else {
-            error!("invalid entity command type");
+            error!("dummy expected type Int, found {:#?}", cmd.cmd.get_type());
         }
     }
 }
@@ -162,9 +174,7 @@ pub async fn float_task(
         if let EntityCommand::Float(value) = cmd.cmd {
             if let Some((min, max)) = range {
                 if value < min || value > max {
-                    error!(
-                        "float out of range (value:{value},min:{min}:max{max}). Skipping"
-                    );
+                    error!("float out of range (value:{value},min:{min}:max{max}). Skipping");
                     continue;
                 }
             }
@@ -176,7 +186,7 @@ pub async fn float_task(
                 error!("sending on_change: {e}");
             }
         } else {
-            error!("invalid entity command type");
+            error!("dummy expected type Float, found {:#?}", cmd.cmd.get_type());
         }
     }
 }
@@ -208,7 +218,7 @@ pub async fn text_task(
                 error!("sending on_change: {e}");
             }
         } else {
-            error!("invalid entity command type");
+            error!("dummy expected type Text, found {:#?}", cmd.cmd.get_type());
         }
     }
 }
@@ -240,7 +250,80 @@ pub async fn time_task(
                 error!("sending on_change: {e}");
             }
         } else {
-            error!("invalid entity command type");
+            error!("dummy expected type Time, found {:#?}", cmd.cmd.get_type());
+        }
+    }
+}
+
+pub async fn datetime_task(
+    default: DateTime,
+    did: usize,
+    mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
+    on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
+) {
+    // send init state
+    let res = on_change_tx
+        .send((
+            did,
+            ENTITY_NAME.to_string(),
+            DateTimeState::from(default).into(),
+        ))
+        .await;
+    if let Err(e) = res {
+        error!("sending on_change: {e}");
+    }
+
+    while let Some(cmd) = cmd_rx.recv().await {
+        if let EntityCommand::DateTime(value) = cmd.cmd {
+            let res = on_change_tx
+                .send((
+                    did,
+                    ENTITY_NAME.to_string(),
+                    DateTimeState::from(value).into(),
+                ))
+                .await;
+            if let Err(e) = res {
+                error!("sending on_change: {e}");
+            }
+        } else {
+            error!(
+                "dummy expected type DateTime, found {:#?}",
+                cmd.cmd.get_type()
+            );
+        }
+    }
+}
+
+pub async fn weekly_task(
+    default: Weekly,
+    did: usize,
+    mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
+    on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
+) {
+    let mut state = WeeklyState::from(default);
+
+    // send init state
+    let res = on_change_tx
+        .send((did, ENTITY_NAME.to_string(), state.clone().into()))
+        .await;
+    if let Err(e) = res {
+        error!("sending on_change: {e}");
+    }
+
+    while let Some(cmd) = cmd_rx.recv().await {
+        if let EntityCommand::Weekly(wkly_cmd) = cmd.cmd {
+            state.apply_cmd(wkly_cmd);
+            let res = on_change_tx
+                .send((did, ENTITY_NAME.to_string(), state.clone().into()))
+                .await;
+            if let Err(e) = res {
+                error!("sending on_change: {e}");
+            }
+        } else {
+            error!(
+                "dummy expected type Weekly, found {:#?}",
+                cmd.cmd.get_type()
+            );
         }
     }
 }

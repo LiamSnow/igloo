@@ -88,14 +88,13 @@ impl ClimateState {
                 mode_sum += state.mode.clone() as u32;
                 temp_sum += state.temp.clone() as u32;
 
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = last_state == state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
 

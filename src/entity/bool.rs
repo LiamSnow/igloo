@@ -79,14 +79,13 @@ impl BoolState {
         for state in states {
             if let EntityState::Bool(state) = state {
                 let state: bool = state.into();
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = state == last_state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
         match first {

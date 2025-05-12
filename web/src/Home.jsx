@@ -17,7 +17,7 @@ function Home() {
         ws.onmessage = (event) => {
             try {
                 let res = JSON.parse(event.data);
-                // console.log("got", res);
+                console.log("got", res);
 
                 // init
                 if (res.elements !== undefined) {

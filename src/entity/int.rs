@@ -58,14 +58,13 @@ impl IntState {
         for state in states {
             if let EntityState::Int(state) = state {
                 let state: i32 = state.into();
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = state == last_state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
         match first {

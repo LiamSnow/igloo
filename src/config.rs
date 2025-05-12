@@ -71,6 +71,8 @@ pub enum UIElementConfig {
     RGBCTLight(String),
     Bool(String),
     Time(String),
+    DateTime(String),
+    Weekly(String),
     Int(String),
     Float(String),
     Text(String),
@@ -86,8 +88,12 @@ impl UIElementConfig {
             Self::RGBCTLight(s) => Some((s, EntityType::Light)),
             Self::Bool(s) => Some((s, EntityType::Bool)),
             Self::Time(s) => Some((s, EntityType::Time)),
+            Self::DateTime(s) => Some((s, EntityType::DateTime)),
+            Self::Weekly(s) => Some((s, EntityType::Weekly)),
             Self::Int(s) => Some((s, EntityType::Int)),
-            _ => None,
+            Self::Float(s) => Some((s, EntityType::Float)),
+            Self::Text(s) => Some((s, EntityType::Text)),
+            Self::Button(..) | Self::Script(..) => None,
         }
     }
 

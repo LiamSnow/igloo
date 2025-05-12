@@ -46,14 +46,13 @@ impl TextState {
         for state in states {
             if let EntityState::Text(state) = state {
                 let state = state.value.to_string();
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = state == last_state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
         match first {

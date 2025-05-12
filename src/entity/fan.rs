@@ -113,14 +113,13 @@ impl FanState {
                     speed_sum += speed;
                 }
 
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = last_state == state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
 

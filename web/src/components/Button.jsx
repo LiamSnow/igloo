@@ -1,4 +1,4 @@
-import styles from './Button.module.scss';
+import styles from './Input.module.scss';
 import { killSnake } from '../util';
 
 function Button(props) {

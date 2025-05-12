@@ -2,10 +2,14 @@ use clap::command;
 use clap::Parser;
 use clap::Subcommand;
 use clap_derive::{Args, Parser, Subcommand};
+use jiff::civil::DateTime;
 use jiff::civil::Time;
 
 use crate::entity::bool::BoolCommand;
+use crate::entity::climate::ClimateCommand;
+use crate::entity::fan::FanCommand;
 use crate::entity::light::LightCommand;
+use crate::entity::weekly::WeeklyCommand;
 use crate::entity::EntityType;
 
 #[derive(Parser, Debug, Clone)]
@@ -18,7 +22,16 @@ pub struct Cli {
 impl Cli {
     pub fn parse(cmd_str: &str) -> Result<Self, clap::error::Error> {
         let cmd_str = "igloo ".to_string() + cmd_str;
-        let res = Self::try_parse_from(cmd_str.split_whitespace())?;
+        let args = match shlex::split(&cmd_str) {
+            Some(args) => args,
+            None => {
+                return Err(clap::Error::raw(
+                    clap::error::ErrorKind::InvalidValue,
+                    "Invalid command: unmatched quotes",
+                ))
+            }
+        };
+        let res = Self::try_parse_from(args)?;
         Ok(res)
     }
 }
@@ -27,13 +40,18 @@ impl Cli {
 pub enum CliCommands {
     /// Control lights
     #[command(alias = "lights")]
-    Light(SelectorAndAction<LightCommand>),
+    Light(SelectorAnd<LightCommand>),
     Int(IntArgs),
     Float(FloatArgs),
     #[command(alias = "switch")]
-    Bool(SelectorAndAction<BoolCommand>),
-    Text(TextArgs),
-    Time(TimeArgs),
+    Bool(SelectorAnd<BoolCommand>),
+    Text(SelectorAndString),
+    Time(SelectorAndTime),
+    #[command(alias = "datetime")]
+    DateTime(SelectorAndDateTime),
+    Weekly(SelectorAnd<WeeklyCommand>),
+    Climate(SelectorAnd<ClimateCommand>),
+    Fan(SelectorAnd<FanCommand>),
 
     /// Get UI Interface
     UI,
@@ -62,8 +80,19 @@ impl CliCommands {
             Self::Float(args) => &args.target,
             Self::Bool(args) => &args.target,
             Self::Text(args) => &args.target,
+            Self::Time(args) => &args.target,
+            Self::DateTime(args) => &args.target,
+            Self::Weekly(args) => &args.target,
+            Self::Climate(args) => &args.target,
+            Self::Fan(args) => &args.target,
+
             Self::List(args) => return args.item.get_selection(),
-            _ => return None,
+
+            Self::UI |
+            Self::Script(..) |
+            Self::Logs(..) |
+            Self::Reload |
+            Self::Version => return None,
         })
     }
 
@@ -77,11 +106,11 @@ impl CliCommands {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct SelectorAndAction<T: Subcommand> {
+pub struct SelectorAnd<T: Subcommand> {
     /// selector string
     pub target: String,
     #[command(subcommand)]
-    pub action: T,
+    pub value: T,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -99,17 +128,24 @@ pub struct FloatArgs {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct TextArgs {
-    /// selector string
-    pub target: String,
-    pub value: String,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct TimeArgs {
+pub struct SelectorAndTime {
     /// selector string
     pub target: String,
     pub value: Time,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SelectorAndDateTime {
+    /// selector string
+    pub target: String,
+    pub value: DateTime,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SelectorAndString {
+    /// selector string
+    pub target: String,
+    pub value: String,
 }
 
 #[derive(Args, Debug, Clone)]

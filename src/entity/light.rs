@@ -101,46 +101,44 @@ impl RGBF32 {
         let g = self.g;
         let b = self.b;
 
-        // Find max and min components
         let max = r.max(g).max(b);
         let min = r.min(g).min(b);
 
-        // Check if the color is grayscale
+        // grayscale
         if (max - min).abs() < f32::EPSILON {
-            return 0; // Arbitrary choice for grayscale
+            return 0;
         }
 
-        // Calculate hue based on which component is max
         let hue = if (r - max).abs() < f32::EPSILON {
-            // Red is max
+            // Red max
             if (b - min).abs() < f32::EPSILON {
-                // Blue is min, Green is varying
+                // Blue min, Green varying
                 // h = 0-60
                 60.0 * g
             } else {
-                // Green is min, Blue is varying
+                // Green min, Blue varying
                 // h = 300-360
                 300.0 + 60.0 * (1.0 - b)
             }
         } else if (g - max).abs() < f32::EPSILON {
-            // Green is max
+            // Green max
             if (r - min).abs() < f32::EPSILON {
-                // Red is min, Blue is varying
+                // Red min, Blue varying
                 // h = 120-180
                 120.0 + 60.0 * b
             } else {
-                // Blue is min, Red is varying
+                // Blue min, Red varying
                 // h = 60-120
                 60.0 + 60.0 * (1.0 - r)
             }
-        } else { // Blue is max
-            // Blue is max
+        } else {
+            // Blue max
             if (g - min).abs() < f32::EPSILON {
-                // Green is min, Red is varying
+                // Green min, Red varying
                 // h = 240-300
                 240.0 + 60.0 * r
             } else {
-                // Red is min, Green is varying
+                // Red min, Green varying
                 // h = 180-240
                 180.0 + 60.0 * (1.0 - g)
             }
@@ -181,14 +179,14 @@ impl LightState {
                     bright_sum += bright as u32;
                 }
 
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = last_state.visibly_equal(state);
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+
+                if homogeneous && !first {
+                    homogeneous = last_state.visibly_equal(state);
+                }
+                last_state = state;
             }
         }
 

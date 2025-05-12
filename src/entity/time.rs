@@ -47,14 +47,13 @@ impl TimeState {
         for state in states {
             if let EntityState::Time(state) = state {
                 let state = state.value.clone();
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = state == last_state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
         match first {

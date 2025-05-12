@@ -27,12 +27,17 @@ impl Cli {
     ) -> Result<Option<String>, DispatchError> {
         let sel = precheck_selection(&self, state, uid, cancel_conflicting).await?;
         Ok(match self.cmd {
-            CliCommands::Light(args) => entity::light::dispatch(args.action, args.target, sel.unwrap(), state)?,
+            CliCommands::Light(args) => entity::light::dispatch(args.value, args.target, sel.unwrap(), state)?,
             CliCommands::Int(args) => entity::int::dispatch(args.value, args.target, sel.unwrap(), state)?,
             CliCommands::Float(args) => entity::float::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Bool(args) => entity::bool::dispatch(args.action, args.target, sel.unwrap(), state)?,
+            CliCommands::Bool(args) => entity::bool::dispatch(args.value, args.target, sel.unwrap(), state)?,
             CliCommands::Text(args) => entity::text::dispatch(args.value, args.target, sel.unwrap(), state)?,
             CliCommands::Time(args) => entity::time::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::DateTime(args) => entity::datetime::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Weekly(args) => entity::weekly::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Climate(args) => entity::climate::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Fan(args) => entity::fan::dispatch(args.value, args.target, sel.unwrap(), state)?,
+
             CliCommands::Script(args) => args.action.dispatch(state, uid).await?,
             CliCommands::UI => get_ui_for_user(state, uid).await?,
             CliCommands::List(args) => args.item.dispatch(state).await?,

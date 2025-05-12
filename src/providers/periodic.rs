@@ -85,8 +85,8 @@ pub async fn task(
 
             Some(cmd) = cmd_rx.recv() => {
                 match cmd.cmd {
-                    EntityCommand::Weekly(new_weekly) => {
-                        weekly = new_weekly;
+                    EntityCommand::Weekly(wkly_cmd) => {
+                        weekly.apply_cmd(wkly_cmd);
                         notify_change = true;
                     },
                     EntityCommand::Time(new_time) => {

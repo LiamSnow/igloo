@@ -58,14 +58,13 @@ impl FloatState {
         for state in states {
             if let EntityState::Float(state) = state {
                 let state: f32 = state.into();
-                if homogeneous {
-                    if first {
-                        first = false;
-                    } else {
-                        homogeneous = state == last_state;
-                    }
-                    last_state = state;
+                if first {
+                    first = false;
                 }
+                if homogeneous && !first {
+                    homogeneous = state == last_state;
+                }
+                last_state = state;
             }
         }
         match first {

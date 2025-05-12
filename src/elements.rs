@@ -232,8 +232,8 @@ async fn calc_element_state(
     expected_type: &EntityType,
 ) -> (Option<AveragedEntityState>, ElementStateChange) {
     let dev_states = dev_states.lock().await;
-    let dev_states = &dev_states[start_did..=end_did];
-    let vals: Vec<_> = dev_states.iter().flat_map(|h| h.values()).collect();
+    let dev_states_sel = &dev_states[start_did..=end_did];
+    let vals: Vec<_> = dev_states_sel.iter().flat_map(|h| h.values()).collect();
     let state = expected_type.avg(vals);
     (state.clone(), ElementStateChange { esid, value: state })
 }
