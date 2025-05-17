@@ -4,7 +4,7 @@ use clap_derive::Subcommand;
 use jiff::civil::{Time, Weekday};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
 
 use super::{AveragedEntityState, EntityCommand, EntityState};
 
@@ -51,7 +51,7 @@ pub struct WeeklyState {
 pub fn dispatch(
     cmd: WeeklyCommand,
     sel_str: String,
-    sel: Selection,
+    sel: DeviceSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())

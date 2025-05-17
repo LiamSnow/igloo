@@ -3,7 +3,7 @@ use std::sync::Arc;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
 
 use super::{AveragedEntityState, EntityCommand, EntityState};
 
@@ -27,7 +27,7 @@ pub struct DateTimeState {
 pub fn dispatch(
     cmd: DateTime,
     sel_str: String,
-    sel: Selection,
+    sel: DeviceSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())

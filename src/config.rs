@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     entity::EntityType,
-    providers::{DeviceConfig, ProviderConfig},
+    device::providers::{DeviceConfig, ProviderConfig},
     scripts::{ScriptClaims, ScriptMeta},
 };
 
@@ -62,6 +62,7 @@ pub struct UserConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum UIElementConfig {
+    /// name, cmd_str
     Button(String, String),
     Script(String),
 
@@ -97,11 +98,18 @@ impl UIElementConfig {
         }
     }
 
-    pub fn get_command(&self) -> Option<&str> {
-        Some(match self {
-            Self::Button(_name, cmd) => cmd,
-            _ => return None,
-        })
+    pub fn unwrap_button(&self) -> (&str, &str) {
+        match self {
+            Self::Button(name, cmd_str) => (name, cmd_str),
+            _ => panic!()
+        }
+    }
+
+    pub fn unwrap_script(&self) -> &str {
+        match self {
+            Self::Script(args) => args,
+            _ => panic!()
+        }
     }
 }
 

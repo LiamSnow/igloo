@@ -1,13 +1,12 @@
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::selector::SelectorError;
-
+use crate::device::error::DeviceSelectorError;
 
 #[derive(Error, Debug, Serialize)]
 pub enum ScriptError {
     #[error("selector error `{0}`")]
-    SelectorError(SelectorError),
+    SelectorError(DeviceSelectorError),
     #[error("expected at least `${1}` args but got `${0}`")]
     NotEnoughArgs(usize, usize),
     #[error("unknown script `{0}`")]
@@ -24,8 +23,8 @@ pub enum ScriptError {
     NotAuthorized,
 }
 
-impl From<SelectorError> for ScriptError {
-    fn from(value: SelectorError) -> Self {
+impl From<DeviceSelectorError> for ScriptError {
+    fn from(value: DeviceSelectorError) -> Self {
         ScriptError::SelectorError(value)
     }
 }

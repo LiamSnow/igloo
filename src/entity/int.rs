@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, selector::Selection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
 
 use super::{AveragedEntityState, EntityCommand, EntityState};
 
@@ -26,7 +26,7 @@ pub struct IntState {
 pub fn dispatch(
     cmd: i32,
     sel_str: String,
-    sel: Selection,
+    sel: DeviceSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())

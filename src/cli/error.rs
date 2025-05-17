@@ -1,12 +1,12 @@
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::{scripts::{error::ScriptError, ScriptCancelFailure}, selector::{DeviceChannelError, SelectorError}};
+use crate::{device::error::{DeviceChannelError, DeviceSelectorError}, scripts::{error::ScriptError, ScriptCancelFailure}};
 
 #[derive(Error, Debug, Serialize)]
 pub enum DispatchError {
     #[error("selector error `{0}`")]
-    SelectorError(SelectorError),
+    SelectorError(DeviceSelectorError),
     #[error("invalid element value selector `{0}`")]
     InvalidElementValueSelector(String),
     #[error("selector `{0}` had channel error `{1}`")]
@@ -33,8 +33,8 @@ impl From<serde_json::Error> for DispatchError {
     }
 }
 
-impl From<SelectorError> for DispatchError {
-    fn from(value: SelectorError) -> Self {
+impl From<DeviceSelectorError> for DispatchError {
+    fn from(value: DeviceSelectorError) -> Self {
         Self::SelectorError(value)
     }
 }

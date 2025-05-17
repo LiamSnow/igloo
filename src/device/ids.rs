@@ -1,66 +1,87 @@
-use std::sync::Arc;
-
-use serde::Serialize;
-use thiserror::Error;
-use tokio::sync::mpsc::error::TrySendError;
+use std::collections::HashMap;
 
 use crate::{
-    device::DeviceIDLut,
     entity::{EntityCommand, TargetedEntityCommand},
     state::IglooState,
 };
 
-#[derive(Error, Debug, Serialize)]
-pub enum SelectorError {
-    #[error("scope selector must be `all`, ZONE, ZONE.DEVICE, or ZONE.DEVICE.SUBDEVICE")]
-    BadSelector,
-    #[error("unknown zone `{0}`")]
-    UnknownZone(String),
-    #[error("unknown device `{0}.{1}`")]
-    UnknownDevice(String, String),
-}
+use super::{
+    error::{DeviceChannelError, DeviceSelectorError},
+    providers::DeviceConfig,
+    selection_str::SelectionString,
+};
 
-#[derive(Error, Debug, Serialize)]
-pub enum DeviceChannelError {
-    #[error("full")]
-    Full,
-    #[error("closed")]
-    Closed,
-}
+use std::sync::Arc;
 
-impl From<TrySendError<TargetedEntityCommand>> for DeviceChannelError {
-    fn from(value: TrySendError<TargetedEntityCommand>) -> Self {
-        match value {
-            TrySendError::Full(_) => Self::Full,
-            TrySendError::Closed(_) => Self::Closed,
-        }
-    }
+#[derive(Default)]
+pub struct DeviceIDLut {
+    pub num_devs: usize,
+    pub num_zones: usize,
+    /// zid (zone ID) -> start_did, end_did
+    pub did_range: Vec<(usize, usize)>,
+    /// zid, dev_name -> did (device ID)
+    pub did: Vec<HashMap<String, usize>>,
+    /// zone_name -> zid
+    pub zid: HashMap<String, usize>,
 }
 
 #[derive(Clone, Debug)]
-pub enum Selection {
+pub enum DeviceSelection {
     All,
     /// zid, start_did, end_did
+    /// All Devices in a Zone
+    /// Note that zone did's are contiguous, so iterating from
+    /// start_did to end_did will cover all the devices in the zone
     Zone(usize, usize, usize),
     /// zid, did
+    /// Targets all entities in a Device
     Device(usize, usize),
     /// zid, did, entity_name
+    /// One specific Entity inside a Device
     Entity(usize, usize, String),
 }
 
-impl Selection {
-    pub fn from_str(lut: &DeviceIDLut, s: &str) -> Result<Self, SelectorError> {
+impl DeviceIDLut {
+    pub fn init(
+        devices: HashMap<String, HashMap<String, DeviceConfig>>,
+    ) -> (Self, Vec<DeviceConfig>, Vec<String>) {
+        //make lut
+        let (mut next_did, mut next_zid) = (0, 0);
+        let mut lut = DeviceIDLut::default();
+        let (mut dev_cfgs, mut dev_sels) = (Vec::new(), Vec::new());
+        for (zone_name, devs) in devices {
+            let start_did = next_did;
+            let mut did_lut = HashMap::new();
+            for (dev_name, dev_cfg) in devs {
+                did_lut.insert(dev_name.clone(), next_did);
+                dev_cfgs.push(dev_cfg);
+                dev_sels.push(format!("{zone_name}.{dev_name}"));
+                next_did += 1;
+            }
+            lut.did.push(did_lut);
+            lut.did_range.push((start_did, next_did - 1));
+            lut.zid.insert(zone_name, next_zid);
+            next_zid += 1;
+        }
+        lut.num_devs = next_did;
+        lut.num_zones = next_zid;
+        (lut, dev_cfgs, dev_sels)
+    }
+}
+
+impl DeviceSelection {
+    pub fn from_str(lut: &DeviceIDLut, s: &str) -> Result<Self, DeviceSelectorError> {
         Self::new(lut, &SelectionString::new(s)?)
     }
 
-    pub fn new(lut: &DeviceIDLut, sel_str: &SelectionString) -> Result<Self, SelectorError> {
+    pub fn new(lut: &DeviceIDLut, sel_str: &SelectionString) -> Result<Self, DeviceSelectorError> {
         match sel_str {
-            SelectionString::All => Ok(Selection::All),
+            SelectionString::All => Ok(DeviceSelection::All),
             SelectionString::Zone(zone_name) => {
                 let zid = lut
                     .zid
                     .get(*zone_name)
-                    .ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
+                    .ok_or(DeviceSelectorError::UnknownZone(zone_name.to_string()))?;
                 let (start_did, end_did) = lut.did_range.get(*zid).unwrap();
                 Ok(Self::Zone(*zid, *start_did, *end_did))
             }
@@ -68,24 +89,28 @@ impl Selection {
                 let zid = lut
                     .zid
                     .get(*zone_name)
-                    .ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
+                    .ok_or(DeviceSelectorError::UnknownZone(zone_name.to_string()))?;
                 let dev_lut = lut.did.get(*zid).unwrap();
-                let did = dev_lut.get(*dev_name).ok_or(SelectorError::UnknownDevice(
-                    zone_name.to_string(),
-                    dev_name.to_string(),
-                ))?;
+                let did = dev_lut
+                    .get(*dev_name)
+                    .ok_or(DeviceSelectorError::UnknownDevice(
+                        zone_name.to_string(),
+                        dev_name.to_string(),
+                    ))?;
                 Ok(Self::Device(*zid, *did))
             }
             SelectionString::Entity(zone_name, dev_name, entity_name) => {
                 let zid = lut
                     .zid
                     .get(*zone_name)
-                    .ok_or(SelectorError::UnknownZone(zone_name.to_string()))?;
+                    .ok_or(DeviceSelectorError::UnknownZone(zone_name.to_string()))?;
                 let dev_lut = lut.did.get(*zid).unwrap();
-                let did = dev_lut.get(*dev_name).ok_or(SelectorError::UnknownDevice(
-                    zone_name.to_string(),
-                    dev_name.to_string(),
-                ))?;
+                let did = dev_lut
+                    .get(*dev_name)
+                    .ok_or(DeviceSelectorError::UnknownDevice(
+                        zone_name.to_string(),
+                        dev_name.to_string(),
+                    ))?;
                 Ok(Self::Entity(*zid, *did, entity_name.to_string()))
             }
         }
@@ -233,7 +258,8 @@ impl Selection {
         false
     }
 
-    /// This is REALLY slow, use sparingly
+    /// Converts back to original selection string
+    /// This is REALLY slow, use sparingly (reverse lookup)
     pub fn to_str(&self, lut: &DeviceIDLut) -> String {
         if let Some(zid) = self.get_zid() {
             let mut res = match lut.zid.iter().find(|(_, v)| **v == zid) {
@@ -260,66 +286,12 @@ impl Selection {
             "all".to_string()
         }
     }
-}
 
-pub enum SelectionString<'a> {
-    All,
-    /// zone_name
-    Zone(&'a str),
-    /// zone_name, dev_name
-    Device(&'a str, &'a str),
-    /// zone_name, dev_name, entity_name
-    Entity(&'a str, &'a str, &'a str),
-}
-
-impl<'a> SelectionString<'a> {
-    pub fn new(selection_str: &'a str) -> Result<Self, SelectorError> {
-        if selection_str == "all" {
-            return Ok(Self::All);
-        }
-
-        let parts: Vec<&str> = selection_str.split(".").collect();
-        if parts.len() < 1 || parts.len() > 3 {
-            return Err(SelectorError::BadSelector);
-        }
-
-        let zone_name = parts.get(0).unwrap();
-
-        if let Some(dev_name) = parts.get(1) {
-            if let Some(entity_name) = parts.get(2) {
-                Ok(Self::Entity(zone_name, dev_name, entity_name))
-            } else {
-                Ok(Self::Device(zone_name, dev_name))
-            }
-        } else {
-            Ok(Self::Zone(zone_name))
-        }
-    }
-
-    pub fn get_zone_name(&self) -> Option<&str> {
+    pub fn get_did_range(&self, lut: &DeviceIDLut) -> (usize, usize) {
         match self {
-            Self::All => None,
-            Self::Zone(zone_name) => Some(zone_name),
-            Self::Device(zone_name, _) => Some(zone_name),
-            Self::Entity(zone_name, _, _) => Some(zone_name),
-        }
-    }
-
-    pub fn get_dev_name(&self) -> Option<&str> {
-        match self {
-            Self::All => None,
-            Self::Zone(..) => None,
-            Self::Device(_, dev_name) => Some(dev_name),
-            Self::Entity(_, dev_name, _) => Some(dev_name),
-        }
-    }
-
-    pub fn get_entity_name(&self) -> Option<&str> {
-        match self {
-            Self::All => None,
-            Self::Zone(..) => None,
-            Self::Device(_, _) => None,
-            Self::Entity(_, _, entity_name) => Some(&entity_name),
+            DeviceSelection::All => (0 as usize, lut.did.len() - 1),
+            DeviceSelection::Zone(_, start_did, end_did) => (*start_did, *end_did),
+            DeviceSelection::Device(_, did) | DeviceSelection::Entity(_, did, _) => (*did, *did),
         }
     }
 }

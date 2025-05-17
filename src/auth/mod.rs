@@ -5,14 +5,10 @@ use error::AuthError;
 use login::TokenDatabase;
 use tracing::{info, span, Level};
 
-use crate::{
-    config::AuthConfig,
-    device::DeviceIDLut,
-    selector::Selection,
-};
+use crate::{config::AuthConfig, device::ids::DeviceIDLut, device::ids::DeviceSelection};
 
-pub mod login;
 pub mod error;
+pub mod login;
 
 pub struct Auth {
     pub num_users: usize,
@@ -64,15 +60,15 @@ impl Auth {
         let mut all_perms: Option<BitVec> = None;
         let mut zone_perms: HashMap<usize, BitVec> = HashMap::new();
         for (sel_str, target) in cfg.permissions {
-            let sel = Selection::from_str(&dev_ids, &sel_str)?;
+            let sel = DeviceSelection::from_str(&dev_ids, &sel_str)?;
             let uids = Self::get_uids_internal(&target, &uid_lut, &gid_lut, &groups).unwrap(); //FIXME
             let mut bv = bitvec![0; num_users];
             for uid in uids {
                 bv.set(uid, true);
             }
             match sel {
-                Selection::All => all_perms = Some(bv),
-                Selection::Zone(zid, _, _) => {
+                DeviceSelection::All => all_perms = Some(bv),
+                DeviceSelection::Zone(zid, _, _) => {
                     zone_perms.insert(zid, bv);
                 }
                 _ => info!("Permissions can only be applied to zones and all. Skipping."),
@@ -125,8 +121,8 @@ impl Auth {
     }
 
     /// Checks whether a user has authorization to access a Selection
-    pub fn is_authorized(&self, sel: &Selection, uid: usize) -> bool {
-        if matches!(sel, Selection::All) {
+    pub fn is_authorized(&self, sel: &DeviceSelection, uid: usize) -> bool {
+        if matches!(sel, DeviceSelection::All) {
             // calls to all will only apply to those they have permission for
             return true;
         }

@@ -13,9 +13,7 @@ pub mod config;
 pub mod device;
 pub mod elements;
 pub mod entity;
-pub mod providers;
 pub mod scripts;
-pub mod selector;
 pub mod state;
 
 pub const VERSION: f32 = 0.1;
