@@ -12,12 +12,9 @@ use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
 use tracing::{debug, error, span, Level};
 
-use crate::{
-    cli::model::Cli,
-    entity::{
-        light::{LightCommand, LightState, RGBF32},
-        EntityCommand, EntityState, TargetedEntityCommand,
-    },
+use crate::entity::{
+    light::{LightCommand, LightState, RGBF32},
+    EntityCommand, EntityState, TargetedEntityCommand,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -63,11 +60,10 @@ pub async fn task(
     config: DeviceConfig,
     did: usize,
     selector: String,
-    _cmd_tx: mpsc::Sender<Cli>,
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), ESPHomeError> {
-    let span = span!(Level::DEBUG, "Device ESPHome", s=selector, did);
+    let span = span!(Level::DEBUG, "Device ESPHome", s = selector, did);
     let _enter = span.enter();
     debug!("initializing");
 
@@ -75,7 +71,9 @@ pub async fn task(
     dev.connect().await?;
     let _enter = span.enter(); // 🤷
     debug!("connected");
-    let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
+    let res = on_change_tx
+        .send((did, "connected".to_string(), EntityState::Connection(true)))
+        .await;
     if let Err(e) = res {
         error!("sending on_change: {e}");
     }

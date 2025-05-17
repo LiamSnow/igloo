@@ -3,18 +3,15 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{debug, error, span, Level};
 
-use crate::{
-    cli::model::Cli,
-    entity::{
-        bool::BoolState,
-        datetime::DateTimeState,
-        float::FloatState,
-        int::IntState,
-        text::TextState,
-        time::TimeState,
-        weekly::{Weekly, WeeklyState},
-        EntityCommand, EntityState, TargetedEntityCommand,
-    },
+use crate::entity::{
+    bool::BoolState,
+    datetime::DateTimeState,
+    float::FloatState,
+    int::IntState,
+    text::TextState,
+    time::TimeState,
+    weekly::{Weekly, WeeklyState},
+    EntityCommand, EntityState, TargetedEntityCommand,
 };
 
 const ENTITY_NAME: &str = "value";
@@ -58,7 +55,6 @@ pub async fn task(
     config: DeviceConfig,
     did: usize,
     selector: String,
-    _cmd_tx: mpsc::Sender<Cli>,
     cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) {
@@ -66,7 +62,9 @@ pub async fn task(
     let _enter = span.enter();
     debug!("initializing");
 
-    let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
+    let res = on_change_tx
+        .send((did, "connected".to_string(), EntityState::Connection(true)))
+        .await;
     if let Err(e) = res {
         error!("sending on_change: {e}");
     }

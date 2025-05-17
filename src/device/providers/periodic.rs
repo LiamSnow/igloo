@@ -1,8 +1,8 @@
-use std::cmp::min;
+use std::{cmp::min, sync::Arc};
 
 use jiff::{civil::Time, Span, Zoned};
 use serde::{Deserialize, Serialize};
-use tokio::{time::Duration, sync::mpsc};
+use tokio::{sync::{mpsc, oneshot}, time::Duration};
 use tracing::{debug, error, span, Level};
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     entity::{
         weekly::{Weekly, WeeklyState},
         EntityCommand, EntityState, TargetedEntityCommand,
-    },
+    }, state::IglooState,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -40,7 +40,7 @@ pub async fn task(
     config: DeviceConfig,
     did: usize,
     selector: String,
-    cmd_tx: mpsc::Sender<Cli>,
+    istate_rx: oneshot::Receiver<Arc<IglooState>>,
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), String> {
@@ -62,6 +62,9 @@ pub async fn task(
         TaskType::Weekly { default } => default,
     };
 
+    let istate = istate_rx.await.unwrap();
+    debug!("ready");
+
     loop {
         if notify_change {
             if let Err(e) = on_change_tx
@@ -72,8 +75,8 @@ pub async fn task(
             }
 
             if let Some(ref cmd) = on_change {
-                if let Err(e) = cmd_tx.send(cmd.clone()).await {
-                    error!("sending on_change command: {e}");
+                if let Err(e) = cmd.clone().dispatch(&istate, None, true).await {
+                    error!("executing on_change cmd: {}", serde_json::to_string(&e).unwrap());
                 }
             }
         }
@@ -82,8 +85,8 @@ pub async fn task(
 
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(sleep_seconds as u64)) => {
-                if let Err(e) = cmd_tx.send(on_trigger.clone()).await {
-                    error!("sending on_trigger: {e}");
+                if let Err(e) = on_trigger.clone().dispatch(&istate, None, true).await {
+                    error!("executing on_trigger cmd: {}", serde_json::to_string(&e).unwrap());
                 }
                 notify_change = false;
             }

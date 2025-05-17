@@ -31,32 +31,35 @@ impl Devices {
         lut: DeviceIDLut,
         mut dev_cfgs: Vec<DeviceConfig>,
         mut dev_sels: Vec<String>,
-        istate_rx: oneshot::Receiver<Arc<IglooState>>,
-    ) -> Self {
+    ) -> (Self, Vec<oneshot::Sender<Arc<IglooState>>>) {
         let span = span!(Level::INFO, "Devices");
         let _enter = span.enter();
         info!("initializing");
 
-        let (on_change_tx, back_cmd_tx) = tasks::init(istate_rx);
+        let mut istate_txs = Vec::new();
+        let (on_change_tx, i) = tasks::init();
+        istate_txs.push(i);
 
         let mut channels = Vec::with_capacity(lut.num_devs);
         for did in 0..lut.num_devs {
             let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedEntityCommand>(5);
-            dev_cfgs.remove(0).spawn(
+            let res = dev_cfgs.remove(0).spawn(
                 did,
                 dev_sels.remove(0),
-                back_cmd_tx.clone(),
                 cmd_rx,
                 on_change_tx.clone(),
             );
+            if let Some(i) = res {
+                istate_txs.push(i);
+            }
             channels.push(cmd_tx);
         }
 
-        Self {
+        (Self {
             channels,
             states: Mutex::new(vec![make_state_hashmap(); lut.num_devs]),
             lut,
-        }
+        }, istate_txs)
     }
 }
 
