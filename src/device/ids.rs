@@ -116,8 +116,20 @@ impl DeviceIDSelection {
         }
     }
 
-    pub fn is_all(self) -> bool {
+    pub fn is_all(&self) -> bool {
         matches!(self, Self::All)
+    }
+
+    pub fn is_zone(&self) -> bool {
+        matches!(self, Self::Zone(..))
+    }
+
+    pub fn is_device(&self) -> bool {
+        matches!(self, Self::Device(..))
+    }
+
+    pub fn is_entity(&self) -> bool {
+        matches!(self, Self::Entity(..))
     }
 
     pub fn get_zone(self) -> Option<(usize, usize, usize)> {

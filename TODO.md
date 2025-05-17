@@ -13,6 +13,7 @@
  - 2 Climate + Fan
  - 2 Multiple Light types
  - 10 Decide on Style
+    - Overflow
 
 # Testing
  - 10 unit testing
@@ -22,3 +23,6 @@
  - 3 periodic + dummy saving
  - 6 External CLI (like kubectl maybies)
  - 2 Diagram on README
+
+# Fixes
+ - List entities ESPHome only lists those with states

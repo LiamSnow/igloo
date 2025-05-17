@@ -65,6 +65,7 @@ pub enum UIElementConfig {
     /// name, cmd_str
     Button(String, String),
     Script(String),
+    Terminal,
 
     Light(String),
     CTLight(String),
@@ -94,7 +95,7 @@ impl UIElementConfig {
             Self::Int(s) => Some((s, EntityType::Int)),
             Self::Float(s) => Some((s, EntityType::Float)),
             Self::Text(s) => Some((s, EntityType::Text)),
-            Self::Button(..) | Self::Script(..) => None,
+            Self::Button(..) | Self::Script(..) | Self::Terminal => None,
         }
     }
 

@@ -9,6 +9,7 @@ import Text from "./Text";
 import Bool from "./Bool";
 import Button from "./Button";
 import Script from "./Script";
+import Terminal from "./Terminal";
 import styles from './Group.module.scss';
 import { killSnake } from '../util';
 
@@ -36,6 +37,13 @@ function Group(props) {
                                 execute={props.execute}
                                 running={running}
                                 sid={item.sid}
+                            />;
+                        }
+
+                        if (item.cfg === "Terminal") {
+                            return <Terminal name={item.cfg[configType][0]}
+                                execute={props.execute}
+                                result={props.data.terminal}
                             />;
                         }
 

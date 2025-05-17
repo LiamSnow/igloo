@@ -38,7 +38,6 @@ impl Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
-    /// Control lights
     #[command(alias = "lights")]
     Light(SelectorAnd<LightCommand>),
     Int(IntArgs),
@@ -52,6 +51,10 @@ pub enum CliCommands {
     Weekly(SelectorAnd<WeeklyCommand>),
     Climate(SelectorAnd<ClimateCommand>),
     Fan(SelectorAnd<FanCommand>),
+
+    //TODO add support for getting avg state of device, zone, etc with entity_type
+    /// Get the current state of an entity
+    Get(GetArgs),
 
     /// Get UI Interface
     UI,
@@ -86,6 +89,7 @@ impl CliCommands {
             Self::Climate(args) => &args.target,
             Self::Fan(args) => &args.target,
 
+            Self::Get(args) => &args.entity_selector,
             Self::List(args) => return args.item.get_selection(),
 
             Self::UI |
@@ -146,6 +150,11 @@ pub struct SelectorAndString {
     /// selector string
     pub target: String,
     pub value: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GetArgs {
+    pub entity_selector: String,
 }
 
 #[derive(Args, Debug, Clone)]

@@ -11,8 +11,6 @@ pub enum DispatchError {
     InvalidElementValueSelector(String),
     #[error("selector `{0}` had channel error `{1}`")]
     DeviceChannelError(String, DeviceChannelError),
-    #[error("unknown zone `{0}`")]
-    UnknownZone(String),
     #[error("json encoding error `{0}`")]
     JsonEncodingError(String),
     #[error("you do not have permission to perform this operation")]
@@ -25,6 +23,14 @@ pub enum DispatchError {
     ScriptCancelFailure(ScriptCancelFailure),
     #[error("command requires UID")]
     CommandRequiresUID,
+    #[error("must provide zone selection")]
+    NotZone,
+    #[error("must provide device selection")]
+    NotDevice,
+    #[error("must provide entity selection")]
+    NotEntity,
+    #[error("entity does not exist")]
+    EntityNonExistant,
 }
 
 impl From<serde_json::Error> for DispatchError {

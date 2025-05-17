@@ -24,7 +24,14 @@ impl Element {
         Ok(match cfg {
             UIElementConfig::Button(..) => Self::make_button(cfg, ctx)?,
             UIElementConfig::Script(..) => Self::make_script(cfg, ctx)?,
-            _ => Self::make_default(cfg, ctx)?,
+            UIElementConfig::Terminal => Self::make_none(cfg),
+
+            UIElementConfig::Light(..) | UIElementConfig::CTLight(..) |
+            UIElementConfig::RGBLight(..) | UIElementConfig::RGBCTLight(..) |
+            UIElementConfig::Bool(..) | UIElementConfig::Time(..) |
+            UIElementConfig::DateTime(..) | UIElementConfig::Weekly(..) |
+            UIElementConfig::Int(..) | UIElementConfig::Float(..) |
+            UIElementConfig::Text(..) => Self::make_default(cfg, ctx)?,
         })
     }
 
@@ -118,5 +125,14 @@ impl Element {
                 args,
             )?),
         })
+    }
+
+    fn make_none(cfg: UIElementConfig) -> Self {
+        Self {
+            cfg,
+            esid: None,
+            script_id: None,
+            allowed_uids: None,
+        }
     }
 }

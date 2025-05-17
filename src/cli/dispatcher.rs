@@ -3,8 +3,12 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::{
-    elements::element::Element, entity::{self, AveragedEntityState}, scripts, device::ids::DeviceIDSelection,
-    state::IglooState, VERSION,
+    device::ids::DeviceIDSelection,
+    elements::element::Element,
+    entity::{self, AveragedEntityState},
+    scripts,
+    state::IglooState,
+    VERSION,
 };
 
 use super::{
@@ -27,20 +31,42 @@ impl Cli {
     ) -> Result<Option<String>, DispatchError> {
         let sel = precheck_selection(&self, state, uid, cancel_conflicting).await?;
         Ok(match self.cmd {
-            CliCommands::Light(args) => entity::light::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Int(args) => entity::int::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Float(args) => entity::float::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Bool(args) => entity::bool::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Text(args) => entity::text::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Time(args) => entity::time::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::DateTime(args) => entity::datetime::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Weekly(args) => entity::weekly::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Climate(args) => entity::climate::dispatch(args.value, args.target, sel.unwrap(), state)?,
-            CliCommands::Fan(args) => entity::fan::dispatch(args.value, args.target, sel.unwrap(), state)?,
+            CliCommands::Light(args) => {
+                entity::light::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Int(args) => {
+                entity::int::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Float(args) => {
+                entity::float::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Bool(args) => {
+                entity::bool::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Text(args) => {
+                entity::text::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Time(args) => {
+                entity::time::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::DateTime(args) => {
+                entity::datetime::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Weekly(args) => {
+                entity::weekly::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Climate(args) => {
+                entity::climate::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+            CliCommands::Fan(args) => {
+                entity::fan::dispatch(args.value, args.target, sel.unwrap(), state)?
+            }
+
+            CliCommands::Get(_) => get_entity_state(sel.unwrap(), state).await?,
 
             CliCommands::Script(args) => args.action.dispatch(state, uid).await?,
             CliCommands::UI => get_ui_for_user(state, uid).await?,
-            CliCommands::List(args) => args.item.dispatch(state).await?,
+            CliCommands::List(args) => args.item.dispatch(state, sel.unwrap()).await?,
             CliCommands::Logs(args) => args.log_type.dispatch(state).await?,
             CliCommands::Reload => todo!(),
             CliCommands::Version => Some(serde_json::to_string(&VERSION)?),
@@ -91,7 +117,11 @@ impl ScriptAction {
             ScriptAction::Run { extra_args, name } => {
                 scripts::spawn(&state.clone(), name, extra_args, None, uid).await?;
             }
-            ScriptAction::RunWithId { extra_args, name, sid } => {
+            ScriptAction::RunWithId {
+                extra_args,
+                name,
+                sid,
+            } => {
                 scripts::spawn(&state.clone(), name, extra_args, Some(sid), uid).await?;
             }
             ScriptAction::CancelAll { name } => {
@@ -114,7 +144,7 @@ async fn get_ui_for_user(
     uid: Option<usize>,
 ) -> Result<Option<String>, DispatchError> {
     if uid.is_none() {
-        return Err(DispatchError::CommandRequiresUID)
+        return Err(DispatchError::CommandRequiresUID);
     }
 
     //remove unauthorized elements
@@ -144,7 +174,11 @@ async fn get_ui_for_user(
 }
 
 impl ListItems {
-    async fn dispatch(self, state: &Arc<IglooState>) -> Result<Option<String>, DispatchError> {
+    async fn dispatch(
+        self,
+        state: &Arc<IglooState>,
+        sel: DeviceIDSelection,
+    ) -> Result<Option<String>, DispatchError> {
         Ok(match self {
             ListItems::Users => todo!(),
             ListItems::UserGroups => todo!(),
@@ -153,18 +187,24 @@ impl ListItems {
                 let zones: Vec<_> = state.devices.lut.zid.keys().collect();
                 Some(serde_json::to_string(&zones)?)
             }
-            ListItems::Devices { zone } => {
-                let zid = state
-                    .devices
-                    .lut
-                    .zid
-                    .get(&zone)
-                    .ok_or(DispatchError::UnknownZone(zone))?;
-                let names: Vec<_> = state.devices.lut.did.get(*zid).unwrap().keys().collect();
+            ListItems::Devices { zone: _ } => {
+                if !sel.is_zone() {
+                    return Err(DispatchError::NotZone);
+                }
+                let zid = sel.get_zid().unwrap();
+                let zone = state.devices.lut.did.get(zid).unwrap();
+                let names: Vec<_> = zone.keys().collect();
                 Some(serde_json::to_string(&names)?)
             }
             ListItems::Entities { dev: _ } => {
-                todo!()
+                if !sel.is_device() {
+                    return Err(DispatchError::NotZone);
+                }
+
+                let dev_states = state.devices.states.lock().await;
+                let did = sel.get_did().unwrap();
+                let names: Vec<_> = dev_states.get(did).unwrap().keys().collect();
+                Some(serde_json::to_string(&names)?)
             }
             ListItems::Scripts => {
                 let res = state.scripts.states.lock().await;
@@ -183,5 +223,22 @@ impl LogType {
             }
             LogType::Script { name: _ } => todo!(),
         }
+    }
+}
+
+async fn get_entity_state(
+    sel: DeviceIDSelection,
+    state: &IglooState,
+) -> Result<Option<String>, DispatchError> {
+    if !sel.is_entity() {
+        return Err(DispatchError::NotEntity);
+    }
+
+    let dev_states = state.devices.states.lock().await;
+    let entity_states = dev_states.get(sel.get_did().unwrap()).unwrap();
+
+    match entity_states.get(sel.get_entity_name().unwrap()) {
+        Some(state) => Ok(Some(serde_json::to_string(&state)?)),
+        None => Err(DispatchError::EntityNonExistant),
     }
 }

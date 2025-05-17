@@ -21,6 +21,11 @@
   font-size: 16px;
   border: 1px solid #333;
   cursor: pointer;
+  transition: background-color 30ms linear;
+}
+
+.Button:hover {
+  background: #222;
 }
 
 .Button:disabled {

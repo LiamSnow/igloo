@@ -17,16 +17,16 @@ function Home() {
         ws.onmessage = (event) => {
             try {
                 let res = JSON.parse(event.data);
-                console.log("got", res);
+                console.log("got1", res);
 
                 // init
                 if (res.elements !== undefined) {
                     setData(res);
                     setData('scripts', {});
+                    setData('terminal', '');
                 }
 
-                // partial updates
-
+                // partial updates (from broadcast)
                 else if (res.header === "states") {
                     for (const update of res.body) {
                         setData('states', update.esid, update.value);
@@ -40,8 +40,12 @@ function Home() {
                     else {
                         setData('scripts', res.body.Remove, false);
                     }
-                    console.log(res.body);
-                    console.log("now scripts", data.scripts);
+                }
+
+                // otherwise assume it was from the terminal (this is kinda hacky?)
+                else {
+                    console.log("raaah");
+                    setData('terminal', res);
                 }
             } catch (err) {
                 console.error('Error processing message:', err);
