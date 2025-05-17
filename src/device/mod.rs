@@ -2,17 +2,16 @@ pub mod ids;
 pub mod selection_str;
 pub mod error;
 pub mod providers;
+pub mod tasks;
 
 use std::{collections::HashMap, sync::Arc};
 
 use ids::DeviceIDLut;
 use tokio::sync::{mpsc, oneshot, Mutex};
-use tracing::{error, info, span, Level};
+use tracing::{info, span, Level};
 use providers::DeviceConfig;
 
 use crate::{
-    cli::model::Cli,
-    elements,
     entity::{EntityState, TargetedEntityCommand},
     state::IglooState,
 };
@@ -38,16 +37,9 @@ impl Devices {
         let _enter = span.enter();
         info!("initializing");
 
-        let (on_change_tx, on_change_rx) = mpsc::channel(10); //FIXME size?
-        let (back_cmd_tx, back_cmd_rx) = mpsc::channel::<Cli>(5);
-        tokio::spawn(async move {
-            let istate = istate_rx.await.unwrap();
-            tokio::spawn(state_task(on_change_rx, istate.clone()));
-            tokio::spawn(back_cmd_task(back_cmd_rx, istate));
-        });
+        let (on_change_tx, back_cmd_tx) = tasks::init(istate_rx);
 
-        let mut channels = Vec::new();
-
+        let mut channels = Vec::with_capacity(lut.num_devs);
         for did in 0..lut.num_devs {
             let (cmd_tx, cmd_rx) = mpsc::channel::<TargetedEntityCommand>(5);
             dev_cfgs.remove(0).spawn(
@@ -62,45 +54,14 @@ impl Devices {
 
         Self {
             channels,
-            states: Mutex::new(vec![HashMap::new(); lut.num_devs]),
+            states: Mutex::new(vec![make_state_hashmap(); lut.num_devs]),
             lut,
         }
     }
 }
 
-
-async fn state_task(
-    mut on_change_rx: mpsc::Receiver<(usize, String, EntityState)>,
-    istate: Arc<IglooState>,
-) {
-    let span = span!(Level::INFO, "Devices State Update Task");
-    let _enter = span.enter();
-    info!("running");
-
-    //TODO group changes?
-    while let Some((did, entity_name, value)) = on_change_rx.recv().await {
-        //push to states
-        {
-            let mut states = istate.devices.states.lock().await;
-            states[did].insert(entity_name.clone(), value.clone());
-        }
-
-        //update elements
-        elements::state::on_device_update(&istate, did, &entity_name, &value).await;
-    }
-}
-
-async fn back_cmd_task(
-    mut back_cmd_rx: mpsc::Receiver<Cli>,
-    istate: Arc<IglooState>,
-) {
-    let span = span!(Level::INFO, "Devices Back Command Task");
-    let _enter = span.enter();
-    info!("running");
-
-    while let Some(cmd) = back_cmd_rx.recv().await {
-        if let Err(e) = cmd.dispatch(&istate, None, true).await {
-            error!("{}", serde_json::to_string(&e).unwrap());
-        }
-    }
+fn make_state_hashmap() -> HashMap<String, EntityState> {
+    let mut h = HashMap::new();
+    h.insert("connected".to_string(), EntityState::Connection(false));
+    h
 }

@@ -54,6 +54,7 @@ pub enum EntityState {
     Weekly(WeeklyState),
     Climate(ClimateState),
     Fan(FanState),
+    Connection(bool)
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Deserialize, Serialize)]
@@ -67,15 +68,16 @@ pub enum EntityType {
     DateTime,
     Weekly,
     Climate,
-    Fan
+    Fan,
+    Connection
 }
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AveragedEntityState {
     pub value: EntityState,
     pub homogeneous: bool,
+    pub disconnection_stats: Option<(usize, usize)>
 }
-
 
 impl EntityType {
     pub fn avg(&self, states: Vec<&EntityState>) -> Option<AveragedEntityState> {
@@ -90,6 +92,7 @@ impl EntityType {
             EntityType::Weekly => Weekly::avg(states),
             EntityType::Climate => ClimateState::avg(states),
             EntityType::Fan => FanState::avg(states),
+            EntityType::Connection => panic!(),
         }
     }
 }
@@ -107,6 +110,14 @@ impl EntityState {
             Self::Weekly(..) => EntityType::Weekly,
             Self::Climate(..) => EntityType::Climate,
             Self::Fan(..) => EntityType::Fan,
+            Self::Connection(..) => EntityType::Connection,
+        }
+    }
+
+    pub fn unwrap_connection(&self) -> bool {
+        match self {
+            Self::Connection(c) => *c,
+            _ => panic!()
         }
     }
 }

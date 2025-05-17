@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap_derive::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceIDSelection, state::IglooState};
 
 use super::{EntityCommand, EntityState, AveragedEntityState};
 
@@ -73,7 +73,7 @@ impl From<u8> for FanOscillation {
 pub fn dispatch(
     cmd: FanCommand,
     sel_str: String,
-    sel: DeviceSelection,
+    sel: DeviceIDSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())
@@ -138,6 +138,7 @@ impl FanState {
                 },
             }),
             homogeneous,
+            disconnection_stats: None
         })
     }
 }

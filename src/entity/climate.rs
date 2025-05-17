@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap_derive::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceIDSelection, state::IglooState};
 
 use super::{AveragedEntityState, EntityCommand, EntityState};
 
@@ -54,7 +54,7 @@ impl From<u8> for ClimateMode {
 pub fn dispatch(
     cmd: ClimateCommand,
     sel_str: String,
-    sel: DeviceSelection,
+    sel: DeviceIDSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())
@@ -108,6 +108,7 @@ impl ClimateState {
                 temp: (temp_sum as f32 / total as f32) as i32,
             }),
             homogeneous,
+            disconnection_stats: None
         })
     }
 }

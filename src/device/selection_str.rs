@@ -16,12 +16,12 @@ pub enum SelectionString<'a> {
 }
 
 impl<'a> SelectionString<'a> {
-    pub fn new(selection_str: &'a str) -> Result<Self, DeviceSelectorError> {
-        if selection_str == "all" {
+    pub fn new(sel_str: &'a str) -> Result<Self, DeviceSelectorError> {
+        if sel_str == "all" {
             return Ok(Self::All);
         }
 
-        let parts: Vec<&str> = selection_str.split(".").collect();
+        let parts: Vec<&str> = sel_str.split(".").collect();
         if parts.len() < 1 || parts.len() > 3 {
             return Err(DeviceSelectorError::BadSelector);
         }
@@ -39,6 +39,7 @@ impl<'a> SelectionString<'a> {
         }
     }
 
+    /// Gets the zone name for Zone, Device, & Entity
     pub fn get_zone_name(&self) -> Option<&str> {
         match self {
             Self::All => None,
@@ -48,6 +49,7 @@ impl<'a> SelectionString<'a> {
         }
     }
 
+    /// Gets the device name for Device & Entity
     pub fn get_dev_name(&self) -> Option<&str> {
         match self {
             Self::All => None,

@@ -75,6 +75,10 @@ pub async fn task(
     dev.connect().await?;
     let _enter = span.enter(); // 🤷
     info!("connected");
+    let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
+    if let Err(e) = res {
+        error!("sending on_change: {e}");
+    }
 
     //push state up
     let mut update_rx = dev.subscribe_states(5).await?;

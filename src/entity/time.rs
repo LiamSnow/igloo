@@ -3,7 +3,7 @@ use std::sync::Arc;
 use jiff::civil::Time;
 use serde::{Deserialize, Serialize};
 
-use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceIDSelection, state::IglooState};
 
 use super::{AveragedEntityState, EntityCommand, EntityState};
 
@@ -27,7 +27,7 @@ pub struct TimeState {
 pub fn dispatch(
     cmd: Time,
     sel_str: String,
-    sel: DeviceSelection,
+    sel: DeviceIDSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())
@@ -61,6 +61,7 @@ impl TimeState {
             false => Some(AveragedEntityState {
                 value: EntityState::Time(last_state.into()),
                 homogeneous,
+                disconnection_stats: None
             }),
         }
     }

@@ -2,7 +2,7 @@ use bitvec::vec::BitVec;
 use serde::Serialize;
 
 use crate::{
-    cli::model::Cli, config::UIElementConfig, device::ids::DeviceSelection, scripts
+    cli::model::Cli, config::UIElementConfig, device::ids::DeviceIDSelection, scripts
 };
 
 use super::{error::ElementsInitError, InitContext};
@@ -33,7 +33,7 @@ impl Element {
         ctx: &mut InitContext,
     ) -> Result<Self, ElementsInitError> {
         let (sel_str, entity_type) = cfg.get_meta().unwrap();
-        let sel = DeviceSelection::from_str(&ctx.lut, sel_str)?;
+        let sel = DeviceIDSelection::from_str(&ctx.lut, sel_str)?;
 
         let esid = ctx.next_esid;
         ctx.next_esid += 1;
@@ -51,7 +51,7 @@ impl Element {
             .cloned();
 
         // add observers
-        if let DeviceSelection::Entity(_, did, entity_name) = sel {
+        if let DeviceIDSelection::Entity(_, did, entity_name) = sel {
             ctx.watchers[did].entity.insert(entity_name.clone(), esid);
         } else {
             for did in start_did..=end_did {
@@ -83,7 +83,7 @@ impl Element {
 
         let mut allowed_uids = None;
         if let Some(sel_str) = cmd.cmd.get_selection() {
-            if let Some(zid) = DeviceSelection::from_str(ctx.lut, sel_str)?.get_zid() {
+            if let Some(zid) = DeviceIDSelection::from_str(ctx.lut, sel_str)?.get_zid() {
                 allowed_uids = Some(ctx.auth.perms.get(zid).unwrap().clone());
             }
         }

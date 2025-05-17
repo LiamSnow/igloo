@@ -66,6 +66,11 @@ pub async fn task(
     let _enter = span.enter();
     info!("initializing");
 
+    let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
+    if let Err(e) = res {
+        error!("sending on_change: {e}");
+    }
+
     match config.r#type {
         VarType::Int { default, range } => {
             int_task(default, range, did, cmd_rx, on_change_tx).await

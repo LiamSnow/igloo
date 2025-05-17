@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap_derive::Subcommand;
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceIDSelection, state::IglooState};
 
 use super::{EntityCommand, EntityState, AveragedEntityState};
 
@@ -36,7 +36,7 @@ pub struct LightState {
 pub fn dispatch(
     cmd: LightCommand,
     sel_str: String,
-    sel: DeviceSelection,
+    sel: DeviceIDSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())
@@ -215,6 +215,7 @@ impl LightState {
                 },
             }),
             homogeneous,
+            disconnection_stats: None
         })
     }
 

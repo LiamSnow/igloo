@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::{
-    elements::element::Element, entity::{self, AveragedEntityState}, scripts, device::ids::DeviceSelection,
+    elements::element::Element, entity::{self, AveragedEntityState}, scripts, device::ids::DeviceIDSelection,
     state::IglooState, VERSION,
 };
 
@@ -53,10 +53,10 @@ async fn precheck_selection(
     state: &Arc<IglooState>,
     uid: Option<usize>,
     cancel_conflicting: bool,
-) -> Result<Option<DeviceSelection>, DispatchError> {
+) -> Result<Option<DeviceIDSelection>, DispatchError> {
     Ok(match cmd.cmd.get_selection() {
         Some(sel_str) => {
-            let sel = DeviceSelection::from_str(&state.devices.lut, &sel_str)?;
+            let sel = DeviceIDSelection::from_str(&state.devices.lut, &sel_str)?;
 
             //check permissions
             if let Some(uid) = uid {

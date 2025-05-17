@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceIDSelection, state::IglooState};
 
 use super::{AveragedEntityState, EntityCommand, EntityState};
 
@@ -26,7 +26,7 @@ pub struct FloatState {
 pub fn dispatch(
     cmd: f32,
     sel_str: String,
-    sel: DeviceSelection,
+    sel: DeviceIDSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, cmd.into())
@@ -72,6 +72,7 @@ impl FloatState {
             false => Some(AveragedEntityState {
                 value: EntityState::Float(last_state.into()),
                 homogeneous,
+                disconnection_stats: None
             }),
         }
     }

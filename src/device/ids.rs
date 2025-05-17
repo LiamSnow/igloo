@@ -26,7 +26,7 @@ pub struct DeviceIDLut {
 }
 
 #[derive(Clone, Debug)]
-pub enum DeviceSelection {
+pub enum DeviceIDSelection {
     All,
     /// zid, start_did, end_did
     /// All Devices in a Zone
@@ -69,14 +69,14 @@ impl DeviceIDLut {
     }
 }
 
-impl DeviceSelection {
+impl DeviceIDSelection {
     pub fn from_str(lut: &DeviceIDLut, s: &str) -> Result<Self, DeviceSelectorError> {
         Self::new(lut, &SelectionString::new(s)?)
     }
 
     pub fn new(lut: &DeviceIDLut, sel_str: &SelectionString) -> Result<Self, DeviceSelectorError> {
         match sel_str {
-            SelectionString::All => Ok(DeviceSelection::All),
+            SelectionString::All => Ok(DeviceIDSelection::All),
             SelectionString::Zone(zone_name) => {
                 let zid = lut
                     .zid
@@ -289,9 +289,9 @@ impl DeviceSelection {
 
     pub fn get_did_range(&self, lut: &DeviceIDLut) -> (usize, usize) {
         match self {
-            DeviceSelection::All => (0 as usize, lut.did.len() - 1),
-            DeviceSelection::Zone(_, start_did, end_did) => (*start_did, *end_did),
-            DeviceSelection::Device(_, did) | DeviceSelection::Entity(_, did, _) => (*did, *did),
+            DeviceIDSelection::All => (0 as usize, lut.did.len() - 1),
+            DeviceIDSelection::Zone(_, start_did, end_did) => (*start_did, *end_did),
+            DeviceIDSelection::Device(_, did) | DeviceIDSelection::Entity(_, did, _) => (*did, *did),
         }
     }
 }

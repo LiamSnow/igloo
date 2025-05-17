@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time};
 
 use crate::{
-    device::ids::DeviceSelection,
+    device::ids::DeviceIDSelection,
     entity::light::LightCommand,
     scripts::{send_change_to_ui, ScriptStateChange},
     state::IglooState,
@@ -20,7 +20,7 @@ pub async fn spawn(
     if args.len() != 4 {
         return Err("Wrong number of args".into());
     }
-    let sel = DeviceSelection::from_str(&state.devices.lut, args.get(0).unwrap())?;
+    let sel = DeviceIDSelection::from_str(&state.devices.lut, args.get(0).unwrap())?;
     if uid.is_some() && !state.auth.is_authorized(&sel, uid.unwrap()) {
         return Err("NOT AUTHORIZED".into());
     }

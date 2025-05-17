@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap_derive::{Subcommand, ValueEnum};
 use serde::Serialize;
 
-use crate::{cli::error::DispatchError, device::ids::DeviceSelection, state::IglooState};
+use crate::{cli::error::DispatchError, device::ids::DeviceIDSelection, state::IglooState};
 
 use super::{EntityCommand, EntityState, AveragedEntityState};
 
@@ -32,7 +32,7 @@ pub enum BoolState {
 pub fn dispatch(
     value: BoolCommand,
     sel_str: String,
-    sel: DeviceSelection,
+    sel: DeviceIDSelection,
     state: &Arc<IglooState>,
 ) -> Result<Option<String>, DispatchError> {
     sel.execute(&state, value.into())
@@ -92,7 +92,8 @@ impl BoolState {
             true => None,
             false => Some(AveragedEntityState {
                 value: EntityState::Bool(last_state.into()),
-                homogeneous
+                homogeneous,
+                disconnection_stats: None
             }),
         }
     }
