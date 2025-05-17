@@ -9,14 +9,22 @@
   //TODO theme number picker
 }
 
+.Input:disabled {
+  opacity: 0.5;
+}
+
 .Button {
-    background: none;
-    color: white;
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-size: 16px;
-    border: 1px solid #333;
-    cursor: pointer;
+  background: none;
+  color: white;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 16px;
+  border: 1px solid #333;
+  cursor: pointer;
+}
+
+.Button:disabled {
+  opacity: 0.5;
 }
 
 .Switch {
@@ -56,6 +64,10 @@
       border-radius: 50%;
       transition: 0.3s;
     }
+  }
+
+  input:disabled + span {
+    opacity: 0.5;
   }
 
   input:checked + span {

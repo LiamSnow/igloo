@@ -14,7 +14,13 @@ function Int(props) {
                 onChange={change}
                 step="1"
                 class={styles.Input}
+                disabled={!props.state()}
             />
+            <Show when={props.num_disc() > 0}>
+                <div aria-label={disc_label()} title={disc_label()} style="color: #ffff77">
+                    <Icon icon="mdi:warning" />
+                </div>
+            </Show>
         </div>
     );
 }

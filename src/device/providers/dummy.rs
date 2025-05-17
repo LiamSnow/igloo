@@ -1,7 +1,7 @@
 use jiff::civil::{DateTime, Time};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tracing::{error, info, span, Level};
+use tracing::{debug, error, span, Level};
 
 use crate::{
     cli::model::Cli,
@@ -62,9 +62,9 @@ pub async fn task(
     cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) {
-    let span = span!(Level::INFO, "Device Dummy", s = selector, did);
+    let span = span!(Level::DEBUG, "Device Dummy", s = selector, did);
     let _enter = span.enter();
-    info!("initializing");
+    debug!("initializing");
 
     let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
     if let Err(e) = res {

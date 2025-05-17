@@ -13,9 +13,15 @@ function Bool(props) {
                 <input checked={props.state() == "True"}
                     onChange={change}
                     type="checkbox"
+                    disabled={!props.state()}
                 />
                 <span></span>
             </label>
+            <Show when={props.num_disc() > 0}>
+                <div aria-label={disc_label()} title={disc_label()} style="color: #ffff77">
+                    <Icon icon="mdi:warning" />
+                </div>
+            </Show>
         </div>
     );
 }

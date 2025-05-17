@@ -66,7 +66,7 @@ pub enum UIElementConfig {
     Button(String, String),
     Script(String),
 
-    BasicLight(String),
+    Light(String),
     CTLight(String),
     RGBLight(String),
     RGBCTLight(String),
@@ -83,7 +83,7 @@ impl UIElementConfig {
     /// returns (selection, entity_type) if applicable
     pub fn get_meta(&self) -> Option<(&str, EntityType)> {
         match self {
-            Self::BasicLight(s) => Some((s, EntityType::Light)),
+            Self::Light(s) => Some((s, EntityType::Light)),
             Self::CTLight(s) => Some((s, EntityType::Light)),
             Self::RGBLight(s) => Some((s, EntityType::Light)),
             Self::RGBCTLight(s) => Some((s, EntityType::Light)),

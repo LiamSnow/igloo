@@ -10,7 +10,7 @@ use esphomebridge_rs::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{sync::mpsc, time::timeout};
-use tracing::{error, info, span, Level};
+use tracing::{debug, error, span, Level};
 
 use crate::{
     cli::model::Cli,
@@ -67,14 +67,14 @@ pub async fn task(
     mut cmd_rx: mpsc::Receiver<TargetedEntityCommand>,
     on_change_tx: mpsc::Sender<(usize, String, EntityState)>,
 ) -> Result<(), ESPHomeError> {
-    let span = span!(Level::INFO, "Device ESPHome", s=selector, did);
+    let span = span!(Level::DEBUG, "Device ESPHome", s=selector, did);
     let _enter = span.enter();
-    info!("initializing");
+    debug!("initializing");
 
     let mut dev = make_device(config)?;
     dev.connect().await?;
     let _enter = span.enter(); // 🤷
-    info!("connected");
+    debug!("connected");
     let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
     if let Err(e) = res {
         error!("sending on_change: {e}");

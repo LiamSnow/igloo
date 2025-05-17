@@ -31,10 +31,17 @@ function Weekly(props) {
     return (
         <div>
             <h3>{killSnake(props.name)}</h3>
+            <Show when={props.num_disc() > 0}>
+                <div aria-label={disc_label()} title={disc_label()} style="color: #ffff77">
+                    <Icon icon="mdi:warning" />
+                </div>
+            </Show>
+
             <input type="time"
                 value={props.state()?.value.time}
                 onChange={changeTime}
                 class={istyles.Input}
+                disabled={!props.state()}
             />
 
             <div class={styles.Weekdays}>
@@ -46,6 +53,7 @@ function Weekly(props) {
                 <div class={test("Friday")} name="Friday" onClick={changeDays}>F</div>
                 <div class={test("Saturday")} name="Saturday" onClick={changeDays}>S</div>
             </div>
+
         </div>
     );
 }

@@ -3,7 +3,7 @@ use std::cmp::min;
 use jiff::{civil::Time, Span, Zoned};
 use serde::{Deserialize, Serialize};
 use tokio::{time::Duration, sync::mpsc};
-use tracing::{error, info, span, Level};
+use tracing::{debug, error, span, Level};
 
 use crate::{
     cli::model::Cli,
@@ -46,7 +46,7 @@ pub async fn task(
 ) -> Result<(), String> {
     let span = span!(Level::INFO, "Device Periodic", s=selector, did);
     let _enter = span.enter();
-    info!("initializing");
+    debug!("initializing");
 
     let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
     if let Err(e) = res {

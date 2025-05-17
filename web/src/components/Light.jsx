@@ -24,12 +24,16 @@ function Light(props) {
         lightCmd(`temp`);
     }
 
+    const disc_label = () => {
+        return `${props.num_disc()} device(s) are disconnected`
+    }
+
     return (
         <div>
             <div class={styles.Header}>
                 <h3>{killSnake(props.name)}</h3>
 
-                <button onClick={handleToggle} class={ styles.State }>
+                <button onClick={handleToggle} class={styles.State} disabled={!props.state()}>
                     <Show when={props.state()?.on} fallback={
                         <Icon icon="mdi:toggle-switch-variant-off" />
                     }>
@@ -37,15 +41,31 @@ function Light(props) {
                     </Show>
                 </button>
 
-                <button onClick={controlBrightness}>
+                <button onClick={controlBrightness} disabled={!props.state()}>
                     <Icon icon="material-symbols-light:brightness-4" />
                 </button>
-                <button onClick={controlTemp}>
-                    <Icon icon="mdi:temperature" />
-                </button>
-                <button onClick={controlColor}>
-                    <Icon icon="mdi:color" />
-                </button>
+
+                <Show when={props.type.includes("CT")}>
+                    <button onClick={controlTemp}
+                            disabled={!props.state()}
+                            class={props.state()?.color_on ? styles.Off : ""}>
+                        <Icon icon="mdi:temperature" />
+                    </button>
+                </Show>
+
+                <Show when={props.type.includes("RGB")}>
+                    <button onClick={controlColor}
+                            disabled={!props.state()}
+                            class={props.state()?.color_on ? "" : styles.Off}>
+                        <Icon icon="mdi:color" />
+                    </button>
+                </Show>
+
+                <Show when={props.num_disc() > 0}>
+                    <div aria-label={disc_label()} title={disc_label()} style="color: #ffff77">
+                        <Icon icon="mdi:warning" />
+                    </div>
+                </Show>
             </div>
 
             <Show when={controllingBrightness()}>
@@ -56,6 +76,7 @@ function Light(props) {
                         max="100"
                         value={props.state()?.brightness}
                         onChange={handleBrightness}
+                        disabled={!props.state()}
                     />
                 </div>
             </Show>
@@ -68,6 +89,7 @@ function Light(props) {
                         max="500"
                         value={props.state()?.temp}
                         onChange={handleTemperature}
+                        disabled={!props.state()}
                     />
                 </div>
             </Show>
@@ -80,6 +102,7 @@ function Light(props) {
                         max="360"
                         value={props.state()?.hue}
                         onChange={handleHueChange}
+                        disabled={!props.state()}
                     />
                 </div>
             </Show>
