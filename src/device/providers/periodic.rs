@@ -48,6 +48,8 @@ pub async fn task(
     let _enter = span.enter();
     debug!("initializing");
 
+    let istate = istate_rx.await.unwrap();
+
     let res = on_change_tx.send((did, "connected".to_string(), EntityState::Connection(true))).await;
     if let Err(e) = res {
         error!("sending on_change: {e}");
@@ -62,7 +64,6 @@ pub async fn task(
         TaskType::Weekly { default } => default,
     };
 
-    let istate = istate_rx.await.unwrap();
     debug!("ready");
 
     loop {
@@ -138,7 +139,7 @@ pub fn parse_cmd(cmd_str: String) -> Result<Cli, String> {
         Ok(r) => r,
         Err(e) => {
             return Err(format!(
-                "Error parsing periodic task command: {}",
+                "Error parsing command: {}",
                 e.render()
             ))
         }

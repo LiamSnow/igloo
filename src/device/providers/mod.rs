@@ -29,6 +29,17 @@ pub enum DeviceConfig {
     MQTT(mqtt::DeviceConfig),
 }
 
+pub fn init(cfgs: Vec<ProviderConfig>) {
+    for cfg in cfgs {
+        match cfg {
+            ProviderConfig::ESPHome(_cfg) => todo!(),
+            ProviderConfig::Dummy(_cfg) => todo!(),
+            ProviderConfig::PeriodicCommand(_cfg) => todo!(),
+            ProviderConfig::MQTT(cfg) => mqtt::init_provider(cfg),
+        }
+    }
+}
+
 impl DeviceConfig {
     pub fn spawn(
         self,
@@ -70,7 +81,18 @@ impl DeviceConfig {
                 ));
                 Some(istate_tx)
             }
-            DeviceConfig::MQTT(_cfg) => todo!(),
+            DeviceConfig::MQTT(cfg) => {
+                let (istate_tx, istate_rx) = oneshot::channel();
+                tokio::spawn(mqtt::task(
+                    cfg,
+                    did,
+                    selection,
+                    istate_rx,
+                    cmd_rx,
+                    on_change_tx.clone(),
+                ));
+                Some(istate_tx)
+            },
         }
     }
 }

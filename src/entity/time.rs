@@ -20,6 +20,7 @@ impl From<TimeState> for EntityState {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(transparent)]
 pub struct TimeState {
     value: Time,
 }

@@ -19,6 +19,7 @@ impl From<TextState> for EntityState {
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
+#[serde(transparent)]
 pub struct TextState {
     value: String,
 }

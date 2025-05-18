@@ -21,6 +21,7 @@ pub mod datetime;
 pub mod weekly;
 pub mod fan;
 pub mod climate;
+pub mod trigger;
 
 #[derive(Debug, Clone)]
 pub enum EntityCommand {
@@ -34,6 +35,7 @@ pub enum EntityCommand {
     Weekly(WeeklyCommand),
     Climate(ClimateCommand),
     Fan(FanCommand),
+    Trigger
 }
 
 pub struct TargetedEntityCommand {
@@ -43,6 +45,7 @@ pub struct TargetedEntityCommand {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum EntityState {
     Light(LightState),
     Int(IntState),
@@ -69,7 +72,8 @@ pub enum EntityType {
     Weekly,
     Climate,
     Fan,
-    Connection
+    Connection,
+    Trigger
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -92,7 +96,8 @@ impl EntityType {
             EntityType::Weekly => Weekly::avg(states),
             EntityType::Climate => ClimateState::avg(states),
             EntityType::Fan => FanState::avg(states),
-            EntityType::Connection => panic!(),
+            EntityType::Trigger => None,
+            EntityType::Connection => None,
         }
     }
 }
@@ -135,6 +140,7 @@ impl EntityCommand {
             Self::Weekly(..) => EntityType::Weekly,
             Self::Climate(..) => EntityType::Climate,
             Self::Fan(..) => EntityType::Fan,
+            Self::Trigger => EntityType::Trigger,
         }
     }
 }

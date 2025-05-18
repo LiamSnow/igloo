@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc};
 use crate::{
     auth::Auth,
     config::IglooConfig,
-    device::{ids::DeviceIDLut, Devices},
+    device::{ids::DeviceIDLut, providers, Devices},
     elements::Elements,
     scripts::{self, Scripts},
 };
@@ -17,6 +17,8 @@ pub struct IglooState {
 
 impl IglooState {
     pub async fn init(icfg: IglooConfig) -> Result<Arc<Self>, Box<dyn Error>> {
+        providers::init(icfg.providers);
+
         let (dev_lut, dev_cfgs, dev_sels) = DeviceIDLut::init(icfg.devices);
         let auth = Auth::init(icfg.auth, &dev_lut).await?;
         let elements = Elements::init(icfg.ui, &dev_lut, &auth, &icfg.scripts)?;

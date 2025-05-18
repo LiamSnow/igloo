@@ -31,6 +31,8 @@ pub enum DispatchError {
     NotEntity,
     #[error("entity does not exist")]
     EntityNonExistant,
+    #[error("must provide a selection")]
+    MissingSelection,
 }
 
 impl From<serde_json::Error> for DispatchError {

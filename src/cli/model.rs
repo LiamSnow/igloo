@@ -1,9 +1,6 @@
-use clap::command;
-use clap::Parser;
-use clap::Subcommand;
-use clap_derive::{Args, Parser, Subcommand};
-use jiff::civil::DateTime;
-use jiff::civil::Time;
+use clap::{command, Parser};
+use clap_derive::{Args, Subcommand};
+use jiff::civil::{DateTime, Time};
 
 use crate::entity::bool::BoolCommand;
 use crate::entity::climate::ClimateCommand;
@@ -12,7 +9,7 @@ use crate::entity::light::LightCommand;
 use crate::entity::weekly::WeeklyCommand;
 use crate::entity::EntityType;
 
-#[derive(Parser, Debug, Clone)]
+#[derive(clap_derive::Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -40,8 +37,8 @@ impl Cli {
 pub enum CliCommands {
     #[command(alias = "lights")]
     Light(SelectorAnd<LightCommand>),
-    Int(IntArgs),
-    Float(FloatArgs),
+    Int(SelectorAndInt),
+    Float(SelectorAndFloat),
     #[command(alias = "switch")]
     Bool(SelectorAnd<BoolCommand>),
     Text(SelectorAndString),
@@ -51,6 +48,7 @@ pub enum CliCommands {
     Weekly(SelectorAnd<WeeklyCommand>),
     Climate(SelectorAnd<ClimateCommand>),
     Fan(SelectorAnd<FanCommand>),
+    Trigger(Selector),
 
     //TODO add support for getting avg state of device, zone, etc with entity_type
     /// Get the current state of an entity
@@ -88,6 +86,7 @@ impl CliCommands {
             Self::Weekly(args) => &args.target,
             Self::Climate(args) => &args.target,
             Self::Fan(args) => &args.target,
+            Self::Trigger(args) => &args.target,
 
             Self::Get(args) => &args.entity_selector,
             Self::List(args) => return args.item.get_selection(),
@@ -110,7 +109,7 @@ impl CliCommands {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct SelectorAnd<T: Subcommand> {
+pub struct SelectorAnd<T: clap::Subcommand> {
     /// selector string
     pub target: String,
     #[command(subcommand)]
@@ -118,14 +117,14 @@ pub struct SelectorAnd<T: Subcommand> {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct IntArgs {
+pub struct SelectorAndInt {
     /// selector string
     pub target: String,
     pub value: i32,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct FloatArgs {
+pub struct SelectorAndFloat {
     /// selector string
     pub target: String,
     pub value: f32,
@@ -150,6 +149,12 @@ pub struct SelectorAndString {
     /// selector string
     pub target: String,
     pub value: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct Selector {
+    /// selector string
+    pub target: String,
 }
 
 #[derive(Args, Debug, Clone)]

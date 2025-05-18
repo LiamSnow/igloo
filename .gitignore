@@ -22,3 +22,4 @@ Cargo.lock
 
 /config.ron
 /tokens.sqlite
+/rumqttd.toml

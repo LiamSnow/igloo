@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
 use clap_derive::{Subcommand, ValueEnum};
 use serde::Serialize;
@@ -22,6 +22,7 @@ impl From<BoolState> for EntityState {
 pub type BoolCommand = BoolState;
 
 #[derive(ValueEnum, Clone, Debug, Serialize, Subcommand)]
+#[serde(untagged)]
 pub enum BoolState {
     // #[command(alias = "on")]
     True,
@@ -69,6 +70,15 @@ impl From<&BoolState> for bool {
         match value {
             BoolState::True => true,
             BoolState::False => false,
+        }
+    }
+}
+
+impl Display for BoolState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BoolState::True => write!(f, "true"),
+            BoolState::False => write!(f, "false"),
         }
     }
 }

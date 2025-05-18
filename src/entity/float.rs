@@ -19,6 +19,7 @@ impl From<FloatState> for EntityState {
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
+#[serde(transparent)]
 pub struct FloatState {
     value: f32,
 }

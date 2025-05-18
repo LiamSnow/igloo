@@ -61,12 +61,15 @@ impl Cli {
             CliCommands::Fan(args) => {
                 entity::fan::dispatch(args.value, args.target, sel.unwrap(), state)?
             }
+            CliCommands::Trigger(args) => {
+                entity::trigger::dispatch(args.target, sel.unwrap(), state)?
+            }
 
             CliCommands::Get(_) => get_entity_state(sel.unwrap(), state).await?,
 
             CliCommands::Script(args) => args.action.dispatch(state, uid).await?,
             CliCommands::UI => get_ui_for_user(state, uid).await?,
-            CliCommands::List(args) => args.item.dispatch(state, sel.unwrap()).await?,
+            CliCommands::List(args) => args.item.dispatch(state, sel).await?,
             CliCommands::Logs(args) => args.log_type.dispatch(state).await?,
             CliCommands::Reload => todo!(),
             CliCommands::Version => Some(serde_json::to_string(&VERSION)?),
@@ -177,7 +180,7 @@ impl ListItems {
     async fn dispatch(
         self,
         state: &Arc<IglooState>,
-        sel: DeviceIDSelection,
+        sel: Option<DeviceIDSelection>,
     ) -> Result<Option<String>, DispatchError> {
         Ok(match self {
             ListItems::Users => todo!(),
@@ -188,6 +191,10 @@ impl ListItems {
                 Some(serde_json::to_string(&zones)?)
             }
             ListItems::Devices { zone: _ } => {
+                if sel.is_none() {
+                    return Err(DispatchError::MissingSelection);
+                }
+                let sel = sel.unwrap();
                 if !sel.is_zone() {
                     return Err(DispatchError::NotZone);
                 }
@@ -197,8 +204,12 @@ impl ListItems {
                 Some(serde_json::to_string(&names)?)
             }
             ListItems::Entities { dev: _ } => {
+                if sel.is_none() {
+                    return Err(DispatchError::MissingSelection);
+                }
+                let sel = sel.unwrap();
                 if !sel.is_device() {
-                    return Err(DispatchError::NotZone);
+                    return Err(DispatchError::NotDevice);
                 }
 
                 let dev_states = state.devices.states.lock().await;

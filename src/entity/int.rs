@@ -19,6 +19,7 @@ impl From<IntState> for EntityState {
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
+#[serde(transparent)]
 pub struct IntState {
     value: i32,
 }

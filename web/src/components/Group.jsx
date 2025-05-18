@@ -48,7 +48,7 @@ function Group(props) {
                         }
 
                         if (configType.includes("Light")) {
-                            const state = () => props.data.states[item.esid]?.value?.Light;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Light name={item.cfg[configType]}
                                 type={configType}
@@ -59,7 +59,7 @@ function Group(props) {
                         }
 
                         if (configType === "Int") {
-                            const state = () => props.data.states[item.esid]?.value?.Int;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Int name={item.cfg[configType]}
                                 execute={props.execute}
@@ -69,7 +69,7 @@ function Group(props) {
                         }
 
                         if (configType === "Float") {
-                            const state = () => props.data.states[item.esid]?.value?.Float;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Float name={item.cfg[configType]}
                                 execute={props.execute}
@@ -79,7 +79,7 @@ function Group(props) {
                         }
 
                         if (configType === "Time") {
-                            const state = () => props.data.states[item.esid]?.value?.Time;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Time name={item.cfg[configType]}
                                 execute={props.execute}
@@ -89,7 +89,7 @@ function Group(props) {
                         }
 
                         if (configType === "DateTime") {
-                            const state = () => props.data.states[item.esid]?.value?.DateTime;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <DateTime name={item.cfg[configType]}
                                 execute={props.execute}
@@ -99,7 +99,7 @@ function Group(props) {
                         }
 
                         if (configType === "Weekly") {
-                            const state = () => props.data.states[item.esid]?.value?.Weekly;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Weekly name={item.cfg[configType]}
                                 execute={props.execute}
@@ -109,7 +109,7 @@ function Group(props) {
                         }
 
                         if (configType === "Text") {
-                            const state = () => props.data.states[item.esid]?.value?.Text;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Text name={item.cfg[configType]}
                                 execute={props.execute}
@@ -119,7 +119,7 @@ function Group(props) {
                         }
 
                         if (configType === "Bool") {
-                            const state = () => props.data.states[item.esid]?.value?.Bool;
+                            const state = () => props.data.states[item.esid]?.value;
                             const num_disc = () => props.data.states[item.esid]?.disconnection_stats?.[0];
                             return <Bool name={item.cfg[configType]}
                                 execute={props.execute}

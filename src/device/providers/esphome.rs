@@ -18,9 +18,7 @@ use crate::entity::{
 };
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Config {
-    pub default_port: Option<u32>,
-}
+pub struct Config {}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DeviceConfig {
