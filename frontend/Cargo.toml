@@ -1,7 +1,44 @@
 [package]
-name = "igloo-frontend"
+name = "igloo"
 version = "0.1.0"
-edition = "2024"
+authors = ["LiamSnow <mail@liamsnow.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-leptos = { version = "0.8.8", features = ["csr"] }
+dioxus = { version = "=0.7.0-alpha.3", features = ["router"] }
+dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1" }
+euclid = "0.22.11"
+web-sys = { version = "0.3", features = ["Window"] }
+
+[patch.crates-io]
+dioxus-geolocation = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus-notification = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus-sdk = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus_storage = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus-sync = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus-time = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus-util = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+dioxus-window = { git = "https://github.com/ealmloff/dioxus-std", branch = "0.7" }
+
+[features]
+default = ["web"]
+# The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
+web = ["dioxus/web"]
+# The feature that are only required for the desktop = ["dioxus/desktop"] build target should be optional and only enabled in the desktop = ["dioxus/desktop"] feature
+desktop = ["dioxus/desktop"]
+# The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
+mobile = ["dioxus/mobile"]
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
