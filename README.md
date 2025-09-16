@@ -16,7 +16,7 @@ A visual-programming language for the smart home world.
 
 ## Architecture
 All Rust 🦀
- - **Frontend**: Dioxus
+ - **Frontend**: Leptos + Bevy (for Penguin)
  - **Backend**: Actix Web
 
 
