@@ -1,0 +1,15 @@
+[package]
+name = "igloo-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.4", features = ["ws"] }
+bcrypt = "0.17.1"
+jiff = "0.2.15"
+ron = "0.11.0"
+serde = { version = "1.0.224", features = ["derive"] }
+thiserror = "2.0.16"
+tokio = { version = "1.47.1", features = ["full"] }
+uuid = { version = "1.18.1", features = ["v7", "serde"] }
+igloo-interface = { path = "../interface/" }

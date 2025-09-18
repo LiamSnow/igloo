@@ -2,6 +2,8 @@
 
 WIP An intuitive, customizable smart home automation platform.
 
+See [PLANNING.md](PLANNING.md)
+
 ## Penguin
 A visual-programming language for the smart home world.
 
@@ -17,6 +19,6 @@ A visual-programming language for the smart home world.
 ## Architecture
 All Rust 🦀
  - **Frontend**: Leptos + Bevy (for Penguin)
- - **Backend**: Actix Web
+ - **Backend**: Axum
 
 

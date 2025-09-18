@@ -1,106 +1,133 @@
 # Igloo Planning Document
 
-## Database
+## Data
 
-1 SQLite Database
+Was originally going to use SQLite, but lowkey overkill.
+Simply store data inside Rust and persist back to ron files.
 
-### Tables
- - users: UID, username, password
- - groups: GID, name, \[UID\]
- - sessions: token, UID, expiration
- - floes: 
+
+## Server File Structure
+```bash
+igloo       # binary
+auth.ron
+state.ron
+penguin.ron
+penguin/
+  SCRIPT.ron
+  ...
+dashboards/
+  DASHBOARD.ron
+  ...
+floes/
+  FLOE/
+    BINARY
+    Floe.toml
+  ...
+```
+
 
 ## Penguin
 The node based visual programming made in Bevy!
 
 ## Hierarchy
 
-```
-Zone
- -> Device..
-    -> Component..
-```
+Somewhat like an Entity-Component-System (ECS) model BUT Entities are called Devices.
 
-### Devices
-
-
-
+Furthermore, Devices can be groups into Zones (devices can exist in multiple zones).
 
 ### Components
- - Float
- - UnsignedInteger
- - SignedInteger
- - Text
- - Boolean
- - Percent (0.0 - 1.0)
- - Temperature (Celcius but can be displayed as Fahrenheit)
- - ColorTemperature (Kelvin)
 
+Components, contain a `name`, a `type`, and a `state`.
 
-### Traits
-Igloo leverages a composition style (instead of inheritance). TODO bruh bad wording
+**Primitive Types**:
+ - `Float`: 64-bit floating point number
+ - `Int`: 32-bit signed integer
+ - `Long`: 128-bit signed integer
+ - `String`: 
+ - `ValidatedString(min_length, max_length, regex)` 
+ - `Bool`: boolean
+ - `Trigger`: no type, triggers a event
+ - `Date`: date with day, month, year
+ - `Time`: 24-hour time (hour, minute, second)
+ - `Datetime`: `date` + `time`
+ - `Duration`: TODO
+ - `Color`: 24-bit RGB color
+ - `Temperature`: `float` stored as celcius
+ - `Uuid`: TODO
+ - `Schedule`: TODO
+ - `Url`: TODO
+ - `Coordinate`: TODO
+ - `Binary`: TODO
 
-There is no `Light` components or devices in Igloo BUT there is a `Light` trait.
-This functionality is preferred because it is very extensible and maintainable.
+**Composite Types**:
+ - `Array(T, N)`: fixed-length
+ - `List(T)`: variable-length
+ - `Tuple([T1, T2, ..])`: fixed tuples
+ - `Optional(T)`: optional type
+ - `{ field1: T1, field2: T2 }`: custom object
+ - `Enum([V1, V2, ..])`: enumeration
 
-Traits are only allowed inside Igloo (IE Floes cannot create traits). This is done
-so that there is no conflict of traits. Please make a PR if you need a new Trait.
+**Custom Types**:
+Custom types are defined in a registry on [igloo.io](igloo.io).
+All types are backwards compatible. Conflicts should not come up
+because if a new Floe comes out using a new `Light` feature,
+the registry would have already been updated (registry gets
+refreshed before any update/install of Floes).
 
----
+For example:
 
-For example, lets say we want to represent an Athom RGBCT Light Bulb.
-
-The device contains the following components:
- - brightness (`Percent`)
- - red (`Percent`)
- - green (`Percent`)
- - blue (`Percent`)
- - color_temperature (`ColorTemperature`)
- - on (`Boolean`)
- - ...others
-
-Then it would implement `RGBCTBLight(on, brightness, color_temperature, red, green, blue)`
-
-Which means that it can be used in any function taking a `RGBCTBLight`, `RGBLight`, `CTLight`, `Light`...
-
-For a light we have:
+```ron
+// this Light type can represent basically any light
+//  - A basic light (on/off only)
+//  - An RGBCT light (on/off, brightness, CT, RGB)
+//  - etc.
+(
+  name: Light,
+  components: {
+    "on": Bool,
+    "brightness": Optional(Float),
+    "color_temp": Optional(Float),
+    "color": Optional(Color)
+  }
+)
 ```
-Light: on/off control
-  - CTLight: + color temperature
-  - RGBLight: + rgb control
-  - BLight: + brightness
+
+```ron
+(
+  name: FloatSensor,
+  components: {
+    "icon": Optional(String),
+    "unit": String,
+    "value": Float
+  }
+)
 ```
 
 
+### Devices
+Devices are nothing more than a grouping of components.
+They have a `name`, list of Components, `provider`, and `config` (used by provider)
+
+For example, an Athom RGBCT Light could be represented as
+(note its not actually stored in yaml, just for demonstration):
+
+```yaml
+name: kitchen_ceiling
+components:
+  RGBCT_Bulb: Light
+  Status: bool
+  Safe Mode: bool
+  Uptime Sensor: Sensor # would publish state as unit: seconds, ..
+  WiFi Signal: Sensor # unit dBm
+  IP Address: string
+  Mac Address: string
+  Reset: trigger
+  Connected SSID: string
+  Firmware: string
+```
+
+See [FLOES.md](FLOES.md)
 
 
 
 
-
-
-
-## Floes
-Floes are extensions to Igloo.
-
-> `floe` (`/flō/`)
-> _noun_
-> a sheet of floating ice.
-
-They can do the following:
- - (Be a) Provider (IE ESPHome, Apple HomeKit):
-   - Runs a program that commicates over std protocol via stdin/stdout to control devices
- - Add nodes to Penguin
- - Run code with no interface/side load (ex. MQTT broker)
- - Add UI elements
-
-### Provider Protocol
-
-Floe -> Igloo
- - Register new device(ID, name, ...)
- - Unregister device
- - Get register devices
- - Update device status(ID)
-
-
-Igloo -> Flow
- - 

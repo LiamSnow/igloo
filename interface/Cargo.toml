@@ -1,0 +1,9 @@
+[package]
+name = "igloo-interface"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jiff = { version = "0.2.15", features = ["serde"] }
+serde = { version = "1.0.224", features = ["derive"] }
+uuid = { version = "1.18.1", features = ["v7", "serde"] }
