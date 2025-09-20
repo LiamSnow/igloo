@@ -23,14 +23,8 @@ pub struct Zone {
 pub struct Device {
     pub name: String,
     pub provider: Uuid,
-    pub components: HashMap<String, Component>,
+    pub components: igloo_interface::Components,
     // last_seen, enabled, ...?
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Component {
-    pub r#type: igloo_interface::Type,
-    pub r#value: igloo_interface::Value,
 }
 
 #[derive(Error, Debug)]

@@ -31,9 +31,40 @@ The node based visual programming made in Bevy!
 
 ## Hierarchy
 
-Somewhat like an Entity-Component-System (ECS) model BUT Entities are called Devices.
+Example Device Tree
+```ron
+{
+  "kitchen": Zone(
+    display_name: "Kitchen",
+    devices: {
+      "ceiling_light": Device(
+        provider: String("ESPHome"),
+        perms: Inherit,
+        state: {
+          // in this case Light and LongSensor are strongly typed structs, just like Color
+          "RGBCT_Bulb": Light(
+            on: true, // dont need Bool(true), because it takes a bool instead of a Component
+            brightness: 1.0,
+            color: Color(r: 255, g: 0, b: 0),
+          ),
+          "Status": Bool(true),
+          "Safe Mode": Bool(false),
+          "Uptime Sensor": LongSensor(
+            unit: "seconds",
+            value: 12310927398,            
+          ),
+          "IP Address": String("192.168.1.201"),
+          "Mac Address": String("..."),
+          "Connected SSID": String("..."),
+          "Firmware": String("..."),
+        }
+      )
+    }
+  ),
+}
+```
 
-Furthermore, Devices can be groups into Zones (devices can exist in multiple zones).
+
 
 ### Components
 
