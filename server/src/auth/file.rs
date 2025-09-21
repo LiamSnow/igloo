@@ -1,26 +1,23 @@
-use ron::ser::PrettyConfig;
 use thiserror::Error;
 use tokio::{fs, io};
 
 use super::model::Auth;
 
-const FILE: &str = "auth.ron";
+const FILE: &str = "auth.json";
 
 #[derive(Error, Debug)]
 pub enum AuthFileError {
     #[error("file system error: {0}")]
     FileSystem(#[from] io::Error),
-    #[error("ron deserialize error: {0}")]
-    RonDeserialize(#[from] ron::de::SpannedError),
-    #[error("ron serialize error: {0}")]
-    Ron(#[from] ron::error::Error),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 impl Auth {
     pub async fn load() -> Result<Self, AuthFileError> {
         if fs::try_exists(FILE).await? {
             let contents = fs::read_to_string(FILE).await?;
-            let res = ron::from_str(&contents)?;
+            let res = serde_json::from_str(&contents)?;
             Ok(res)
         } else {
             // TODO change to make blank
@@ -31,14 +28,14 @@ impl Auth {
             auth.add_user("liamsnow".to_string(), "test123".to_string())
                 .unwrap();
 
-            fs::write(FILE, ron::to_string(&auth)?).await?;
+            auth.save().await?;
 
             Ok(auth)
         }
     }
 
     pub async fn save(&self) -> Result<(), AuthFileError> {
-        let contents = ron::ser::to_string_pretty(self, PrettyConfig::new())?;
+        let contents = serde_json::to_string(self)?;
         fs::write(FILE, contents).await?;
         Ok(())
     }

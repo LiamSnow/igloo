@@ -1,0 +1,10 @@
+[package]
+name = "example_provider"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.224", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["full"] }
+igloo-interface = { path = "../interface/" }
+uuid = { version = "1.18.1", features = ["v7", "serde"] }
