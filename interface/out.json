@@ -1,0 +1,41 @@
+{
+  "IP Address": [
+    {
+      "String": "192.168.1.201"
+    }
+  ],
+  "RGBCT_Bulb": [
+    "Light",
+    {
+      "Switch": true
+    },
+    {
+      "Dimmer": 255
+    },
+    {
+      "Color": {
+        "r": 255,
+        "g": 0,
+        "b": 0
+      }
+    }
+  ],
+  "Status": [
+    {
+      "Bool": true
+    }
+  ],
+  "Safe Mode": [
+    {
+      "Bool": false
+    }
+  ],
+  "Uptime Sensor": [
+    {
+      "Unit": "Seconds"
+    },
+    {
+      "Int": 128211
+    }
+  ]
+}

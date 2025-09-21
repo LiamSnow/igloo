@@ -9,8 +9,51 @@ Igloo runs on an ECS system similar to Bevy:
  - **Entity**: A collection of components that is composed into multiple different things. For example, a Light Bulb can be thought of as specifically a Light Bulb, but also something that is Switchable, Dimmable, and Colorable
  - **Components**: Part of an entities. Some contain values and some are just markers
 
-Then we can organize our home with **Zones** (ex. Kitchen) which are simly groupings of Devices.
+Then we can organize our home with **Zones** (ex. Kitchen) which are simply groupings of Devices.
 Devices may be in multiple Zones.
+
+```ron
+{
+  "ceiling_light": {
+    "provider": ESPHome,
+    "perms": Inherit,
+    "entities": {
+      "RGBCT_Bulb": [
+        Light,
+        Switch(true),
+        Dimmer(255),
+        Color(
+          r: 255,
+          b: 0,
+          g: 0,
+        ),
+      ],
+      "Status": [
+        Bool(true),
+      ],
+      "Safe Mode": [
+        Bool(false),
+      ],
+      "Uptime Sensor": [
+        Unit(Unit::Seconds),
+        Int(128231289),
+      ],
+      "IP Address": [
+        String("192.168.1.201")
+      ],
+      "Mac Address": [
+        String("...")
+      ],
+      "Connected SSID": [
+        String("...")
+      ],
+      "Firmware": [
+        String("...")
+      ]
+    }
+  }
+}
+```
 
 ```json5
 {
@@ -18,80 +61,44 @@ Devices may be in multiple Zones.
     "provider": "ESPHome",
     "perms": "Inherit",
     "entities": {
-      "RGBCT_Bulb": [
-        {
-          "Light": null // just a marker, Light is defined as requiring Switch, optionally having Dimmable, Colorable
-        },
-        {
-          "Switch": {
-            "value": true
-          }
-        },
-        {
-          "Dimmer": {
-            "value": 1.0
-          }
-        },
-        {
-          "Color": {
-            "value": {
-              "r": 255,
-              "g": 0,
-              "b": 0
-            }
-          }
+      "RGBCT_Bulb": {
+        "Light": null // just a marker
+        "Switch": {
+          "on": true
         }
-      ],
-      "Status": [
-        {
-          "Bool": {
-            "value": true
-          }
+        "Dimmer": {
+          "brightness": 1.0
         }
-      ],
-      "Safe Mode": [
-        {
-          "Bool": {
-            "value": false
-          }
+        "Color": {
+          "r": 255,
+          "g": 0,
+          "b": 0
         }
-      ],
-      "Uptime Sensor": [
-        {
-          "LongSensor": {
-            "unit": "seconds",
-            "value": 128231289
-          }
+      },
+      "Status": {
+        "Bool": true,
+      },
+      "Safe Mode": {
+        "Bool": false,
+      },
+      "Uptime Sensor": {
+        "LongSensor": {
+          "unit": "seconds",
+          "value": 128231289
         }
-      ],
-      "IP Address": [
-        {
-          "String": {
-            "value": "192.168.1.201"
-          }
-        }
-      ],
-      "Mac Address": [
-        {
-          "String": {
-            "value": "..."
-          }
-        }
-      ],
-      "Connected SSID": [
-        {
-          "String": {
-            "value": "..."
-          }
-        }
-      ],
-      "Firmware": [
-        {
-          "String": {
-            "value": "..."
-          }
-        }
-      ]
+      },
+      "IP Address": {
+        "String": "192.168.1.201"
+      },
+      "Mac Address": {
+        "String": "..."
+      },
+      "Connected SSID": {
+        "String": "..."
+      },
+      "Firmware": {
+        "String": "..."
+      }
     }
   }
 }
@@ -101,8 +108,6 @@ Rust code:
 ```rust
 #[derive(Component)]
 #[require(Switch)]
-#[optional(Dimmer)]
-#[optional(Color)]
 struct Light;
 
 #[derive(Component)]

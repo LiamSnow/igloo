@@ -41,50 +41,75 @@ They can do the following:
 
 ## Floe -> Igloo
 
-**Commands**:
-
 `"add_device"` registers a new device under this provider
- - payload: `DeviceInfo`
- - response: ok, payload = `{ "device": uuid }`
+ - payload: `Device`
+ - response: ok, payload = `uuid`
 
 `"remove_device"`
- - payload: `{ "device": uuid }`
+ - payload: `uuid`
  - response: ok (no payload)
-
-`"update_device"`
- - payload: `{ "device": uuid, "info": DeviceInfo }`
- - response: ok (no payload) | error (device doesn't exist, provider doesnt have perms, ..)
 
 `"list_devices"` lists devices registered under this provider
  - payload: none
  - response: `{ uuid1: DeviceInfo, uuid2: DeviceInfo, .. }`
 
-`"update_component"`
- - payload: `{ device: uuid, component: string, value:  }`
- - response: ok (no payload) | error
+`"update"`
+ - payload: `{ "device": uuid, "entity_name": string, "component_index": usize, "value": ComponentValue }`
+ - response: ok (no payload) | error (device doesn't exist, provider doesn't have perms, wrong type ..)
 
-`""`
+`"save"` saves `config.json` under this Floe (for providers that don't have filesystem access)
+ - payload: `object`
+ - response: ok (no payload)
 
-**Types**:
+`"read"` ^^
+ - payload: none
+ - response: ok (`object`)
 
-`uuid`: string UUID v7
-
-`DeviceInfo`:
-```jsonl
-{
-  "name": string,
-  "components": {
-    
-  }
-}
-```
 
 ### Igloo -> Floe
 
-Commands:
  - `"delete_device"` 
-   - payload: JSON according to Floe's `Floe.ron` spec
+   - payload: JSON according to Floe's `Floe.toml` spec
    - response: ok (no payload) | error
+ - `""`
+ - ... other commands can be specified in `Floe.toml`
+
+
+### Types
+
+`uuid`: string UUID v7
+
+`ComponentLink`: a permanent link to a Component: `DEVICE_UUID[ENTITY_NAME][COMPONENT_INDEX]`
+
+Example `Device`:
+```jsonl
+{
+  "name": string,
+  "entities": {
+    "IP Address": [
+      {
+        "String": "192.168.1.201"
+      }
+    ],
+    "RGBCT_Bulb": [
+      "Light",
+      {
+        "Switch": true
+      },
+      {
+        "Dimmer": 255
+      },
+      {
+        "Color": {
+          "r": 255,
+          "g": 0,
+          "b": 0
+        }
+      }
+    ]
+  }
+}
+```
 
 ### Example
 Going to back to our Athom RGBCT Light example, lets walk through some examples.
