@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+// This file is transpiled into components.rs via build.rs
+// Which generates necessary methods, add #[derive(..)] and pub prefix
+// Note: Make sure to make a fields public!!
 
-/// sigend 32-bit integer
+/// signed 32-bit integer
 struct Int(pub i32);
 
 /// unsigned 32-bit integer
@@ -17,22 +19,30 @@ struct Bool(pub bool);
 struct Text(pub String);
 
 // TODO should we have this?
-struct Object(pub HashMap<String, Component>);
+struct Object(pub std::collections::HashMap<String, Component>);
 
 // TODO should we have this?
 struct List(pub Vec<Component>);
 
 struct IntList(pub Vec<i32>);
+
 struct UintList(pub Vec<u32>);
 struct LongList(pub Vec<i64>);
 struct FloatList(pub Vec<f64>);
 struct TextList(pub Vec<String>);
+
+struct Date(pub jiff::civil::Date);
+struct Time(pub jiff::civil::Time);
+struct DateTime(pub jiff::civil::DateTime);
+// Weekday(Weekday),
+struct Duration(pub jiff::SignedDuration);
 
 struct Switch(pub bool);
 
 struct Dimmer(pub u8);
 
 struct Color {
+    // IMPLEMENT AVERAGEABLE
     pub r: u8,
     pub g: u8,
     pub b: u8,
@@ -72,32 +82,32 @@ enum Unit {
 }
 
 /// usually used in combination with a Float to set a range
-struct FloatMin(f64);
+struct FloatMin(pub f64);
 /// usually used in combination with a Float to set a range
-struct FloatMax(f64);
+struct FloatMax(pub f64);
 /// usually used in combination with a Float to set a range
-struct FloatStep(f64);
+struct FloatStep(pub f64);
 
 /// usually used in combination with an Int to set a range
-struct IntMin(i32);
+struct IntMin(pub i32);
 /// usually used in combination with an Int to set a range
-struct IntMax(i32);
+struct IntMax(pub i32);
 /// usually used in combination with an Int to set a range
-struct IntStep(i32);
+struct IntStep(pub i32);
 
 /// usually used in combination with an Long to set a range
-struct LongMin(i64);
+struct LongMin(pub i64);
 /// usually used in combination with an Long to set a range
-struct LongMax(i64);
+struct LongMax(pub i64);
 /// usually used in combination with an Long to set a range
-struct LongStep(i64);
+struct LongStep(pub i64);
 
 /// usually used in combination with an Uint to set a range
-struct UintMin(u32);
+struct UintMin(pub u32);
 /// usually used in combination with an Uint to set a range
-struct UintMax(u32);
+struct UintMax(pub u32);
 /// usually used in combination with an Uint to set a range
-struct UintStep(u32);
+struct UintStep(pub u32);
 
 /// usually used in combination with a Switch and sometimes a Dimmer, Color, and/or ColorTemperature
 struct Light;
