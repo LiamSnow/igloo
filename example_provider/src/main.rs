@@ -1,49 +1,52 @@
 use std::collections::HashMap;
 
 use igloo_interface::{
-    Color, ComponentValue, Device, Dimmer, Entities, Entity, FloeCommand, FloeResponse,
-    IglooCommand, Switch,
-    floe::{FloeInterfaceManager, ProtocolResult},
+    Color, ComponentUpdate, Device, Dimmer, Entities, Entity, InitPayload, LightBulb, Switch,
+    floe::{FloeHandler, IglooInterface, IglooInterfaceError},
 };
 use uuid::Uuid;
 
-#[tokio::main]
-async fn main() -> ProtocolResult<()> {
-    let manager = FloeInterfaceManager::new(|command| async move {
-        match command {
-            IglooCommand::Ping => FloeResponse::Ok(None),
-            IglooCommand::Update(update) => FloeResponse::Ok(None),
-            IglooCommand::Config(config) => FloeResponse::Ok(None),
-            IglooCommand::Custom(name, data) => FloeResponse::Ok(Some(format!("Handled {}", name))),
-        }
-    });
+#[derive(Default)]
+struct ExampleFloe {}
 
-    manager.log("Floe started".to_string()).await?;
+impl FloeHandler for ExampleFloe {
+    async fn init(&mut self, init: InitPayload, manager: &IglooInterface) {
+        manager.log(format!("got init: {init:#?}")).await.unwrap();
 
-    let device = Device {
-        name: "Test Device".to_string(),
-        entities: Entities(HashMap::from([(
-            "RGBCT_Bulb".to_string(),
-            Entity(vec![
-                ComponentValue::Light,
-                ComponentValue::Switch(Switch(true)),
-                ComponentValue::Dimmer(Dimmer(255)),
-                ComponentValue::Color(Color { r: 255, g: 0, b: 0 }),
-            ]),
-        )])),
-    };
+        let mut entity = Entity::default();
+        entity.set_light_bulb(LightBulb);
+        entity.set_switch(Switch(true));
+        entity.set_dimmer(Dimmer(255));
+        entity.set_color(Color { r: 255, g: 0, b: 0 });
 
-    for _ in 0..5 {
-        let uuid = Uuid::now_v7();
-        let response = manager
-            .send_command(FloeCommand::AddDevice(uuid, device.clone()))
-            .await?;
-        if response.is_ok() {
-            break;
-        }
+        let device = Device {
+            name: "Test Device".to_string(),
+            entities: Entities(HashMap::from([("RGBCT_Bulb".to_string(), entity)])),
+        };
+
+        let device_id = Uuid::now_v7();
+
+        manager.add_device(device_id, device).await.unwrap();
     }
 
-    tokio::signal::ctrl_c().await?;
+    async fn updates_requested(&mut self, updates: Vec<ComponentUpdate>, manager: &IglooInterface) {
+        manager
+            .log(format!("got req update: {updates:#?}"))
+            .await
+            .unwrap();
+    }
 
+    async fn custom(&mut self, name: String, data: String, manager: &IglooInterface) {
+        manager
+            .log(format!("got custom: name={name}, data={data}"))
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), IglooInterfaceError> {
+    let handler = ExampleFloe::default();
+    IglooInterface::run(handler).await?;
     Ok(())
 }

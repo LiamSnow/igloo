@@ -1,39 +1,40 @@
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{ComponentValue, Device};
+use crate::{Component, Device};
 
-/// Floe sending command -> Igloo
-#[derive(Serialize, Deserialize, Clone)]
+/// MISO Floe sending command -> Igloo
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum FloeCommand {
     AddDevice(Uuid, Device),
-    Update(Update),
+    ComponentUpdates(Vec<ComponentUpdate>),
     SaveConfig(String),
+    /// NOT a lot, this is a response to a bad IglooCommand::Custom
+    CustomError(String),
     Log(String),
 }
 
-/// Igloo sending command -> Floe
-#[derive(Serialize, Deserialize, Clone)]
+/// MOSI Igloo sending command -> Floe
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum IglooCommand {
-    Update(Update),
-    Config(String),
-    Ping,
+    /// Igloo sends this at boot
+    Init(InitPayload),
+    /// request update is just asking for this to be done
+    /// it is only confirmed to the device tree once the
+    /// Floe sends back an Update
+    ReqComponentUpdates(Vec<ComponentUpdate>),
+    /// command_name, payload
     Custom(String, String),
 }
 
-pub type IglooResponse = Result<(), IglooResponseError>;
-pub type FloeResponse = Result<Option<String>, String>;
-
-#[derive(Serialize, Deserialize, Clone, Error, Debug)]
-pub enum IglooResponseError {
-    #[error("Device `{0}` does not exist!")]
-    InvalidDevice(Uuid),
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InitPayload {
+    pub config: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Update {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ComponentUpdate {
     pub device: Uuid,
     pub entity: String,
-    pub value: ComponentValue,
+    pub value: Component,
 }

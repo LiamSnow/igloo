@@ -1,182 +1,154 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::future::Future;
-use std::sync::Arc;
+use serde_json;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio::task::JoinHandle;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::{FloeCommand, FloeResponse, IglooCommand, IglooResponse};
+use crate::{ComponentUpdate, Device, FloeCommand, IglooCommand, InitPayload};
 
 #[derive(Error, Debug)]
-pub enum ProtocolError {
+pub enum IglooInterfaceError {
     #[error("IO error")]
     Io(#[from] tokio::io::Error),
     #[error("JSON serialization error")]
     Json(#[from] serde_json::Error),
-    #[error("Request timeout")]
-    Timeout(#[from] tokio::time::error::Elapsed),
-    #[error("Request was canceled")]
-    RequestCanceled,
-    #[error("Channel send failed")]
-    ChannelSend,
+    #[error("Channel send error")]
+    ChannelSend(String),
+    #[error("Channel receive error")]
+    ChannelReceive(String),
+    #[error("Init not received")]
+    InitNotReceived,
 }
 
-pub type ProtocolResult<T> = Result<T, ProtocolError>;
+#[trait_variant::make(FloeHandler: Send)]
+pub trait LocalFloeHandler {
+    /// Called once at boot
+    async fn init(&mut self, init: InitPayload, manager: &IglooInterface);
 
-#[derive(Serialize, Deserialize)]
-struct Message {
-    id: Option<Uuid>,
-    command: Option<FloeCommand>,
-    igloo_command: Option<IglooCommand>,
-    response: Option<IglooResponse>,
-    floe_response: Option<FloeResponse>,
+    async fn updates_requested(&mut self, update: Vec<ComponentUpdate>, manager: &IglooInterface);
+
+    async fn custom(&mut self, name: String, data: String, manager: &IglooInterface);
 }
 
-struct OutgoingCommand {
-    command: FloeCommand,
-    response_sender: Option<oneshot::Sender<IglooResponse>>,
+#[derive(Clone)]
+pub struct IglooInterface {
+    tx: mpsc::Sender<FloeCommand>,
 }
 
-pub struct FloeInterfaceManager {
-    command_sender: mpsc::UnboundedSender<OutgoingCommand>,
-    _task_handle: JoinHandle<()>,
-}
+impl IglooInterface {
+    pub async fn run<H: FloeHandler>(mut handler: H) -> Result<(), IglooInterfaceError> {
+        let (tx, mut rx) = mpsc::channel::<FloeCommand>(100);
+        let manager = IglooInterface { tx };
 
-impl FloeInterfaceManager {
-    pub fn new<F, Fut>(handler: F) -> Self
-    where
-        F: Fn(IglooCommand) -> Fut + Send + 'static,
-        Fut: Future<Output = FloeResponse> + Send + 'static,
-    {
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<OutgoingCommand>();
-        let pending: Arc<Mutex<HashMap<Uuid, oneshot::Sender<IglooResponse>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let pending_clone = pending.clone();
-
-        let task_handle = tokio::spawn(async move {
-            let mut stdin = BufReader::new(tokio::io::stdin());
+        let writer_handle = tokio::spawn(async move {
             let mut stdout = tokio::io::stdout();
-
-            loop {
-                tokio::select! {
-                    // outgoing commands
-                    Some(outgoing) = cmd_rx.recv() => {
-                        let id = if outgoing.response_sender.is_some() {
-                            let id = Uuid::now_v7();
-                            pending_clone.lock().await.insert(id, outgoing.response_sender.unwrap());
-                            Some(id)
-                        } else {
-                            None
-                        };
-
-                        let msg = Message {
-                            id,
-                            command: Some(outgoing.command),
-                            igloo_command: None,
-                            response: None,
-                            floe_response: None,
-                        };
-
-                        if let Err(e) = Self::write_message(&mut stdout, &msg).await {
-                            panic!("Failed to write outgoing command: {}", e);
-                        }
-                    }
-
-                    result = Self::read_message(&mut stdin) => {
-                        match result {
-                            Ok(msg) => {
-                                // responses to outgoing commands
-                                if let (Some(id), Some(response)) = (msg.id, msg.response) {
-                                    if let Some(sender) = pending_clone.lock().await.remove(&id) {
-                                        let _ = sender.send(response);
-                                    }
-                                    continue;
-                                }
-
-                                // incoming commands from Igloo
-                                if let Some(command) = msg.igloo_command {
-                                    let response = handler(command).await;
-
-                                    let response_msg = Message {
-                                        id: msg.id,
-                                        command: None,
-                                        igloo_command: None,
-                                        response: None,
-                                        floe_response: Some(response),
-                                    };
-
-                                    if let Err(e) = Self::write_message(&mut stdout, &response_msg).await {
-                                        panic!("Failed to write response: {}", e);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                panic!("Failed to read message: {}", e);
-                            }
-                        }
-                    }
-                }
+            while let Some(cmd) = rx.recv().await {
+                let json = serde_json::to_string(&cmd)?;
+                stdout.write_all(json.as_bytes()).await?;
+                stdout.write_all(b"\n").await?;
+                stdout.flush().await?;
             }
+            Ok::<(), IglooInterfaceError>(())
         });
 
-        Self {
-            command_sender: cmd_tx,
-            _task_handle: task_handle,
-        }
-    }
-
-    async fn read_message(stdin: &mut BufReader<tokio::io::Stdin>) -> ProtocolResult<Message> {
+        let stdin = tokio::io::stdin();
+        let mut reader = BufReader::new(stdin);
         let mut line = String::new();
-        stdin.read_line(&mut line).await?;
-        Ok(serde_json::from_str(line.trim())?)
-    }
 
-    async fn write_message(stdout: &mut tokio::io::Stdout, msg: &Message) -> ProtocolResult<()> {
-        let json = serde_json::to_string(msg)?;
-        stdout.write_all(json.as_bytes()).await?;
-        stdout.write_all(b"\n").await?;
-        stdout.flush().await?;
-        Ok(())
-    }
+        // wait for init
+        let init_payload = loop {
+            line.clear();
+            let bytes_read = reader
+                .read_line(&mut line)
+                .await
+                .map_err(IglooInterfaceError::Io)?;
 
-    pub async fn send_command(&self, command: FloeCommand) -> ProtocolResult<IglooResponse> {
-        let (tx, rx) = oneshot::channel();
+            if bytes_read == 0 {
+                // EOF
+                return Err(IglooInterfaceError::InitNotReceived);
+            }
 
-        let outgoing = OutgoingCommand {
-            command,
-            response_sender: Some(tx),
+            let cmd: IglooCommand = serde_json::from_str(&line)?;
+            if let IglooCommand::Init(init) = cmd {
+                break init;
+            }
         };
 
-        self.command_sender
-            .send(outgoing)
-            .map_err(|_| ProtocolError::ChannelSend)?;
+        handler.init(init_payload, &manager).await;
 
-        match rx.await {
-            Ok(response) => Ok(response),
-            Err(_) => Err(ProtocolError::RequestCanceled),
+        loop {
+            line.clear();
+            let bytes_read = reader
+                .read_line(&mut line)
+                .await
+                .map_err(IglooInterfaceError::Io)?;
+
+            if bytes_read == 0 {
+                // EOF
+                break;
+            }
+
+            let cmd: IglooCommand = match serde_json::from_str(&line) {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    let _ = manager.log(format!("Failed to parse command: {}", e)).await;
+                    continue;
+                }
+            };
+
+            match cmd {
+                IglooCommand::Init(_) => {
+                    // unexpected init
+                    manager
+                        .log("Received unexpected Init command".to_string())
+                        .await?;
+                }
+                IglooCommand::ReqComponentUpdates(update) => {
+                    handler.updates_requested(update, &manager).await
+                }
+                IglooCommand::Custom(name, data) => handler.custom(name, data, &manager).await,
+            }
         }
-    }
 
-    pub async fn send_command_timeout(
-        &self,
-        command: FloeCommand,
-        timeout: std::time::Duration,
-    ) -> ProtocolResult<IglooResponse> {
-        tokio::time::timeout(timeout, self.send_command(command)).await?
-    }
-
-    pub async fn log(&self, message: String) -> ProtocolResult<()> {
-        let outgoing = OutgoingCommand {
-            command: FloeCommand::Log(message),
-            response_sender: None,
-        };
-
-        self.command_sender
-            .send(outgoing)
-            .map_err(|_| ProtocolError::ChannelSend)?;
+        drop(manager);
+        let _ = writer_handle.await;
         Ok(())
+    }
+
+    // update a component under a device you registered
+    pub async fn send_update(
+        &self,
+        update: Vec<ComponentUpdate>,
+    ) -> Result<(), IglooInterfaceError> {
+        self.send_command(FloeCommand::ComponentUpdates(update))
+            .await
+    }
+
+    /// registers a new device with Igloo
+    pub async fn add_device(&self, id: Uuid, device: Device) -> Result<(), IglooInterfaceError> {
+        self.send_command(FloeCommand::AddDevice(id, device)).await
+    }
+
+    /// logs a message (use this over println!() which causes parsing errors)
+    pub async fn log(&self, message: String) -> Result<(), IglooInterfaceError> {
+        self.send_command(FloeCommand::Log(message)).await
+    }
+
+    /// save config to Igloo (you will then get back on init())
+    /// realistically you would use serde_json to generate the string
+    pub async fn save_config(&self, config: String) -> Result<(), IglooInterfaceError> {
+        self.send_command(FloeCommand::SaveConfig(config)).await
+    }
+
+    /// send if there was an error with your custom command
+    pub async fn send_custom_error(&self, error: String) -> Result<(), IglooInterfaceError> {
+        self.send_command(FloeCommand::CustomError(error)).await
+    }
+
+    async fn send_command(&self, cmd: FloeCommand) -> Result<(), IglooInterfaceError> {
+        self.tx
+            .send(cmd)
+            .await
+            .map_err(|_| IglooInterfaceError::ChannelSend("Failed to send command".to_string()))
     }
 }

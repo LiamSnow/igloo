@@ -49,21 +49,21 @@ fn main() {
     }
     output.push_str("}\n\n");
 
-    // ComponentValue
+    // Component
     output.push_str("#[derive(Debug, Serialize, Deserialize, Clone)]\n");
-    output.push_str("pub enum ComponentValue {\n");
+    output.push_str("pub enum Component {\n");
     for name in &component_names {
         output.push_str(&format!("\t{name}({name}),\n"));
     }
     output.push_str("}\n\n");
 
-    // ComponentValue::get_type()
-    output.push_str("impl ComponentValue {\n");
+    // Component::get_type()
+    output.push_str("impl Component {\n");
     output.push_str("\tpub fn get_type(&self) -> ComponentType {\n");
     output.push_str("\t\tmatch self {\n");
     for name in &component_names {
         output.push_str(&format!(
-            "\t\t\tComponentValue::{name}(_) => ComponentType::{name},\n",
+            "\t\t\tComponent::{name}(_) => ComponentType::{name},\n",
         ));
     }
     output.push_str("\t\t}\n");
@@ -83,7 +83,7 @@ fn main() {
             "\t\tmatch self.0.get(&ComponentType::{name}) {{\n",
         ));
         output.push_str(&format!(
-            "\t\t\tSome(ComponentValue::{name}(val)) => Some(val),\n",
+            "\t\t\tSome(Component::{name}(val)) => Some(val),\n",
         ));
         output.push_str("\t\t\tSome(_) => panic!(\"Entity Type/Value Mismatch!\"),\n");
         output.push_str("\t\t\tNone => None,\n");
@@ -98,7 +98,7 @@ fn main() {
             "\t\tmatch self.0.get_mut(&ComponentType::{name}) {{\n",
         ));
         output.push_str(&format!(
-            "\t\t\tSome(ComponentValue::{name}(val)) => Some(val),\n",
+            "\t\t\tSome(Component::{name}(val)) => Some(val),\n",
         ));
         output.push_str("\t\t\tSome(_) => panic!(\"Entity Type/Value Mismatch!\"),\n");
         output.push_str("\t\t\tNone => None,\n");
@@ -110,7 +110,7 @@ fn main() {
             "    pub fn set_{snake_name}(&mut self, val: {name}) {{\n",
         ));
         output.push_str(&format!(
-            "        self.0.insert(ComponentType::{name}, ComponentValue::{name}(val));\n",
+            "        self.0.insert(ComponentType::{name}, Component::{name}(val));\n",
         ));
         output.push_str("    }\n");
 

@@ -10,4 +10,4 @@ serde_json = "1.0.145"
 uuid = { version = "1.18.1", features = ["v7", "serde"] }
 tokio = { version = "1.47.1", features = ["full"] }
 thiserror = "2.0.16"
-paste = "1.0.15"
+trait-variant = "0.1.2"

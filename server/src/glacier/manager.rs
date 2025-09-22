@@ -1,295 +1,283 @@
-use igloo_interface::{FloeCommand, FloeResponse, IglooCommand, IglooResponse, IglooResponseError};
-use serde::{Deserialize, Serialize};
+use igloo_interface::{ComponentUpdate, Device, FloeCommand, IglooCommand, InitPayload};
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
+use std::path::Path;
+use std::process::Stdio;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::glacier::GlacierState;
+use crate::glacier::state::FloeState;
+
+use super::state::GlacierState;
 
 #[derive(Error, Debug)]
-pub enum FloeManagerError {
-    #[error("IO error")]
+pub enum GlacierError {
+    #[error("Failed to spawn floe: {0}")]
+    SpawnError(String),
+    #[error("IO error: {0}")]
     Io(#[from] tokio::io::Error),
-    #[error("JSON serialization error")]
+    #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("Failed to spawn process after {attempts} attempts")]
-    SpawnFailed { attempts: u32 },
-    #[error("Channel send failed")]
-    ChannelSend,
-    #[error("Process terminated unexpectedly")]
-    ProcessTerminated,
 }
 
-pub type FloeResult<T> = Result<T, FloeManagerError>;
-
-#[derive(Serialize, Deserialize)]
-pub struct Message {
-    id: Option<Uuid>,
-    command: Option<FloeCommand>,
-    igloo_command: Option<IglooCommand>,
-    response: Option<IglooResponse>,
-    floe_response: Option<FloeResponse>,
+#[derive(Debug, Clone)]
+enum GlacierStateUpdate {
+    AddDevice {
+        floe_name: String,
+        id: Uuid,
+        device: Device,
+    },
+    ComponentUpdates {
+        floe_name: String,
+        updates: Vec<ComponentUpdate>,
+    },
 }
 
-pub struct OutgoingIglooCommand {
-    command: IglooCommand,
-    response_sender: Option<oneshot::Sender<FloeResponse>>,
+struct FloeHandle {
+    name: String,
+    process: Child,
+    stdin: ChildStdin,
+    reader_task: JoinHandle<()>,
 }
 
-pub struct FloeManager {
-    state: Arc<RwLock<GlacierState>>,
-    provider_name: String,
-    command_sender: mpsc::UnboundedSender<OutgoingIglooCommand>,
-    _task_handle: JoinHandle<()>,
-    _child: Child,
+impl FloeHandle {
+    async fn send_command(&mut self, command: &IglooCommand) -> Result<(), GlacierError> {
+        let json = serde_json::to_string(command)?;
+        self.stdin.write_all(json.as_bytes()).await?;
+        self.stdin.write_all(b"\n").await?;
+        self.stdin.flush().await?;
+        Ok(())
+    }
+
+    async fn shutdown(mut self) {
+        // soft shutdown
+        drop(self.stdin);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), self.process.wait()).await;
+
+        // force kill
+        let _ = self.process.kill().await;
+
+        self.reader_task.abort();
+    }
 }
 
-impl FloeManager {
-    pub async fn new(binary_path: &str, state: Arc<RwLock<GlacierState>>) -> FloeResult<Self> {
-        let provider_name = std::path::Path::new(binary_path)
+pub struct Glacier {
+    handles: Vec<FloeHandle>,
+    update_processor: JoinHandle<()>,
+    update_tx: mpsc::Sender<GlacierStateUpdate>,
+}
+
+impl Glacier {
+    pub async fn new(floe_paths: Vec<&str>, state: GlacierState) -> Result<Self, GlacierError> {
+        let (update_tx, update_rx) = mpsc::channel::<GlacierStateUpdate>(1000);
+
+        let update_processor = tokio::spawn(Self::process_updates(update_rx, state));
+
+        let mut handles = Vec::new();
+        for path in floe_paths {
+            let handle = Self::spawn_floe(path, update_tx.clone()).await?;
+            handles.push(handle);
+        }
+
+        Ok(Glacier {
+            handles,
+            update_processor,
+            update_tx,
+        })
+    }
+
+    async fn spawn_floe(
+        path: &str,
+        update_tx: mpsc::Sender<GlacierStateUpdate>,
+    ) -> Result<FloeHandle, GlacierError> {
+        let floe_name = Path::new(path)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let mut child = Self::spawn_with_retry(binary_path, 3).await?;
+        println!("[{}] Spawning floe from: {}", floe_name, path);
 
-        let mut child_stdin =
-            child
-                .stdin
-                .take()
-                .ok_or(FloeManagerError::Io(std::io::Error::new(
-                    std::io::ErrorKind::BrokenPipe,
-                    "Failed to get child stdin",
-                )))?;
+        let mut child = Command::new(path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| GlacierError::SpawnError(format!("{}: {}", path, e)))?;
 
-        let child_stdout = child
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| GlacierError::SpawnError("Failed to get stdin".into()))?;
+
+        let stdout = child
             .stdout
             .take()
-            .ok_or(FloeManagerError::Io(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "Failed to get child stdout",
-            )))?;
+            .ok_or_else(|| GlacierError::SpawnError("Failed to get stdout".into()))?;
 
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<OutgoingIglooCommand>();
-        let pending: Arc<Mutex<HashMap<Uuid, oneshot::Sender<FloeResponse>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let pending_clone = pending.clone();
-        let state_clone = state.clone();
-        let provider_name_clone = provider_name.clone();
+        let reader_task =
+            tokio::spawn(Self::read_floe_output(floe_name.clone(), stdout, update_tx));
 
-        let task_handle = tokio::spawn(async move {
-            let mut stdout_reader = BufReader::new(child_stdout);
-
-            loop {
-                tokio::select! {
-                    // -> Floe
-                    Some(outgoing) = cmd_rx.recv() => {
-                        let id = if outgoing.response_sender.is_some() {
-                            let id = Uuid::now_v7();
-                            pending_clone.lock().await.insert(id, outgoing.response_sender.unwrap());
-                            Some(id)
-                        } else {
-                            None
-                        };
-
-                        let msg = Message {
-                            id,
-                            command: None,
-                            igloo_command: Some(outgoing.command),
-                            response: None,
-                            floe_response: None,
-                        };
-
-                        if let Err(e) = Self::write_message(&mut child_stdin, &msg).await {
-                            panic!("Failed to write command to floe: {}", e);
-                        }
-                    }
-
-                    // <- Floe
-                    result = Self::read_message(&mut stdout_reader) => {
-                        match result {
-                            Ok(msg) => {
-                                // their responses
-                                if let (Some(id), Some(response)) = (msg.id, msg.floe_response) {
-                                    if let Some(sender) = pending_clone.lock().await.remove(&id) {
-                                        let _ = sender.send(response);
-                                    }
-                                    continue;
-                                }
-
-                                // incoming commands
-                                if let Some(command) = msg.command {
-                                    let response = Self::handle_floe_command(
-                                        command,
-                                        &state_clone,
-                                        &provider_name_clone
-                                    ).await;
-
-                                    let response_msg = Message {
-                                        id: msg.id,
-                                        command: None,
-                                        igloo_command: None,
-                                        response: Some(response),
-                                        floe_response: None,
-                                    };
-
-                                    if let Err(e) = Self::write_message(&mut child_stdin, &response_msg).await {
-                                        panic!("Failed to write response to floe: {}", e);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                panic!("Failed to read message from floe: {}", e);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        Ok(Self {
-            state,
-            provider_name,
-            command_sender: cmd_tx,
-            _task_handle: task_handle,
-            _child: child,
-        })
-    }
-
-    async fn spawn_with_retry(binary_path: &str, max_attempts: u32) -> FloeResult<Child> {
-        for attempt in 1..=max_attempts {
-            match Command::new(binary_path)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::inherit())
-                .spawn()
-            {
-                Ok(child) => {
-                    println!("Successfully spawned floe: {}", binary_path);
-                    return Ok(child);
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Attempt {}/{} failed to spawn {}: {}",
-                        attempt, max_attempts, binary_path, e
-                    );
-                    if attempt == max_attempts {
-                        return Err(FloeManagerError::SpawnFailed {
-                            attempts: max_attempts,
-                        });
-                    }
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-            }
-        }
-        unreachable!()
-    }
-
-    async fn handle_floe_command(
-        command: FloeCommand,
-        state: &Arc<RwLock<GlacierState>>,
-        provider_name: &str,
-    ) -> IglooResponse {
-        match command {
-            FloeCommand::AddDevice(uuid, device) => {
-                let mut state_guard = state.write().await;
-
-                state_guard.devices.insert(uuid, device);
-                state_guard
-                    .providers
-                    .insert(uuid, provider_name.to_string());
-
-                Ok(())
-            }
-            FloeCommand::Update(update) => {
-                let state_guard = state.read().await;
-
-                if state_guard.devices.contains_key(&update.device) {
-                    println!(
-                        "Update for device {}: {} = {:?}",
-                        update.device, update.entity, update.value
-                    );
-                    // TODO: actually update state
-                    Ok(())
-                } else {
-                    Err(IglooResponseError::InvalidDevice(update.device))
-                }
-            }
-            FloeCommand::SaveConfig(config) => {
-                println!("Provider {} saved config: {}", provider_name, config);
-                // TODO: save config for them
-                Ok(())
-            }
-            FloeCommand::Log(message) => {
-                println!("[{}] {}", provider_name, message);
-                Ok(())
-            }
-        }
-    }
-
-    async fn read_message(
-        reader: &mut BufReader<tokio::process::ChildStdout>,
-    ) -> FloeResult<Message> {
-        let mut line = String::new();
-        reader.read_line(&mut line).await?;
-        if line.trim().is_empty() {
-            return Err(FloeManagerError::ProcessTerminated);
-        }
-        Ok(serde_json::from_str(line.trim())?)
-    }
-
-    async fn write_message(
-        writer: &mut tokio::process::ChildStdin,
-        msg: &Message,
-    ) -> FloeResult<()> {
-        let json = serde_json::to_string(msg)?;
-        writer.write_all(json.as_bytes()).await?;
-        writer.write_all(b"\n").await?;
-        writer.flush().await?;
-        Ok(())
-    }
-
-    pub async fn send_command(&self, command: IglooCommand) -> FloeResult<FloeResponse> {
-        let (tx, rx) = oneshot::channel();
-
-        let outgoing = OutgoingIglooCommand {
-            command,
-            response_sender: Some(tx),
+        let mut handle = FloeHandle {
+            name: floe_name.clone(),
+            process: child,
+            stdin,
+            reader_task,
         };
 
-        self.command_sender
-            .send(outgoing)
-            .map_err(|_| FloeManagerError::ChannelSend)?;
+        let init = IglooCommand::Init(InitPayload { config: None });
+        handle.send_command(&init).await?;
+        println!("[{}] Sent Init command", floe_name);
 
-        match rx.await {
-            Ok(response) => Ok(response),
-            Err(_) => Err(FloeManagerError::ChannelSend),
+        Ok(handle)
+    }
+
+    async fn read_floe_output(
+        floe_name: String,
+        stdout: ChildStdout,
+        tx: mpsc::Sender<GlacierStateUpdate>,
+    ) {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => {
+                    // EOF
+                    println!("[{}] Floe disconnected", floe_name);
+                    break;
+                }
+                Ok(_) => {
+                    match serde_json::from_str::<FloeCommand>(&line) {
+                        Ok(cmd) => {
+                            let update = match cmd {
+                                FloeCommand::AddDevice(id, device) => {
+                                    GlacierStateUpdate::AddDevice {
+                                        floe_name: floe_name.clone(),
+                                        id,
+                                        device,
+                                    }
+                                }
+                                FloeCommand::ComponentUpdates(updates) => {
+                                    GlacierStateUpdate::ComponentUpdates {
+                                        floe_name: floe_name.clone(),
+                                        updates,
+                                    }
+                                }
+                                FloeCommand::Log(message) => {
+                                    println!("[{floe_name}]: {message}");
+                                    continue;
+                                }
+                                FloeCommand::CustomError(error) => {
+                                    eprintln!("[{floe_name}]: ERROR {error}");
+                                    continue;
+                                }
+                                FloeCommand::SaveConfig(_) => {
+                                    // TODO
+                                    continue;
+                                }
+                            };
+
+                            if let Err(e) = tx.send(update).await {
+                                eprintln!("[{floe_name}] Failed to send update: {e}");
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[{floe_name}] Failed to parse FloeCommand: {e} - Line: {}",
+                                line.trim()
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[{}] Error reading from floe: {}", floe_name, e);
+                    break;
+                }
+            }
         }
     }
 
-    pub async fn send_command_timeout(
-        &self,
-        command: IglooCommand,
-        timeout: Duration,
-    ) -> FloeResult<FloeResponse> {
-        tokio::time::timeout(timeout, self.send_command(command))
-            .await
-            .map_err(|_| {
-                FloeManagerError::Io(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Command timed out",
-                ))
-            })?
+    async fn process_updates(mut rx: mpsc::Receiver<GlacierStateUpdate>, mut state: GlacierState) {
+        println!("Update processor started");
+
+        while let Some(update) = rx.recv().await {
+            match update {
+                GlacierStateUpdate::AddDevice {
+                    floe_name,
+                    id,
+                    device,
+                } => {
+                    state
+                        .floes
+                        .entry(floe_name.clone())
+                        .or_insert_with(|| FloeState {
+                            devices: HashMap::new(),
+                        });
+
+                    if let Some(floe_state) = state.floes.get_mut(&floe_name) {
+                        floe_state.devices.insert(id, device);
+                    }
+
+                    state.device_registry.insert(id, floe_name.clone());
+
+                    println!("[{}] Added device: {}", floe_name, id);
+                }
+                GlacierStateUpdate::ComponentUpdates { floe_name, updates } => {
+                    let floe_state = match state.floes.get_mut(&floe_name) {
+                        Some(s) => s,
+                        None => {
+                            eprintln!("{floe_name} does not exist!");
+                            continue;
+                        }
+                    };
+
+                    for update in updates {
+                        // FIXME this code hurts my eyes
+                        match floe_state.devices.get_mut(&update.device) {
+                            Some(dev) => match dev.entities.0.get_mut(&update.entity) {
+                                Some(entity) => {
+                                    entity.set(update.value);
+                                }
+                                None => {
+                                    eprintln!(
+                                        "Entity {} does not exist on device {} in Floe {floe_name}!",
+                                        update.entity, update.device
+                                    );
+                                }
+                            },
+                            None => {
+                                eprintln!(
+                                    "Device {} does not exist in Floe {floe_name}!",
+                                    update.device
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("Update processor stopped");
     }
 
-    pub async fn ping(&self) -> FloeResult<FloeResponse> {
-        self.send_command(IglooCommand::Ping).await
+    pub async fn shutdown(self) {
+        println!("Shutting down FloeManager...");
+
+        drop(self.update_tx);
+
+        for handle in self.handles {
+            println!("[{}] Shutting down floe", handle.name);
+            handle.shutdown().await;
+        }
+
+        let _ = self.update_processor.await;
+
+        println!("FloeManager shutdown complete");
     }
 }

@@ -11,16 +11,23 @@ const FILE: &str = "state.json";
 pub struct GlacierState {
     pub zones: HashMap<Uuid, Zone>,
     #[serde(skip)]
-    pub devices: HashMap<Uuid, Device>,
-    /// maps Device ID -> Provider Name
+    /// Provider Name -> Data
+    pub floes: HashMap<String, FloeState>,
     #[serde(skip)]
-    pub providers: HashMap<Uuid, String>,
+    /// Device ID -> Provider Name
+    pub device_registry: HashMap<Uuid, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Zone {
     pub name: String,
     pub devices: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FloeState {
+    /// Device ID -> Device
+    pub devices: HashMap<Uuid, Device>,
 }
 
 #[derive(Error, Debug)]
