@@ -2,17 +2,25 @@ use crate::{Component, ComponentType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Device {
-    pub name: String,
-    pub entities: Entities,
-}
-
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Entities(pub HashMap<String, Entity>);
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Entity(pub(crate) HashMap<ComponentType, Component>);
+
+impl Entities {
+    pub fn insert(&mut self, name: String, value: Entity) -> Option<Entity> {
+        self.0.insert(name, value)
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Entity> {
+        self.0.get(name)
+    }
+
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Entity> {
+        self.0.get_mut(name)
+    }
+}
 
 impl Entity {
     pub fn from<const N: usize>(comps: [Component; N]) -> Self {

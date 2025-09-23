@@ -1,3 +1,5 @@
+use crate::{auth::Auth, glacier::GlacierSupervisor};
+
 mod auth;
 mod components;
 mod dashboard;
@@ -7,13 +9,12 @@ mod penguin;
 #[tokio::main]
 async fn main() {
     // load
-    let auth = auth::Auth::load().await.unwrap();
-    let state = glacier::GlacierState::load().await.unwrap();
+    let _auth = Auth::load().await.unwrap();
 
     // make communication channels
 
     // spawn glacier
-    glacier::spawn(state).await.unwrap();
+    let glacier = GlacierSupervisor::new().await.unwrap();
 
     // spawn penguin executer
 
@@ -22,6 +23,7 @@ async fn main() {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             println!("Shutting down Igloo");
+            glacier.shutdown().await;
         }
     }
 }

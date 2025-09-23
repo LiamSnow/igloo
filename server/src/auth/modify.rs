@@ -40,6 +40,7 @@ impl Auth {
         Ok(uid)
     }
 
+    #[allow(dead_code)]
     pub fn add_group(&mut self, name: String) -> Uuid {
         let gid = Uuid::now_v7();
 
@@ -52,18 +53,22 @@ impl Auth {
         gid
     }
 
+    #[allow(dead_code)]
     pub fn remove_user(&mut self, uid: &Uuid) -> Option<User> {
         self.users.remove(uid)
     }
 
+    #[allow(dead_code)]
     pub fn remove_group(&mut self, gid: &Uuid) -> Option<Group> {
         self.groups.remove(gid)
     }
 
+    #[allow(dead_code)]
     pub fn remove_session(&mut self, token: &Uuid) -> Option<Session> {
         self.sessions.remove(token)
     }
 
+    #[allow(dead_code)]
     pub fn get_all_sessions(&self, uid: Uuid) -> Vec<(&Uuid, &Session)> {
         let mut res = Vec::new();
         for (token, sesh) in &self.sessions {
@@ -75,6 +80,7 @@ impl Auth {
     }
 
     /// removes all sessions for a user, returns # of sessions signed out
+    #[allow(dead_code)]
     pub fn remove_all_sessions(&mut self, uid: Uuid) -> usize {
         let mut tokens = Vec::new();
 
@@ -91,6 +97,7 @@ impl Auth {
         tokens.len()
     }
 
+    #[allow(dead_code)]
     pub fn add_session(&mut self, uid: Uuid, address: SocketAddr) -> Uuid {
         let token = Uuid::now_v7();
 
@@ -111,6 +118,7 @@ impl Auth {
     }
 
     /// logs in with a session token, returns Some(uid) if successful
+    #[allow(dead_code)]
     pub fn try_login_with_session(&mut self, token: Uuid, address: SocketAddr) -> Option<Uuid> {
         // session token doesn't exist
         if !self.sessions.contains_key(&token) {
@@ -135,6 +143,7 @@ impl Auth {
         Some(sesh.uid)
     }
 
+    #[allow(dead_code)]
     pub fn lookup_username(&self, username: &str) -> Option<(Uuid, &User)> {
         for (uid, user) in &self.users {
             if user.username == username {
@@ -144,6 +153,7 @@ impl Auth {
         None
     }
 
+    #[allow(dead_code)]
     pub fn try_login(&self, username: &str, password: &str) -> BcryptResult<Option<Uuid>> {
         let (uid, user) = match self.lookup_username(username) {
             Some(v) => v,

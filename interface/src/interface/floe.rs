@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::{ComponentUpdate, Device, FloeCommand, IglooCommand, InitPayload};
+use crate::{ComponentUpdate, Entities, FloeCommand, IglooCommand, InitPayload};
 
 #[derive(Error, Debug)]
 pub enum IglooInterfaceError {
@@ -125,8 +125,14 @@ impl IglooInterface {
     }
 
     /// registers a new device with Igloo
-    pub async fn add_device(&self, id: Uuid, device: Device) -> Result<(), IglooInterfaceError> {
-        self.send_command(FloeCommand::AddDevice(id, device)).await
+    pub async fn add_device(
+        &self,
+        id: Uuid,
+        device_name: String,
+        entities: Entities,
+    ) -> Result<(), IglooInterfaceError> {
+        self.send_command(FloeCommand::AddDevice(id, device_name, entities))
+            .await
     }
 
     /// logs a message (use this over println!() which causes parsing errors)

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use igloo_interface::{
-    Color, ComponentUpdate, Device, Dimmer, Entities, Entity, InitPayload, LightBulb, Switch,
+    Color, ComponentUpdate, Dimmer, Entities, Entity, InitPayload, LightBulb, Switch,
     floe::{FloeHandler, IglooInterface, IglooInterfaceError},
 };
 use uuid::Uuid;
@@ -19,14 +19,16 @@ impl FloeHandler for ExampleFloe {
         entity.set_dimmer(Dimmer(255));
         entity.set_color(Color { r: 255, g: 0, b: 0 });
 
-        let device = Device {
-            name: "Test Device".to_string(),
-            entities: Entities(HashMap::from([("RGBCT_Bulb".to_string(), entity)])),
-        };
-
         let device_id = Uuid::now_v7();
+        let device_name = "Test Device".to_string();
+        let entities = Entities(HashMap::from([("RGBCT_Bulb".to_string(), entity)]));
 
-        manager.add_device(device_id, device).await.unwrap();
+        manager
+            .add_device(device_id, device_name, entities)
+            .await
+            .unwrap();
+
+        manager.save_config("test\n".to_string()).await.unwrap();
     }
 
     async fn updates_requested(&mut self, updates: Vec<ComponentUpdate>, manager: &IglooInterface) {

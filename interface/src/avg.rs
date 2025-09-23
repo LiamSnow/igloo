@@ -62,10 +62,9 @@ impl<T: Averageable> Average<T> {
     }
 
     pub fn current_average(&self) -> Option<T> {
-        if self.count == 0 {
-            None
-        } else {
-            Some(T::from_sum(self.sum.clone(), self.count))
+        match self.count == 0 {
+            true => None,
+            false => Some(T::from_sum(self.sum.clone(), self.count)),
         }
     }
 

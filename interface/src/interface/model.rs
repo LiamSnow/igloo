@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{Component, Device};
+use crate::{Component, Entities};
 
 /// MISO Floe sending command -> Igloo
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum FloeCommand {
-    AddDevice(Uuid, Device),
+    /// ID, name, entities
+    AddDevice(Uuid, String, Entities),
     ComponentUpdates(Vec<ComponentUpdate>),
     SaveConfig(String),
     /// NOT a lot, this is a response to a bad IglooCommand::Custom

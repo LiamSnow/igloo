@@ -1,42 +1,108 @@
-/// set queries will set the values of target components
-pub struct SetOperation {
-    target: ComponentType,
-    /// value must be of the same type as ComponentType
-    value: ComponentValue,
-    filter: QueryFilter,
+use igloo_interface::{Component, ComponentType};
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+/// Request a Query from the Query Engine
+#[allow(dead_code)]
+pub enum QueryEngineRequest {
+    /// One shot queries are intended for operations that don't happen very often
+    /// Every execution requires a full device tree lookup
+    ExecuteOneShot(Query<OneShotQuery>),
+
+    /// Request the registration of a persistent query
+    /// Persistent queries are optimized by
+    RegisterPersistent(Query<PersistentQuery>),
+
+    /// After registering a PersistentQuery::Set(id, types)
+    /// You can call this function with the same IDs and components of the same types
+    /// To execute it
+    CallSetPersistent(Uuid, Vec<Component>),
 }
 
-/// get queries will simply return all the values of the components
-pub struct ValueQuery {
-    get: Vec<ComponentType>,
-    filter: QueryFilter,
+/// This is send over the broadcast channel whenever a OneShotQuery::Get or Avg is executed
+#[allow(dead_code)]
+pub enum OneShotQueryResult {
+    Get(Uuid, Vec<OneShotGetQueryResult>),
+    Avg(Uuid, Vec<Component>),
 }
 
-pub struct AggregateQuery {
-    targets: Vec<ComponentType>,
-    filter: QueryFilter,
-    op: AggregateOp,
+#[allow(dead_code)]
+pub struct OneShotGetQueryResult {
+    pub device_name: String,
+    pub device_id: Uuid,
+    pub entity: String,
+    pub values: Vec<Component>,
 }
 
-/// lookup queries will return a Vec of strong links to components
-pub struct LookupQuery {
+#[allow(dead_code)]
+pub struct PersistentQueryUpdate {}
+
+#[allow(dead_code)]
+pub struct Query<T> {
+    kind: T,
     filter: QueryFilter,
+    area: Area,
+    limit: Option<usize>,
 }
 
+#[allow(dead_code)]
+pub enum OneShotQuery {
+    Set(Vec<Component>),
+    /// Returns the value of every component that matches this type
+    /// The Query Engine will send out the result over the broadcast channel
+    /// using the UUID you provide here
+    Get(Uuid, Vec<ComponentType>),
+    /// Returns the average of each of the components that match this type
+    /// The Query Engine will send out the result over the broadcast channel
+    /// using the UUID you provide here
+    Avg(Uuid, Vec<ComponentType>),
+    /// Gets a snapshot of the entire device tree
+    /// The Query Engine will send out the result over the broadcast channel
+    /// using the UUID you provide here
+    Snapshot(Uuid),
+}
+
+#[allow(dead_code)]
+pub enum PersistentQuery {
+    /// This simply specifies what you will be giving when you send QueryEngineRequest::CallSetPersistent
+    /// The UUID between this registration and your calls must match
+    Set(Uuid, Vec<ComponentType>),
+    /// Any time the components change, the query engine will send the result over this mpsc channel
+    /// In most cases, you should be using Avg
+    Get(mpsc::Sender<PersistentQueryUpdate>, Vec<ComponentType>),
+    /// Any time the components change, the query engine will send the result over this mpsc channel
+    /// This is additionally optimized by only tracking component differences
+    Avg(mpsc::Sender<PersistentQueryUpdate>, Vec<ComponentType>),
+}
+
+#[allow(dead_code)]
+pub enum Area {
+    All,
+    /// zone ID
+    Zone(String),
+    /// device name
+    Device(String),
+    /// device name, entity name
+    Entity(String, String),
+}
+
+#[allow(dead_code)]
 pub enum QueryFilter {
     With(ComponentType),
     Without(ComponentType),
     And(Box<(QueryFilter, QueryFilter)>),
     Or(Box<(QueryFilter, QueryFilter)>),
-    Condition(ComponentType, Operator, ComponentValue),
-    NestedCondition(Vec<PathSegment>, Operator, ComponentValue),
+    Condition(ComponentType, Operator, Component),
+    NestedCondition(Vec<PathSegment>, Operator, Component),
 }
 
+#[allow(dead_code)]
 pub enum PathSegment {
     Field(String),
     Index(usize),
 }
 
+#[allow(dead_code)]
 pub enum Operator {
     Eq,
     Neq,
@@ -47,146 +113,62 @@ pub enum Operator {
     Contains,
 }
 
-pub enum AggregateOp {
-    Average,
-    Sum,
-    Min,
-    Max,
-    Count,
-    AverageColor,
-}
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, fs};
+    use igloo_interface::Dimmer;
 
-    use uuid::Uuid;
-
-    use crate::*;
+    use super::*;
 
     #[test]
-    fn test_query() {
-        let mut entities = Entities(HashMap::from([
-            (
-                "LightWithSwitchDimmerColor".to_string(),
-                Entity(vec![
-                    ComponentValue::Light,
-                    ComponentValue::Switch(Switch(true)),
-                    ComponentValue::Dimmer(Dimmer(255)),
-                    ComponentValue::Color(Color { r: 255, g: 0, b: 0 }),
-                ]),
-            ),
-            (
-                "LightWithSwitchDimmer".to_string(),
-                Entity(vec![
-                    ComponentValue::Light,
-                    ComponentValue::Switch(Switch(true)),
-                    ComponentValue::Dimmer(Dimmer(255)),
-                ]),
-            ),
-            (
-                "Dimmer".to_string(),
-                Entity(vec![ComponentValue::Dimmer(Dimmer(255))]),
-            ),
-            (
-                "LightWithSwitch".to_string(),
-                Entity(vec![
-                    ComponentValue::Light,
-                    ComponentValue::Switch(Switch(true)),
-                ]),
-            ),
-            // (
-            //     "RGBCT_Bulb".to_string(),
-            //     Entity(vec![
-            //         ComponentValue::Light,
-            //         ComponentValue::Switch(Switch(true)),
-            //         ComponentValue::Dimmer(Dimmer(255)),
-            //         ComponentValue::Color(Color { r: 255, g: 0, b: 0 }),
-            //     ]),
-            // ),
-            // (
-            //     "Status".to_string(),
-            //     Entity(vec![ComponentValue::Bool(Bool(true))]),
-            // ),
-            // (
-            //     "Safe Mode".to_string(),
-            //     Entity(vec![ComponentValue::Bool(Bool(false))]),
-            // ),
-            // (
-            //     "Uptime Sensor".to_string(),
-            //     Entity(vec![
-            //         ComponentValue::Unit(Unit::Seconds),
-            //         ComponentValue::Int(Int(128211)),
-            //     ]),
-            // ),
-            // (
-            //     "IP Address".to_string(),
-            //     Entity(vec![ComponentValue::String(StringComponent(
-            //         "192.168.1.201".to_string(),
-            //     ))]),
-            // ),
-        ]));
+    fn example_queries() {
+        use OneShotQuery::*;
+        use QueryFilter::*;
 
-        // let a = serde_json::to_string_pretty(&entities).unwrap();
-        // fs::write("out.json", a).unwrap();
-
-        let mut world = HashMap::new();
-        world.insert(
-            Uuid::now_v7(),
-            Device {
-                name: "kitchen_ceiling".to_string(),
-                entities,
-            },
-        );
-    }
-
-    #[test]
-    fn test_query_parsing() {
-        // syntax is open to change
-
-        // GET Dimmer WHERE Light
-        // should equal
-        let expected = ValueQuery {
-            get: vec![ComponentType::Dimmer],
-            filter: QueryFilter::With(ComponentType::Light),
+        // get all Dimmer components that exists on an entity that also contains a Light component
+        let expected = Query {
+            kind: Get(Uuid::now_v7(), vec![ComponentType::Dimmer]),
+            filter: With(ComponentType::Light),
+            area: Area::All,
+            limit: None,
         };
 
-        // GET Dimmer, Color WITH Light AND Switch
-        let expected = ValueQuery {
-            get: vec![ComponentType::Dimmer, ComponentType::Color],
-            filter: QueryFilter::And(Box::new((
-                QueryFilter::With(ComponentType::Light),
-                QueryFilter::With(ComponentType::Switch),
+        // get the first Dimmer component that exists on an entity that also contains a Light component
+        let expected = Query {
+            kind: Get(Uuid::now_v7(), vec![ComponentType::Dimmer]),
+            filter: With(ComponentType::Light),
+            area: Area::All,
+            limit: Some(1),
+        };
+
+        // get all Dimmer and Color components that exist on entities that also contain Light and Switch components
+        // IE entities must have Dimmer, Color, Light, and Switch components, but only return Dimmer and Color
+        let expected = Query {
+            kind: Get(
+                Uuid::now_v7(),
+                vec![ComponentType::Dimmer, ComponentType::Color],
+            ),
+            filter: And(Box::new((
+                With(ComponentType::Light),
+                With(ComponentType::Switch),
             ))),
+            area: Area::All,
+            limit: None,
         };
 
-        // GET Dimmer, Color WITH Light OR Switch
-        let expected = ValueQuery {
-            get: vec![ComponentType::Dimmer, ComponentType::Color],
-            filter: QueryFilter::Or(Box::new((
-                QueryFilter::With(ComponentType::Light),
-                QueryFilter::With(ComponentType::Switch),
-            ))),
+        // get all Dimmer components that exist on entities without a Light component
+        let expected = Query {
+            kind: Get(Uuid::now_v7(), vec![ComponentType::Dimmer]),
+            filter: Without(ComponentType::Light),
+            area: Area::All,
+            limit: None,
         };
 
-        // GET Dimmer WITH NOT Light
-        let expected = ValueQuery {
-            get: vec![ComponentType::Dimmer],
-            filter: QueryFilter::Without(ComponentType::Light),
-        };
-
-        // SET Dimmer WITH Light TO 100
-        let expected = SetOperation {
-            target: ComponentType::Dimmer,
-            value: ComponentValue::Dimmer(Dimmer(100)),
-            filter: QueryFilter::With(ComponentType::Light),
-        };
-
-        // LOOKUP Dimmer AND NOT Light (should give DEVICE_UUID["Dimmer"][0] in this example)
-        let expected = LookupQuery {
-            filter: QueryFilter::And(Box::new((
-                QueryFilter::With(ComponentType::Dimmer),
-                QueryFilter::Without(ComponentType::Light),
-            ))),
+        // set all Dimmer components to 155 that exist on entities that also have a Light component
+        let expected = Query {
+            kind: Set(vec![Component::Dimmer(Dimmer(155))]),
+            filter: With(ComponentType::Light),
+            area: Area::All,
+            limit: None,
         };
     }
 }
