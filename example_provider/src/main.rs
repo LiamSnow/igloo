@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use igloo_interface::{
-    Color, ComponentUpdate, Dimmer, Entities, Entity, InitPayload, LightBulb, Switch,
+    Color, ComponentUpdate, Dimmer, Entities, Entity, InitPayload, Light, Switch,
     floe::{FloeHandler, IglooInterface, IglooInterfaceError},
 };
 use uuid::Uuid;
@@ -14,9 +14,9 @@ impl FloeHandler for ExampleFloe {
         manager.log(format!("got init: {init:#?}")).await.unwrap();
 
         let mut entity = Entity::default();
-        entity.set_light_bulb(LightBulb);
+        entity.set_light(Light);
         entity.set_switch(Switch(true));
-        entity.set_dimmer(Dimmer(255));
+        entity.set_dimmer(Dimmer(0.5));
         entity.set_color(Color { r: 255, g: 0, b: 0 });
 
         let device_id = Uuid::now_v7();

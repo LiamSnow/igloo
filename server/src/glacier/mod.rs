@@ -50,14 +50,15 @@ impl Glacier {
             };
 
             if let Err(e) = res {
-                eprintln!("Glacier Aggregator error: {e}");
+                eprintln!("Glacier error: {e}");
             }
         }
-
-        println!("Glacier Aggregator Stopped Unexpectedly");
     }
 
     async fn handle_component_updates(&mut self, floe_name: String, updates: Vec<ComponentUpdate>) {
+        // TODO FIXME remoe this
+        println!("{floe_name} sends updates: {updates:#?}");
+
         for update in updates {
             let Some(dev) = self.tree.get_dev_mut(&update.device) else {
                 eprintln!(
@@ -83,7 +84,9 @@ impl Glacier {
                 continue;
             };
 
-            entity.set(update.value);
+            for value in update.values {
+                entity.set(value);
+            }
         }
     }
 }

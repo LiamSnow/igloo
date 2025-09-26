@@ -99,6 +99,12 @@ impl DeviceTree {
         name: String,
         entities: Entities,
     ) -> Result<(), GlacierError> {
+        // TODO FIXME remove
+        println!(
+            "{floe_name} registering {name} ({id}) with {}",
+            serde_json::to_string(&entities).unwrap()
+        );
+
         // prevent double active device registration
         if let Some(dev) = self.active_devs.get(&id) {
             eprintln!(

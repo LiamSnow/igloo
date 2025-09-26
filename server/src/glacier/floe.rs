@@ -1,4 +1,5 @@
 use igloo_interface::{FloeCommand, IglooCommand, InitPayload};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 use tokio::fs;
@@ -15,6 +16,14 @@ pub struct FloeHandle {
     pub process: Child,
     pub stdin: ChildStdin,
     pub reader_task: JoinHandle<()>,
+}
+
+// TODO remove
+#[derive(Deserialize, Serialize, Clone)]
+pub struct ConnectionParams {
+    pub ip: String,
+    pub noise_psk: Option<String>,
+    pub password: Option<String>,
 }
 
 impl FloeHandle {
@@ -60,6 +69,21 @@ impl FloeHandle {
         let init = IglooCommand::Init(InitPayload { config });
         handle.send_command(&init).await?;
         println!("Sent init command to Floe {name}");
+
+        // TODO remove
+        if name == "ESPHome" {
+            handle
+                .send_command(&IglooCommand::Custom(
+                    "add_device".to_string(),
+                    serde_json::to_string(&ConnectionParams {
+                        ip: "192.168.1.18:6053".to_string(),
+                        noise_psk: Some("GwsvILrvcN/BHAG9m7Hgzcqzc4Dx9neT/1RfEDmsecw=".to_string()),
+                        password: None,
+                    })
+                    .unwrap(),
+                ))
+                .await?;
+        }
 
         Ok(handle)
     }
