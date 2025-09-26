@@ -1,8 +1,11 @@
 pub mod avg;
-pub mod components;
 pub mod entity;
 pub mod interface;
+#[cfg(test)]
+mod test;
+
 pub use avg::*;
-pub use components::*;
 pub use entity::*;
 pub use interface::*;
+
+include!(concat!(env!("OUT_DIR"), "/components.rs"));

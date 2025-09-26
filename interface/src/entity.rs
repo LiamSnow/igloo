@@ -20,6 +20,14 @@ impl Entities {
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Entity> {
         self.0.get_mut(name)
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl Entity {
@@ -46,5 +54,13 @@ impl Entity {
     pub fn set(&mut self, val: Component) {
         let typ = val.get_type();
         self.0.insert(typ, val);
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }

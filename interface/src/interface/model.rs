@@ -37,5 +37,5 @@ pub struct InitPayload {
 pub struct ComponentUpdate {
     pub device: Uuid,
     pub entity: String,
-    pub value: Component,
+    pub values: Vec<Component>,
 }

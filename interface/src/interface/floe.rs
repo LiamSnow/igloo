@@ -115,8 +115,8 @@ impl IglooInterface {
         Ok(())
     }
 
-    // update a component under a device you registered
-    pub async fn send_update(
+    // send component updates under devices you registered
+    pub async fn send_updates(
         &self,
         update: Vec<ComponentUpdate>,
     ) -> Result<(), IglooInterfaceError> {

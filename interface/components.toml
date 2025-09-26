@@ -1,0 +1,510 @@
+# Primitives 
+[[components]]
+name = "Int"
+kind = "single"
+field = "i32"
+desc = "signed 32-bit integer"
+gen_bound_types = true # makes IntMin, IntMax, IntStep
+gen_list_type = true # makes IntList
+
+[[components]]
+name = "Uint"
+kind = "single"
+field = "u32"
+desc = "unsigned 32-bit integer"
+gen_bound_types = true
+gen_list_type = true
+
+[[components]]
+name = "Long"
+kind = "single"
+field = "i64"
+desc = "signed 64-bit integer"
+gen_bound_types = true
+gen_list_type = true
+
+[[components]]
+name = "Float"
+kind = "single"
+field = "f32"
+desc = "32-bit floating point"
+gen_bound_types = true
+gen_list_type = true
+
+[[components]]
+name = "Double"
+kind = "single"
+field = "f64"
+desc = "64-bit floating point"
+gen_bound_types = true
+gen_list_type = true
+
+[[components]]
+name = "Bool"
+kind = "single"
+field = "bool"
+gen_list_type = true
+
+[[components]]
+name = "Text"
+kind = "single"
+field = "String"
+gen_list_type = true
+gen_string_bound_types = true # makes TextMaxLength, TextMinLength, TextPattern
+
+# Date/Time types
+[[components]]
+name = "Date"
+kind = "single"
+field = "jiff::civil::Date"
+gen_list_type = true
+
+[[components]]
+name = "Time"
+kind = "single"
+field = "jiff::civil::Time"
+gen_list_type = true
+
+[[components]]
+name = "DateTime"
+kind = "single"
+field = "jiff::civil::DateTime"
+gen_list_type = true
+
+[[components]]
+name = "Duration"
+kind = "single"
+field = "jiff::SignedDuration"
+gen_list_type = true
+
+# Light
+[[components]]
+name = "Light"
+kind = "marker"
+desc = ""
+related = [
+    { name = "Switch", reason = "on/off control" },
+    { name = "Dimmer", reason = "brightness control" },
+    { name = "Color", reason = "RGB color control" },
+    { name = "ColorTemperature", reason = "white temperature control" },
+    { name = "ColorMode", reason = "what the light is currently displaying" }
+]
+
+[[components]]
+name = "Switch"
+kind = "single"
+field = "bool"
+
+[[components]]
+name = "Dimmer"
+kind = "single"
+field = "f32"
+desc = "0.0 (0%) - 1.0 (100%)"
+
+[[components]]
+name = "Color"
+kind = "struct"
+fields = [
+    { name = "r", type = "u8" },
+    { name = "g", type = "u8" },
+    { name = "b", type = "u8" }
+]
+
+[[components]]
+name = "ColorMode"
+kind = "enum"
+variants = [
+    { name = "RGB" },
+    { name = "Temperature" }
+]
+
+[[components]]
+name = "ColorTemperature"
+kind = "single"
+field = "u16"
+gen_bound_types = true
+
+
+# Other
+[[components]]
+name = "Config"
+kind = "marker"
+desc = "this entity is for configuration of the device"
+
+[[components]]
+name = "Diagnostic"
+kind = "marker"
+desc = "this entity is for diagnosing the device"
+
+[[components]]
+name = "TextSelect"
+kind = "marker"
+desc = "Usually used in a dropdown select menu"
+related = [
+    { name = "Text", reason = "currently selection option" },
+    { name = "TextList", reason = "available options" }
+]
+
+[[components]]
+name = "TextMode"
+kind = "enum"
+variants = [
+    { name = "Text" },
+    { name = "Password" }
+]
+
+[[components]]
+name = "Siren"
+kind = "marker"
+
+# Metadata 
+[[components]]
+name = "Icon"
+kind = "single"
+field = "String"
+desc = "Example: \"mdi:timer-outline\""
+
+[[components]]
+name = "AccuracyDecimals"
+kind = "single"
+field = "i32"
+
+[[components]]
+name = "DeviceClass"
+kind = "single"
+field = "String"
+desc = "currently just for ESPHome"
+
+[[components]]
+name = "SensorStateClass"
+kind = "enum"
+variants = [
+    { name = "Measurement" },
+    { name = "TotalIncreasing" },
+    { name = "Total" }
+]
+
+[[components]]
+name = "Unit"
+kind = "enum"
+variants = [
+    # Apparent power units
+    { name = "VoltAmperes", aliases = ["VA"] },
+    
+    # Power units
+    { name = "Watts", aliases = ["W", "watt", "watts"] },
+    { name = "KiloWatts", aliases = ["kW", "kw", "kilowatt", "kilowatts"] },
+    { name = "BtusPerHour", aliases = ["BTU/h"] },
+    
+    # Reactive power units
+    { name = "VoltAmpereReactive", aliases = ["var"] },
+    
+    # Energy units
+    { name = "WattHours", aliases = ["Wh"] },
+    { name = "KiloWattHours", aliases = ["kWh"] },
+    { name = "MegaWattHours", aliases = ["MWh"] },
+    
+    # Electric current units
+    { name = "Milliamperes", aliases = ["mA", "milliampere", "milliamperes", "milliamps", "milliamp"] },
+    { name = "Amperes", aliases = ["A", "amps", "amp", "ampere", "amperes"] },
+    
+    # Electric potential units
+    { name = "Millivolts", aliases = ["mV", "millivolts"] },
+    { name = "Volts", aliases = ["V", "volt", "volts"] },
+    
+    # Degree units
+    { name = "Degrees", aliases = ["°", "degree", "degrees"] },
+    
+    # Currency units
+    { name = "Euros", aliases = ["€", "euro", "euros"] },
+    { name = "Dollars", aliases = ["$", "dollar", "dollars"] },
+    { name = "Cents", aliases = ["¢", "cent", "cents"] },
+    
+    # Temperature units
+    { name = "Celsius", aliases = ["°C", "celcius"] },
+    { name = "Fahrenheit", aliases = ["°F", "fahrenheit"] },
+    { name = "Kelvin", aliases = ["K", "kelvin"] },
+    
+    # Time units
+    { name = "Microseconds", aliases = ["μs", "us", "microseconds"] },
+    { name = "Milliseconds", aliases = ["ms", "milliseconds"] },
+    { name = "Seconds", aliases = ["s", "seconds"] },
+    { name = "Minutes", aliases = ["min", "mins", "minute", "minutes"] },
+    { name = "Hours", aliases = ["h", "hour", "hours"] },
+    { name = "Days", aliases = ["d", "day", "days"] },
+    { name = "Weeks", aliases = ["w", "wk", "wks", "week", "weeks"] },
+    { name = "Months", aliases = ["month", "months"] },
+    { name = "Years", aliases = ["y", "year", "years"] },
+    
+    # Length units
+    { name = "Millimeters", aliases = ["mm"] },
+    { name = "Centimeters", aliases = ["cm"] },
+    { name = "Meters", aliases = ["m"] },
+    { name = "Kilometers", aliases = ["km"] },
+    { name = "Inches", aliases = ["in"] },
+    { name = "Feet", aliases = ["ft"] },
+    { name = "Yard", aliases = ["yd"] },
+    { name = "Miles", aliases = ["mi"] },
+    
+    # Frequency units
+    { name = "Hertz", aliases = ["Hz"] },
+    { name = "Kilohertz", aliases = ["kHz"] },
+    { name = "Megahertz", aliases = ["MHz"] },
+    { name = "Gigahertz", aliases = ["GHz"] },
+    
+    # Pressure units
+    { name = "Pascal", aliases = ["Pa"] },
+    { name = "Hectopascal", aliases = ["hPa"] },
+    { name = "Kilopascal", aliases = ["kPa"] },
+    { name = "Bar", aliases = ["bar"] },
+    { name = "Centibar", aliases = ["cbar"] },
+    { name = "Millibar", aliases = ["mbar"] },
+    { name = "MillimeterMercury", aliases = ["mmHg"] },
+    { name = "InchMercury", aliases = ["inHg"] },
+    { name = "Psi", aliases = ["psi"] },
+    
+    # Sound pressure units
+    { name = "Decibel", aliases = ["dB", "decibel", "decibels"] },
+    { name = "DecibelAWeighted", aliases = ["dBa"] },
+    { name = "DecibelsMilliwatt", aliases = ["dBm"] },
+    
+    # Volume units
+    { name = "Liters", aliases = ["L"] },
+    { name = "Milliliters", aliases = ["mL"] },
+    { name = "CubicMeters", aliases = ["m³"] },
+    { name = "CubicFeet", aliases = ["ft³"] },
+    { name = "Gallons", aliases = ["gal"] },
+    { name = "FluidOunce", aliases = ["fl. oz."] },
+    
+    # Volume Flow Rate units
+    { name = "CubicMetersPerHour", aliases = ["m³/h"] },
+    { name = "CubicFeetPerMinute", aliases = ["ft³/m"] },
+    
+    # Area units
+    { name = "SquareMeters", aliases = ["m²"] },
+    
+    # Mass units
+    { name = "Grams", aliases = ["g"] },
+    { name = "Kilograms", aliases = ["kg"] },
+    { name = "Milligrams", aliases = ["mg"] },
+    { name = "Micrograms", aliases = ["µg"] },
+    { name = "Ounces", aliases = ["oz"] },
+    { name = "Pounds", aliases = ["lb"] },
+    
+    # Conductivity units
+    { name = "MicrosiemensPerCentimeter", aliases = ["µS/cm"] },
+    
+    # Light units
+    { name = "Lux", aliases = ["lx"] },
+    
+    # UV Index units
+    { name = "UvIndex", aliases = ["UV index"] },
+    
+    # Percentage units
+    { name = "Percentage", aliases = ["%"] },
+    
+    # Irradiation units
+    { name = "WattsPerSquareMeter", aliases = ["W/m²"] },
+    { name = "BtusPerHourSquareFoot", aliases = ["BTU/(h×ft²)"] },
+    
+    # Concentration units
+    { name = "MicrogramsPerCubicMeter", aliases = ["µg/m³"] },
+    { name = "MilligramsPerCubicMeter", aliases = ["mg/m³"] },
+    { name = "MicrogramsPerCubicFoot", aliases = ["μg/ft³"] },
+    { name = "PartsPerCubicMeter", aliases = ["p/m³"] },
+    { name = "PartsPerMillion", aliases = ["ppm"] },
+    { name = "PartsPerBillion", aliases = ["ppb"] },
+    
+    # Speed units
+    { name = "MillimetersPerDay", aliases = ["mm/d"] },
+    { name = "MillimetersPerHour", aliases = ["mm/h"] },
+    { name = "FeetPerSecond", aliases = ["ft/s"] },
+    { name = "InchesPerDay", aliases = ["in/d"] },
+    { name = "MetersPerSecond", aliases = ["m/s"] },
+    { name = "InchesPerHour", aliases = ["in/h"] },
+    { name = "KilometersPerHour", aliases = ["km/h"] },
+    { name = "Knots", aliases = ["kn"] },
+    { name = "MilesPerHour", aliases = ["mph"] },
+    
+    # Data units
+    { name = "Bits", aliases = ["bit"] },
+    { name = "Kilobits", aliases = ["kbit"] },
+    { name = "Megabits", aliases = ["Mbit"] },
+    { name = "Gigabits", aliases = ["Gbit"] },
+    { name = "Bytes", aliases = ["B"] },
+    { name = "Kilobytes", aliases = ["kB"] },
+    { name = "Megabytes", aliases = ["MB"] },
+    { name = "Gigabytes", aliases = ["GB"] },
+    { name = "Terabytes", aliases = ["TB"] },
+    { name = "Petabytes", aliases = ["PB"] },
+    { name = "Exabytes", aliases = ["EB"] },
+    { name = "Zettabytes", aliases = ["ZB"] },
+    { name = "Yottabytes", aliases = ["YB"] },
+    { name = "Kibibytes", aliases = ["KiB"] },
+    { name = "Mebibytes", aliases = ["MiB"] },
+    { name = "Gibibytes", aliases = ["GiB"] },
+    { name = "Tebibytes", aliases = ["TiB"] },
+    { name = "Pebibytes", aliases = ["PiB"] },
+    { name = "Exbibytes", aliases = ["EiB"] },
+    { name = "Zebibytes", aliases = ["ZiB"] },
+    { name = "Yobibytes", aliases = ["YiB"] },
+    
+    # Data rate units
+    { name = "BitsPerSecond", aliases = ["bit/s"] },
+    { name = "KilobitsPerSecond", aliases = ["kbit/s"] },
+    { name = "MegabitsPerSecond", aliases = ["Mbit/s"] },
+    { name = "GigabitsPerSecond", aliases = ["Gbit/s"] },
+    { name = "BytesPerSecond", aliases = ["B/s"] },
+    { name = "KilobytesPerSecond", aliases = ["kB/s"] },
+    { name = "MegabytesPerSecond", aliases = ["MB/s"] },
+    { name = "GigabytesPerSecond", aliases = ["GB/s"] },
+    { name = "KibibytesPerSecond", aliases = ["KiB/s"] },
+    { name = "MebibytesPerSecond", aliases = ["MiB/s"] },
+    { name = "GibibytesPerSecond", aliases = ["GiB/s"] },
+    
+    { name = "Custom", data = "String" }
+]
+
+[[components]]
+name = "NumberMode"
+kind = "enum"
+variants = [
+    { name = "Auto" },
+    { name = "Box" },
+    { name = "Slider" }
+]
+
+[[components]]
+name = "FanOscillation"
+kind = "enum"
+gen_supported_type = true
+variants = [
+    { name = "Off", aliases = ["off"] },
+    { name = "On", aliases = ["on"] },
+    { name = "Vertical", aliases = ["vertical"] },
+    { name = "Horizontal", aliases = ["horizontal"] },
+    { name = "Both", aliases = ["both"] }
+]
+
+[[components]]
+name = "FanDirection"
+kind = "enum"
+gen_supported_type = true # makes SupportedFanDirections
+variants = [
+    { name = "Forward", aliases = ["forward"] },
+    { name = "Reverse", aliases = ["reverse"] },
+    { name = "Custom", data = "String" }
+]
+
+[[components]]
+name = "FanSpeed"
+kind = "enum"
+gen_supported_type = true
+variants = [
+    { name = "On", aliases = ["on"] },
+    { name = "Off", aliases = ["off"] },
+    { name = "Auto", aliases = ["auto"] },
+    { name = "Low", aliases = ["low"] },
+    { name = "Medium", aliases = ["medium"] },
+    { name = "High", aliases = ["high"] },
+    { name = "Middle", aliases = ["middle"] },
+    { name = "Focus", aliases = ["focus"] },
+    { name = "Diffuse", aliases = ["diffuse"] },
+    { name = "Quiet", aliases = ["quiet"] }
+]
+
+[[components]]
+name = "ClimateMode"
+kind = "enum"
+gen_supported_type = true
+variants = [
+    { name = "Off", aliases = ["off"] },
+    { name = "Auto", aliases = ["auto"] },
+    { name = "Heat", aliases = ["heat"] },
+    { name = "Cool", aliases = ["cool"] },
+    { name = "HeatCool", aliases = ["heat_cool"] },
+    { name = "FanOnly", aliases = ["fan_only"] },
+    { name = "Dry", aliases = ["dry"] },
+    { name = "Eco", aliases = ["eco"] },
+    { name = "Custom", data = "String" }
+]
+
+[[components]]
+name = "LockState"
+kind = "enum"
+gen_supported_type = true
+variants = [
+    { name = "Unknown", aliases = ["unknown"] },
+    { name = "Locked", aliases = ["locked"] },
+    { name = "Unlocked", aliases = ["unlocked"] },
+    { name = "Jammed", aliases = ["jammed"] },
+    { name = "Locking", aliases = ["locking"] },
+    { name = "Unlocking", aliases = ["unlocking"] },
+    { name = "Custom", data = "String" }
+]
+
+[[components]]
+name = "MediaState"
+kind = "enum"
+gen_supported_type = true
+variants = [
+    { name = "Unknown", aliases = ["unknown"] },
+    { name = "Idle", aliases = ["idle"] },
+    { name = "Playing", aliases = ["playing"] },
+    { name = "Paused", aliases = ["paused"] },
+    { name = "Custom", data = "String" }
+]
+
+# Cover
+[[components]]
+name = "Cover"
+kind = "marker"
+desc = ""
+related = [
+    { name = "CoverState", reason = "current state" },
+    { name = "Position", reason = "position of the cover" },
+    { name = "Tilt", reason = "tilt of the cover" },
+]
+
+[[components]]
+name = "CoverState"
+kind = "enum"
+gen_supported_type = true
+variants = [
+    { name = "Idle", aliases = ["idle"] },
+    { name = "Opening", aliases = ["opening"] },
+    { name = "Closing", aliases = ["closing"] },
+    { name = "Stopped", aliases = ["stopped"] },
+    { name = "Open", aliases = ["open"] },
+    { name = "Closed", aliases = ["closed"] },
+    { name = "Custom", data = "String" }
+]
+
+[[components]]
+name = "Position"
+kind = "single"
+field = "f32"
+
+[[components]]
+name = "Tilt"
+kind = "single"
+field = "f32"
+
+
+[[components]]
+name = "AlarmState"
+kind = "enum"
+variants = [
+    { name = "Disarmed", aliases = ["disarmed"] },
+    { name = "ArmedHome", aliases = ["armed_home"] },
+    { name = "ArmedAway", aliases = ["armed_away"] },
+    { name = "ArmedNight", aliases = ["armed_night"] },
+    { name = "ArmedVacation", aliases = ["armed_vacation"] },
+    { name = "ArmedUnknown", aliases = ["armed_unknown", "armed"] },
+    { name = "Pending", aliases = ["pending"] },
+    { name = "Triggered", aliases = ["triggered"] },
+    { name = "Arming", aliases = ["arming"] },
+    { name = "Disarming", aliases = ["disarming"] },
+    { name = "Custom", data = "String" }
+]
+
