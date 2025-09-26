@@ -547,19 +547,24 @@ fn add_gen_comps(comps: &mut Vec<Component>) {
 
                 for suffix in &["MaxLength", "MinLength", "Pattern"] {
                     let new_name = format!("{}{}", comp.name, suffix);
-                    let reason = match *suffix {
-                        "MaxLength" => "sets a max length bound on",
-                        "MinLength" => "sets a min length bound on",
-                        "Pattern" => "set a regex pattern for",
+                    let (reason, field_type) = match *suffix {
+                        "MaxLength" => (
+                            "sets a max length bound on".to_string(),
+                            "usize".to_string(),
+                        ),
+                        "MinLength" => (
+                            "sets a min length bound on".to_string(),
+                            "usize".to_string(),
+                        ),
+                        "Pattern" => ("set a regex pattern for".to_string(), "String".to_string()),
                         _ => unreachable!(),
-                    }
-                    .to_string();
+                    };
 
                     new_comps.push(Component {
                         name: new_name,
                         desc: "Marks a requirement. Only enforced by dashbaord components that use it.".to_string(),
                         gen_supported_type: false,
-                        kind: ComponentKind::single(field.clone()),
+                        kind: ComponentKind::single(field_type),
                         related: vec![Related {
                             name: comp.name.clone(),
                             reason
