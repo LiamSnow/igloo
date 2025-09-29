@@ -1,17 +1,14 @@
-use serde_json;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::{ComponentUpdate, Entities, FloeCommand, IglooCommand, InitPayload};
+use crate::{ComponentUpdate, FloeCommand, IglooCommand};
 
 #[derive(Error, Debug)]
 pub enum IglooInterfaceError {
     #[error("IO error")]
     Io(#[from] tokio::io::Error),
-    #[error("JSON serialization error")]
-    Json(#[from] serde_json::Error),
     #[error("Channel send error")]
     ChannelSend(String),
     #[error("Channel receive error")]
@@ -129,9 +126,8 @@ impl IglooInterface {
         &self,
         id: Uuid,
         device_name: String,
-        entities: Entities,
     ) -> Result<(), IglooInterfaceError> {
-        self.send_command(FloeCommand::AddDevice(id, device_name, entities))
+        self.send_command(FloeCommand::AddDevice(id, device_name))
             .await
     }
 

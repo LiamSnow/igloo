@@ -1,11 +1,14 @@
 pub mod avg;
-pub mod entity;
-pub mod interface;
+pub mod codec;
+pub mod encoding;
+// pub mod floe;
+pub mod model;
 #[cfg(test)]
-mod test;
+mod tests;
 
 pub use avg::*;
-pub use entity::*;
-pub use interface::*;
+pub use codec::*;
+pub use encoding::*;
+pub use model::*;
 
 include!(concat!(env!("OUT_DIR"), "/components.rs"));

@@ -2,15 +2,20 @@
 name = "igloo-interface"
 version = "0.1.0"
 edition = "2024"
+build = "build/main.rs"
 
 [dependencies]
-jiff = { version = "0.2.15", features = ["serde"] }
-serde = { version = "1.0.224", features = ["derive"] }
-serde_json = "1.0.145"
-uuid = { version = "1.18.1", features = ["v7", "serde"] }
+uuid = { version = "1.18.1", features = ["serde", "v7"] }
 tokio = { version = "1.47.1", features = ["full"] }
 thiserror = "2.0.16"
 trait-variant = "0.1.2"
+bytes = { version = "1.10.1", features = ["serde"] }
+smallvec = { version = "1.15.1", features = ["bincode", "impl_bincode", "serde"] }
+tokio-util = { version = "0.7.16", features = ["codec"] }
+bincode = "2.0.1"
+serde = { version = "1.0.224", features = ["derive"] }
+serde_json = "1.0.145"
+borsh = { version = "1.5.7", features = ["derive"] }
 
 [build-dependencies]
 toml = "0.9.7"
@@ -19,3 +24,25 @@ quote = "1.0.40"
 proc-macro2 = "1.0.101"
 syn = { version = "2.0.106", features = ["full", "parsing"] }
 prettyplease = "0.2.37"
+
+[dev-dependencies]
+criterion = { version = "0.7", features = ["html_reports"] }
+
+[[bench]]
+name = "codec_benchmark"
+harness = false
+
+[[bin]]
+name = "profile"
+path = "src/bin/profile.rs"
+
+[profile.release]
+debug = true
+panic = "abort"  
+lto = true       
+codegen-units = 1  
+opt-level = 3
+
+[profile.profiling]
+inherits = "release"
+debug = true
