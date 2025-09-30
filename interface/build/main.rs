@@ -1,5 +1,7 @@
 mod components;
+mod protocol;
 
-fn main() {
+pub fn main() {
+    protocol::run();
     components::run();
 }

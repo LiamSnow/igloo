@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+message Int {
+  int32 value = 1;
+}
+
+message Bool {
+  bool value = 1;
+}
+
+message Light {
+  bool value = 1;
+}
+
+message Component {
+  oneof value {
+    Int int = 1;
+    Bool bool = 4;
+    Light light = 5;
+  }
+}
+
+message UpdatesPayload {
+  uint32 device = 1;
+  uint32 entity = 2;
+  repeated Component values = 3;
+}
+
+message FloeCommand {
+  oneof command {
+    UpdatesPayload updates = 3;
+  }
+}

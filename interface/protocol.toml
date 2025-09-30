@@ -1,0 +1,93 @@
+version = 0
+
+# MISO Floe sending command -> Igloo
+[[commands.floe]]
+name = "HandshakeResponse"
+opcode = 0x80
+desc = ""
+fields = [
+    { name = "version", type = "u8" }
+]
+
+[[commands.floe]]
+name = "RegisterDevice"
+opcode = 0x81
+desc = "Register a device with Igloo"
+fields = [
+    { name = "id", type = "String", desc = "Persistent device ID. You should register the device under the same UUID every boot. UUIDv7 as bytes" },
+    { name = "initial_name", type = "String", desc = "Name for the device for first register. Can be modified by the user later on" },
+    { name = "entity_names", type = "Vec<String>", desc = "The name of every entity you will ever have. Cannot change this after registration!" }
+]
+
+[[commands.floe]]
+name = "Updates"
+opcode = 0x82
+desc = "Tell Igloo that components have changed state"
+fields = [
+    { name = "device", type = "u16" },
+    { name = "entity", type = "u16" },
+    { name = "values", type = "Vec<Component>" }
+]
+
+[[commands.floe]]
+name = "CustomCommandError"
+opcode = 0x83
+desc = "Custom command execution error"
+fields = [
+    { name = "error_code", type = "u8" },
+    { name = "message", type = "String" }
+]
+
+[[commands.floe]]
+name = "Log"
+opcode = 0x84
+desc = "Log message from device"
+fields = [
+    { name = "message", type = "String" }
+]
+
+# MOSI Igloo sending command -> Floe
+[[commands.igloo]]
+name = "HandshakeRequest"
+opcode = 0x00
+desc = "Called once at boot."
+fields = []
+
+[[commands.igloo]]
+name = "DeviceRegistered"
+opcode = 0x01
+desc = """
+Device registration acknowledgment
+After a successful RegisterDevice, Igloo will give you back
+the Device ID and its ephemeral identifier (only for this session)
+"""
+fields = [
+    { name = "id", type = "String", desc = "The ID of the device that you registered. UUIDv7 as string" },
+    { name = "device_ref", type = "u16", desc = "The ephemeral device identifier (IE only for this session)" },
+    { name = "entity_names", type = "Vec<String>", desc = "Same entity names you gave, here for reference purposes. Matches 1:1 with entity_refs" },
+    { name = "entity_refs", type = "Vec<u16>", desc = "Ephemeral entity identifier" }
+]
+
+[[commands.igloo]]
+name = "RequestUpdates"
+opcode = 0x02
+desc = """
+Request component updates from device
+This may be invalid, in which case do nothing (or log err).
+Updates are NOT confirmed on the device tree until you
+acknowledge them by sending back ::Updates
+"""
+fields = [
+    { name = "device", type = "u16" },
+    { name = "entity", type = "u16" },
+    { name = "values", type = "Vec<Component>" }
+]
+
+[[commands.igloo]]
+name = "ExecuteCustomCommand"
+opcode = 0x03
+desc = "Execute custom command on device"
+fields = [
+    { name = "command_id", type = "u8" },
+    { name = "data", type = "Vec<u8>" }
+]

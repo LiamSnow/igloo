@@ -2,20 +2,20 @@
 name = "igloo-interface"
 version = "0.1.0"
 edition = "2024"
-build = "build/main.rs"
+# build = "build/main.rs"
 
 [dependencies]
-uuid = { version = "1.18.1", features = ["serde", "v7"] }
+uuid = { version = "1.18.1", features = ["borsh", "v7", "zerocopy"] }
 tokio = { version = "1.47.1", features = ["full"] }
 thiserror = "2.0.16"
 trait-variant = "0.1.2"
-bytes = { version = "1.10.1", features = ["serde"] }
-smallvec = { version = "1.15.1", features = ["bincode", "impl_bincode", "serde"] }
+bytes = { version = "1.10.1" }
+smallvec = "1.15.1"
 tokio-util = { version = "0.7.16", features = ["codec"] }
-bincode = "2.0.1"
-serde = { version = "1.0.224", features = ["derive"] }
-serde_json = "1.0.145"
 borsh = { version = "1.5.7", features = ["derive"] }
+futures-util = { version = "0.3.31", features = ["sink"] }
+prost = "0.14.1"
+prost-types = "0.14.1"
 
 [build-dependencies]
 toml = "0.9.7"
@@ -24,17 +24,8 @@ quote = "1.0.40"
 proc-macro2 = "1.0.101"
 syn = { version = "2.0.106", features = ["full", "parsing"] }
 prettyplease = "0.2.37"
+prost-build = "0.14.1"
 
-[dev-dependencies]
-criterion = { version = "0.7", features = ["html_reports"] }
-
-[[bench]]
-name = "codec_benchmark"
-harness = false
-
-[[bin]]
-name = "profile"
-path = "src/bin/profile.rs"
 
 [profile.release]
 debug = true
