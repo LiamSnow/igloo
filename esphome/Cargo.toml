@@ -1,0 +1,22 @@
+[package]
+name = "igloo-esphome"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.22.1"
+bytes = "1.9.0"
+memchr = "2.7.4"
+prost = "0.13.4"
+snow = "0.9.6"
+thiserror = "2.0.11"
+tokio = { version = "1.47.1", features = ["bytes", "full"] }
+igloo-interface = { path = "../interface/" }
+serde = { version = "1.0.224", features = ["derive"] }
+uuid = { version = "1.18.1", features = ["v7", "serde"] }
+serde_json = "1.0.145"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+
+[build-dependencies]
+prost-build = "0.13.4"
