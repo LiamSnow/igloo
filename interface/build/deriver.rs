@@ -1,100 +1,45 @@
-use std::collections::HashSet;
-use std::env;
-use std::fs;
-use std::path::Path;
+use super::model::*;
 
-mod model;
-mod rust;
+pub fn add_derived_comps(comps: &mut Vec<Component>) {
+    let mut result = Vec::with_capacity(comps.len());
 
-pub use model::*;
+    for mut comp in comps.drain(..) {
+        let mut new_comps = Vec::new();
 
-pub fn run() {
-    println!("cargo:rerun-if-changed=components.toml");
-
-    // read toml file
-    let man_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let toml_path = Path::new(&man_dir).join("components.toml");
-    let toml_content = fs::read_to_string(toml_path).expect("Failed to read components.toml");
-    let config: ComponentsConfig =
-        toml::from_str(&toml_content).expect("Failed to parse components.toml");
-    let mut comps = config.components;
-
-    // add more components based off gen_* flags
-    add_gen_comps(&mut comps);
-
-    // make sure no IDs conflict or are skipped
-    validate_component_ids(&comps);
-
-    // sort so Borsh actually uses the ID
-    // (because its using the ordinal)
-    comps.sort_by_key(|comp| comp.id);
-
-    rust::gen_code(&comps);
-}
-
-fn validate_component_ids(comps: &[Component]) {
-    let mut ids = HashSet::new();
-
-    for comp in comps {
-        if !ids.insert(comp.id) {
-            panic!(
-                "Component {} tried to use ID {} but it's already taken! Please take extreme caution to make sure IDs are consistent with old versions",
-                comp.name, comp.id
-            );
-        }
-    }
-
-    let min = *ids.iter().min().unwrap();
-    let max = *ids.iter().max().unwrap();
-    if min != 0 {
-        panic!("Component ID 0+ was skipped!");
-    }
-
-    for id in min..=max {
-        if !ids.contains(&id) {
-            panic!("Component ID {} was skipped!", id);
-        }
-    }
-}
-
-fn add_gen_comps(comps: &mut Vec<Component>) {
-    let mut new_comps = Vec::new();
-
-    for comp in comps.iter_mut() {
         if let ComponentKind::Single {
             field,
-            gen_bound_types,
-            gen_inner_list_type,
-            gen_string_bound_types,
+            derive_bound_types,
+            derive_inner_list_type,
+            derive_string_bound_types,
             ..
         } = &comp.kind
         {
-            if let Some(ids) = gen_bound_types {
-                add_gen_bound_types(&mut new_comps, comp, field, ids);
+            if let Some(ids) = derive_bound_types {
+                add_derived_bound_types(&mut new_comps, &comp, field, ids);
             }
-
-            if let Some(id) = gen_inner_list_type {
-                add_gen_inner_list_type(&mut new_comps, comp, field, *id);
+            if let Some(id) = derive_inner_list_type {
+                add_derived_inner_list_type(&mut new_comps, &comp, field, *id);
             }
-
-            if let Some(ids) = gen_string_bound_types {
-                add_gen_string_bound_types(&mut new_comps, comp, field, ids);
+            if let Some(ids) = derive_string_bound_types {
+                add_derived_string_bound_types(&mut new_comps, &comp, field, ids);
             }
         }
 
-        if let Some(id) = comp.gen_supported_type {
-            add_gen_supported_type(&mut new_comps, comp, id);
+        if let Some(id) = comp.derive_supported_type {
+            add_derived_supported_type(&mut new_comps, &mut comp, id);
+        }
+        if let Some(id) = comp.derive_list_type {
+            add_derived_list_type(&mut new_comps, &comp, id);
         }
 
-        if let Some(id) = comp.gen_list_type {
-            add_gen_list_type(&mut new_comps, comp, id);
-        }
+        result.push(comp);
+        result.append(&mut new_comps);
     }
 
-    comps.append(&mut new_comps);
+    *comps = result;
 }
 
-fn add_gen_bound_types(
+fn add_derived_bound_types(
     new_comps: &mut Vec<Component>,
     comp: &Component,
     field: &str,
@@ -114,8 +59,8 @@ fn add_gen_bound_types(
             name: new_name,
             id: ids[i],
             desc: "Marks a bound. Only enforced by dashboard components that use it.".to_string(),
-            gen_supported_type: None,
-            gen_list_type: None,
+            derive_supported_type: None,
+            derive_list_type: None,
             kind: ComponentKind::single(field.to_string()),
             related: vec![Related {
                 name: comp.name.clone(),
@@ -125,19 +70,24 @@ fn add_gen_bound_types(
     }
 }
 
-fn add_gen_inner_list_type(new_comps: &mut Vec<Component>, comp: &Component, field: &str, id: u16) {
+fn add_derived_inner_list_type(
+    new_comps: &mut Vec<Component>,
+    comp: &Component,
+    field: &str,
+    id: u16,
+) {
     new_comps.push(Component {
         name: format!("{}List", comp.name),
         id,
         desc: format!("a variable-length list of {}", field),
         related: Vec::new(),
-        gen_supported_type: None,
-        gen_list_type: None,
+        derive_supported_type: None,
+        derive_list_type: None,
         kind: ComponentKind::single(format!("Vec<{}>", field)),
     });
 }
 
-fn add_gen_string_bound_types(
+fn add_derived_string_bound_types(
     new_comps: &mut Vec<Component>,
     comp: &Component,
     field: &str,
@@ -161,8 +111,8 @@ fn add_gen_string_bound_types(
             id: ids[i],
             desc: "Marks a requirement. Only enforced by dashbaord components that use it."
                 .to_string(),
-            gen_supported_type: None,
-            gen_list_type: None,
+            derive_supported_type: None,
+            derive_list_type: None,
             kind: ComponentKind::single(field_type),
             related: vec![Related {
                 name: comp.name.clone(),
@@ -172,14 +122,14 @@ fn add_gen_string_bound_types(
     }
 }
 
-fn add_gen_supported_type(new_comps: &mut Vec<Component>, comp: &mut Component, id: u16) {
+fn add_derived_supported_type(new_comps: &mut Vec<Component>, comp: &mut Component, id: u16) {
     new_comps.push(Component {
         name: format!("Supported{}s", comp.name),
         id,
         desc: format!("specifies what {}s are supported by this entity", comp.name),
         related: Vec::new(),
-        gen_supported_type: None,
-        gen_list_type: None,
+        derive_supported_type: None,
+        derive_list_type: None,
         kind: ComponentKind::single(format!("Vec<{}>", comp.name)),
     });
 
@@ -189,14 +139,14 @@ fn add_gen_supported_type(new_comps: &mut Vec<Component>, comp: &mut Component, 
     });
 }
 
-fn add_gen_list_type(new_comps: &mut Vec<Component>, comp: &Component, id: u16) {
+fn add_derived_list_type(new_comps: &mut Vec<Component>, comp: &Component, id: u16) {
     new_comps.push(Component {
         name: format!("{}List", comp.name),
         id,
         desc: format!("A list of {}", comp.name),
         related: Vec::new(),
-        gen_supported_type: None,
-        gen_list_type: None,
+        derive_supported_type: None,
+        derive_list_type: None,
         kind: ComponentKind::single(format!("Vec<{}>", comp.name)),
     });
 }
@@ -205,9 +155,9 @@ impl ComponentKind {
     fn single(field: String) -> Self {
         ComponentKind::Single {
             field,
-            gen_bound_types: None,
-            gen_inner_list_type: None,
-            gen_string_bound_types: None,
+            derive_bound_types: None,
+            derive_inner_list_type: None,
+            derive_string_bound_types: None,
         }
     }
 }

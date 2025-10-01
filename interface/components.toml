@@ -1,9 +1,9 @@
 # Primitives 
 [[components]]
 name = "Int"
-id = 0 # NEVER change this ID or versions with be incompatible
-gen_bound_types = [1, 2, 3] # makes IntMin (id=1), IntMax (id=2), IntStep (id=3)
-gen_inner_list_type = 4 # makes IntList, id=4
+id = 0 # NEVER change this ID or versions will be incompatible
+derive_bound_types = [1, 2, 3] # makes IntMin (id=1), IntMax (id=2), IntStep (id=3)
+derive_inner_list_type = 4 # makes IntList, id=4
 kind = "single"
 field = "i32"
 desc = "signed 32-bit integer"
@@ -11,8 +11,8 @@ desc = "signed 32-bit integer"
 [[components]]
 name = "Uint"
 id = 5
-gen_bound_types = [6, 7, 8]
-gen_inner_list_type = 9
+derive_bound_types = [6, 7, 8]
+derive_inner_list_type = 9
 kind = "single"
 field = "u32"
 desc = "unsigned 32-bit integer"
@@ -20,8 +20,8 @@ desc = "unsigned 32-bit integer"
 [[components]]
 name = "Long"
 id = 10
-gen_bound_types = [11, 12, 13]
-gen_inner_list_type = 14
+derive_bound_types = [11, 12, 13]
+derive_inner_list_type = 14
 kind = "single"
 field = "i64"
 desc = "signed 64-bit integer"
@@ -29,8 +29,8 @@ desc = "signed 64-bit integer"
 [[components]]
 name = "Float"
 id = 15
-gen_bound_types = [16, 17, 18]
-gen_inner_list_type = 19
+derive_bound_types = [16, 17, 18]
+derive_inner_list_type = 19
 kind = "single"
 field = "f32"
 desc = "32-bit floating point"
@@ -38,8 +38,8 @@ desc = "32-bit floating point"
 [[components]]
 name = "Double"
 id = 20
-gen_bound_types = [21, 22, 23]
-gen_inner_list_type = 24
+derive_bound_types = [21, 22, 23]
+derive_inner_list_type = 24
 kind = "single"
 field = "f64"
 desc = "64-bit floating point"
@@ -47,15 +47,15 @@ desc = "64-bit floating point"
 [[components]]
 name = "Bool"
 id = 25
-gen_inner_list_type = 26
+derive_inner_list_type = 26
 kind = "single"
 field = "bool"
 
 [[components]]
 name = "Text"
 id = 27
-gen_inner_list_type = 28
-gen_string_bound_types = [29, 30, 31] # makes TextMaxLength, TextMinLength, TextPattern
+derive_inner_list_type = 28
+derive_string_bound_types = [29, 30, 31] # makes TextMaxLength, TextMinLength, TextPattern
 kind = "single"
 field = "String"
 
@@ -63,7 +63,7 @@ field = "String"
 [[components]]
 name = "Date"
 id = 32
-gen_list_type = 33
+derive_list_type = 33
 kind = "struct"
 fields = [
     { name = "year", type = "u16" },
@@ -74,7 +74,7 @@ fields = [
 [[components]]
 name = "Time"
 id = 34
-gen_list_type = 35
+derive_list_type = 35
 kind = "struct"
 fields = [
     { name = "hour", type = "u8" },
@@ -85,7 +85,7 @@ fields = [
 [[components]]
 name = "DateTime"
 id = 36
-gen_list_type = 37
+derive_list_type = 37
 kind = "single"
 field = "u32"
 desc = "A DateTime represented as a Unix epoch"
@@ -93,7 +93,7 @@ desc = "A DateTime represented as a Unix epoch"
 [[components]]
 name = "Duration"
 id = 38
-gen_list_type = 39
+derive_list_type = 39
 kind = "single"
 field = "i64"
 desc = "A signed duration, represented as seconds"
@@ -139,7 +139,6 @@ fields = [
 name = "ColorMode"
 id = 44
 kind = "enum"
-allow_custom = true # Adds ColorMode::Custom(String) id=255, impls From<String> instead of TryFrom<String>
 variants = [
     { id = 0, name = "RGB" },
     { id = 1, name = "Temperature" }
@@ -150,7 +149,7 @@ name = "ColorTemperature"
 id = 45
 kind = "single"
 field = "u16"
-gen_bound_types = [46, 47, 48]
+derive_bound_types = [46, 47, 48]
 
 
 # Other
@@ -193,7 +192,6 @@ related = [
 name = "TextMode"
 id = 54
 kind = "enum"
-allow_custom = true
 variants = [
     { id = 0, name = "Text" },
     { id = 1, name = "Password" }
@@ -235,7 +233,6 @@ desc = "currently just for ESPHome"
 name = "SensorStateClass"
 id = 60
 kind = "enum"
-allow_custom = true
 variants = [
     { id = 0, name = "Measurement" },
     { id = 1, name = "TotalIncreasing" },
@@ -246,7 +243,6 @@ variants = [
 name = "Unit"
 id = 61
 kind = "enum"
-allow_custom = true
 variants = [
     # Apparent power units
     { id = 0, name = "VoltAmperes", aliases = ["VA"] },
@@ -427,7 +423,6 @@ variants = [
 name = "NumberMode"
 id = 62
 kind = "enum"
-allow_custom = true
 variants = [
     { id = 0, name = "Auto" },
     { id = 1, name = "Box" },
@@ -437,9 +432,8 @@ variants = [
 [[components]]
 name = "FanOscillation"
 id = 63
-gen_supported_type = 64
+derive_supported_type = 64
 kind = "enum"
-allow_custom = true
 variants = [
     { id = 0, name = "Off", aliases = ["off"] },
     { id = 1, name = "On", aliases = ["on"] },
@@ -451,9 +445,8 @@ variants = [
 [[components]]
 name = "FanDirection"
 id = 65
-gen_supported_type = 66 # makes SupportedFanDirections
+derive_supported_type = 66 # makes SupportedFanDirections
 kind = "enum"
-allow_custom = true
 variants = [
     { id = 0, name = "Forward", aliases = ["forward"] },
     { id = 1, name = "Reverse", aliases = ["reverse"] },
@@ -463,8 +456,7 @@ variants = [
 name = "FanSpeed"
 id = 67
 kind = "enum"
-allow_custom = true
-gen_supported_type = 68
+derive_supported_type = 68
 variants = [
     { id = 0, name = "On", aliases = ["on"] },
     { id = 1, name = "Off", aliases = ["off"] },
@@ -482,8 +474,7 @@ variants = [
 name = "ClimateMode"
 id = 69
 kind = "enum"
-allow_custom = true
-gen_supported_type = 70
+derive_supported_type = 70
 variants = [
     { id = 0, name = "Off", aliases = ["off"] },
     { id = 1, name = "Auto", aliases = ["auto"] },
@@ -499,8 +490,7 @@ variants = [
 name = "LockState"
 id = 71
 kind = "enum"
-allow_custom = true
-gen_supported_type = 72
+derive_supported_type = 72
 variants = [
     { id = 0, name = "Unknown", aliases = ["unknown"] },
     { id = 1, name = "Locked", aliases = ["locked"] },
@@ -514,8 +504,7 @@ variants = [
 name = "MediaState"
 id = 73
 kind = "enum"
-allow_custom = true
-gen_supported_type = 74
+derive_supported_type = 74
 variants = [
     { id = 0, name = "Unknown", aliases = ["unknown"] },
     { id = 1, name = "Idle", aliases = ["idle"] },
@@ -539,8 +528,7 @@ related = [
 name = "CoverState"
 id = 76
 kind = "enum"
-allow_custom = true
-gen_supported_type = 77
+derive_supported_type = 77
 variants = [
     { id = 0, name = "Idle", aliases = ["idle"] },
     { id = 1, name = "Opening", aliases = ["opening"] },
@@ -577,8 +565,7 @@ related = [
 name = "ValveState"
 id = 81
 kind = "enum"
-allow_custom = true
-gen_supported_type = 82
+derive_supported_type = 82
 variants = [
     { id = 0, name = "Idle", aliases = ["idle"] },
     { id = 1, name = "Opening", aliases = ["opening", "is_opening"] },
@@ -590,7 +577,6 @@ variants = [
 name = "AlarmState"
 id = 83
 kind = "enum"
-allow_custom = true
 variants = [
     { id = 0, name = "Disarmed", aliases = ["disarmed"] },
     { id = 1, name = "ArmedHome", aliases = ["armed_home"] },

@@ -1,93 +1,66 @@
-version = 0
+#! 0-31 reserved for Igloo <-> Floe
+#! 31-63 reserved for Custom Floe Commands (specified in Floe.toml)
+#! 64+ reserved for Component commands
 
-# MISO Floe sending command -> Igloo
-[[commands.floe]]
-name = "HandshakeResponse"
-opcode = 0x80
-desc = ""
+[[commands]]
+name = "WhatsUpIgloo"
+id = 0
+desc = "Initialize communication with Igloo."
 fields = [
-    { name = "version", type = "u8" }
+    { name = "max_supported_component", type = "u16", desc = "Specifies the newest component you know." },
 ]
 
-[[commands.floe]]
+[[commands]]
 name = "RegisterDevice"
-opcode = 0x81
-desc = "Register a device with Igloo"
+id = 1
+desc = "Floe request to register a device with Igloo"
 fields = [
-    { name = "id", type = "String", desc = "Persistent device ID. You should register the device under the same UUID every boot. UUIDv7 as bytes" },
+    { name = "device_id", type = "String", desc = "Persistent device ID. You should register the device under the same ID every boot. UUIDv7 is recommended." },
     { name = "initial_name", type = "String", desc = "Name for the device for first register. Can be modified by the user later on" },
     { name = "entity_names", type = "Vec<String>", desc = "The name of every entity you will ever have. Cannot change this after registration!" }
 ]
 
-[[commands.floe]]
-name = "Updates"
-opcode = 0x82
-desc = "Tell Igloo that components have changed state"
-fields = [
-    { name = "device", type = "u16" },
-    { name = "entity", type = "u16" },
-    { name = "values", type = "Vec<Component>" }
-]
-
-[[commands.floe]]
-name = "CustomCommandError"
-opcode = 0x83
-desc = "Custom command execution error"
-fields = [
-    { name = "error_code", type = "u8" },
-    { name = "message", type = "String" }
-]
-
-[[commands.floe]]
-name = "Log"
-opcode = 0x84
-desc = "Log message from device"
-fields = [
-    { name = "message", type = "String" }
-]
-
-# MOSI Igloo sending command -> Floe
-[[commands.igloo]]
-name = "HandshakeRequest"
-opcode = 0x00
-desc = "Called once at boot."
-fields = []
-
-[[commands.igloo]]
+[[commands]]
 name = "DeviceRegistered"
-opcode = 0x01
+id = 2
 desc = """
-Device registration acknowledgment
-After a successful RegisterDevice, Igloo will give you back
-the Device ID and its ephemeral identifier (only for this session)
+Igloo has confirmed the device registration. 
 """
 fields = [
-    { name = "id", type = "String", desc = "The ID of the device that you registered. UUIDv7 as string" },
-    { name = "device_ref", type = "u16", desc = "The ephemeral device identifier (IE only for this session)" },
-    { name = "entity_names", type = "Vec<String>", desc = "Same entity names you gave, here for reference purposes. Matches 1:1 with entity_refs" },
-    { name = "entity_refs", type = "Vec<u16>", desc = "Ephemeral entity identifier" }
+    { name = "id", type = "String", desc = "The ID of the device that you registered. Given for reference." },
+    { name = "successful", type = "bool", desc = "If the registration was successful" },
 ]
 
-[[commands.igloo]]
-name = "RequestUpdates"
-opcode = 0x02
+[[commands]]
+name = "StartTransaction"
+id = 3
 desc = """
-Request component updates from device
-This may be invalid, in which case do nothing (or log err).
-Updates are NOT confirmed on the device tree until you
-acknowledge them by sending back ::Updates
+Begins a transaction of component updates for an entity.
+During a transaction only send component commands (64+).
+All other commands will be dropped until EndTransaction is sent.
+
+If sent from a Floe, it is confirming these changes.
+If sent from Igloo, it is requesting these changed. Accept them by sending back a transaction after application.
 """
 fields = [
-    { name = "device", type = "u16" },
-    { name = "entity", type = "u16" },
-    { name = "values", type = "Vec<Component>" }
+    { name = "device_ref", type = "u16" },
+    { name = "entity_ref", type = "u16" },
 ]
 
-[[commands.igloo]]
-name = "ExecuteCustomCommand"
-opcode = 0x03
-desc = "Execute custom command on device"
-fields = [
-    { name = "command_id", type = "u8" },
-    { name = "data", type = "Vec<u8>" }
-]
+[[commands]]
+name = "EndTransaction"
+id = 4
+
+[[commands]]
+name = "ExecuteQuery"
+id = 5
+desc = """
+TODO
+"""
+
+[[commands]]
+name = "QueryResult"
+id = 5
+desc = """
+TODO Probably be a transaction?? Start transaction with query ID then give parts
+"""
