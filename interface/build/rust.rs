@@ -423,11 +423,11 @@ impl Component {
 }
 
 /// ex. maps `Int` -> `SET_INT`
-fn comp_name_to_cmd_name(comp_name: &str) -> String {
+pub fn comp_name_to_cmd_name(comp_name: &str) -> String {
     format!("WRITE_{}", upper_camel_to_screaming_snake(comp_name))
 }
 
-fn upper_camel_to_screaming_snake(s: &str) -> String {
+pub fn upper_camel_to_screaming_snake(s: &str) -> String {
     let mut res = String::new();
     for (i, c) in s.chars().enumerate() {
         if i > 0 && c.is_uppercase() {
@@ -438,6 +438,6 @@ fn upper_camel_to_screaming_snake(s: &str) -> String {
     res
 }
 
-fn ident(name: &str) -> Ident {
+pub fn ident(name: &str) -> Ident {
     Ident::new(name, Span::call_site())
 }

@@ -1,13 +1,15 @@
+use crate::rust::{comp_name_to_cmd_name, ident};
+
 use super::model::*;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{env, fs, path::PathBuf};
-use syn::Ident;
 
 pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let comp_enum = gen_comp_enum(comps);
     let primitives_avgable = gen_primitives_avgable();
     let structs_avgable = gen_structs_avgable(comps);
+    let read_comp = gen_read_comp(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
@@ -20,6 +22,8 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         #primitives_avgable
 
         #structs_avgable
+
+        #read_comp
     };
 
     // reconstruct, format, and save
@@ -30,6 +34,39 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("server.rs");
     fs::write(&out_path, formatted).expect("Failed to write server.rs");
+}
+
+fn gen_read_comp(comps: &[Component]) -> TokenStream {
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let cmd_name = ident(&comp_name_to_cmd_name(&comp.name));
+            let name = ident(&comp.name);
+
+            if comp.is_marker() {
+                quote! {
+                    #cmd_name => {
+                        Ok(Component::#name)
+                    }
+                }
+            } else {
+                quote! {
+                    #cmd_name => {
+                        Ok(Component::#name(borsh::from_slice(&payload)?))
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        pub fn read_component(cmd_id: u16, payload: Vec<u8>) -> Result<Component, std::io::Error> {
+            match cmd_id {
+                #(#arms)*
+                _ => unreachable!()
+            }
+        }
+    }
 }
 
 fn gen_comp_enum(comps: &[Component]) -> TokenStream {
@@ -249,8 +286,4 @@ fn get_sum_type(field_type: &str) -> Option<&'static str> {
         "bool" => Some("u32"),
         _ => None,
     }
-}
-
-fn ident(name: &str) -> Ident {
-    Ident::new(name, Span::call_site())
 }
