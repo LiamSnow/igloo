@@ -229,22 +229,30 @@ impl Device {
         mut self,
         shared_writer: Arc<Mutex<FloeWriterDefault>>,
         shared_reader: Arc<Mutex<FloeReaderDefault>>,
-        mut start_recv: mpsc::Receiver<()>,
+        mut start_trans: mpsc::Receiver<()>,
+        end_trans: mpsc::Sender<()>,
     ) -> Result<(), DeviceError> {
         self.shared_writer = Some(shared_writer);
 
         self.subscribe_states().await?;
 
         loop {
+            // TODO FIXME ok so technically this works fine, but it means
+            // that while igloo is communicating a transaction with us
+            // we cannot read from the device
+            // We _should_ spawn two separate tasks for this, assuming
+            // ESPHome can handle that fine
+            // Maybe it doesn't matter thought because igloo _may_
+            // not be able handle bidrectional communications anyways
+            // maybe just keep transactions short idk
             tokio::select! {
-                res = start_recv.recv() => {
-                    if res.is_none() {
-                        // our comms to the main loop has been dropped -> shutdown
-                        // TODO send disconnect request?
-                        return Ok(());
-                    }
-
-                    self.handle_transaction(&shared_reader).await;
+                _ = start_trans.recv() => {
+                    println!("[Device] Recieved Start Transaction, Waiting for Reader Lock");
+                    let mut reader = shared_reader.lock().await;
+                    println!("[Device] Got Reader Lock. Sending End Transaction");
+                    end_trans.send(()).await.unwrap();
+                    self.handle_transaction(&mut reader).await;
+                    drop(reader);
                 },
 
                 res = self.connection.readable() => if res.is_ok()
@@ -256,9 +264,7 @@ impl Device {
         }
     }
 
-    async fn handle_transaction(&mut self, shared_reader: &Arc<Mutex<FloeReaderDefault>>) {
-        let mut reader = shared_reader.lock().await;
-
+    async fn handle_transaction(&mut self, reader: &mut FloeReaderDefault) {
         while let Some(res) = reader.next().await {
             let (cmd_id, payload) = match res {
                 Ok(f) => f,
@@ -274,8 +280,7 @@ impl Device {
                     let (entity_type, key) = self.entity_idx_to_info.get(&res.entity_idx).unwrap(); // FIXME unwrap
                     match entity_type {
                         EntityType::Light => {
-                            self.handle_light_entity_transaction(&mut reader, *key)
-                                .await;
+                            self.handle_light_entity_transaction(reader, *key).await;
                         }
                         _ => todo!(),
                     }
@@ -471,6 +476,7 @@ impl Device {
                         .await?;
                     add_entity_category(writer, msg.entity_category()).await?;
                     add_icon(writer, &msg.icon).await?;
+                    writer.light().await?;
                 }
 
                 MessageType::ListEntitiesSensorResponse => {
@@ -483,7 +489,7 @@ impl Device {
                     add_device_class(writer, msg.device_class).await?;
                     add_unit(writer, msg.unit_of_measurement).await?;
                     writer.sensor().await?;
-                    writer.accuracy_decimals(msg.accuracy_decimals).await?;
+                    writer.accuracy_decimals(&msg.accuracy_decimals).await?;
                 }
 
                 MessageType::ListEntitiesSwitchResponse => {
@@ -641,7 +647,7 @@ impl Device {
                         writer.text_select().await?;
                         writer
                             .text_list(
-                                msg.supported_presets()
+                                &msg.supported_presets()
                                     .map(|preset| format!("{preset:#?}"))
                                     .chain(msg.supported_custom_presets.iter().cloned())
                                     .collect(),
@@ -669,7 +675,7 @@ impl Device {
                     add_entity_category(writer, msg.entity_category()).await?;
                     add_icon(writer, &msg.icon).await?;
                     writer.text_select().await?;
-                    writer.text_list(msg.options).await?;
+                    writer.text_list(&msg.options).await?;
                 }
 
                 MessageType::ListEntitiesSirenResponse => {
@@ -679,7 +685,7 @@ impl Device {
                     add_entity_category(writer, msg.entity_category()).await?;
                     add_icon(writer, &msg.icon).await?;
                     writer.text_select().await?;
-                    writer.text_list(msg.tones).await?;
+                    writer.text_list(&msg.tones).await?;
                     writer.siren().await?;
                 }
 
@@ -689,7 +695,7 @@ impl Device {
                         .await?;
                     add_entity_category(writer, msg.entity_category()).await?;
                     add_icon(writer, &msg.icon).await?;
-                    writer.text(msg.code_format).await?; // TODO is this right?
+                    writer.text(&msg.code_format).await?; // TODO is this right?
                 }
 
                 MessageType::ListEntitiesButtonResponse => {
@@ -727,10 +733,10 @@ impl Device {
                         .await?;
                     add_entity_category(writer, msg.entity_category()).await?;
                     add_icon(writer, &msg.icon).await?;
-                    writer.text_mode(msg.mode().as_igloo()).await?;
-                    writer.text_min_length(msg.min_length).await?;
-                    writer.text_max_length(msg.max_length).await?;
-                    writer.text_pattern(msg.pattern).await?;
+                    writer.text_mode(&msg.mode().as_igloo()).await?;
+                    writer.text_min_length(&msg.min_length).await?;
+                    writer.text_max_length(&msg.max_length).await?;
+                    writer.text_pattern(&msg.pattern).await?;
                 }
 
                 MessageType::ListEntitiesDateResponse => {
@@ -757,7 +763,7 @@ impl Device {
                     add_entity_category(writer, msg.entity_category()).await?;
                     add_icon(writer, &msg.icon).await?;
                     add_device_class(writer, msg.device_class).await?;
-                    writer.text_list(msg.event_types).await?;
+                    writer.text_list(&msg.event_types).await?;
                 }
 
                 MessageType::ListEntitiesValveResponse => {
@@ -805,7 +811,7 @@ impl Device {
         entity_type: EntityType,
     ) -> Result<(), std::io::Error> {
         writer
-            .register_entity(igloo_interface::RegisterEntity {
+            .register_entity(&igloo_interface::RegisterEntity {
                 entity_name: name.to_string(),
                 entity_idx: self.next_entity_idx,
             })
@@ -816,7 +822,7 @@ impl Device {
             .insert(self.next_entity_idx, (entity_type, key));
 
         writer
-            .select_entity(SelectEntity {
+            .select_entity(&SelectEntity {
                 entity_idx: self.next_entity_idx,
             })
             .await?;
@@ -955,13 +961,13 @@ impl Device {
         let mut writer = shared_writer.lock().await;
 
         writer
-            .start_device_transaction(StartDeviceTransaction {
+            .start_device_transaction(&StartDeviceTransaction {
                 device_idx: self.device_idx.unwrap(),
             })
             .await?;
 
         writer
-            .select_entity(SelectEntity {
+            .select_entity(&SelectEntity {
                 entity_idx: *entity_idx,
             })
             .await?;
@@ -995,7 +1001,7 @@ impl EntityUpdate for api::BinarySensorStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.bool(self.state).await
+        writer.bool(&self.state).await
     }
 }
 
@@ -1006,10 +1012,10 @@ impl EntityUpdate for api::CoverStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.position(self.position).await?;
-        writer.tilt(self.tilt).await?;
+        writer.position(&self.position).await?;
+        writer.tilt(&self.tilt).await?;
         writer
-            .cover_state(self.current_operation().as_igloo())
+            .cover_state(&self.current_operation().as_igloo())
             .await
     }
 }
@@ -1021,12 +1027,12 @@ impl EntityUpdate for api::FanStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.fan_speed(self.speed().as_igloo()).await?;
-        writer.int(self.speed_level).await?;
-        writer.fan_direction(self.direction().as_igloo()).await?;
-        writer.text(self.preset_mode.clone()).await?;
+        writer.fan_speed(&self.speed().as_igloo()).await?;
+        writer.int(&self.speed_level).await?;
+        writer.fan_direction(&self.direction().as_igloo()).await?;
+        writer.text(&self.preset_mode.clone()).await?;
         writer
-            .fan_oscillation(match self.oscillating {
+            .fan_oscillation(&match self.oscillating {
                 true => FanOscillation::On,
                 false => FanOscillation::Off,
             })
@@ -1042,16 +1048,16 @@ impl EntityUpdate for api::LightStateResponse {
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
         writer
-            .color(Color {
+            .color(&Color {
                 r: (self.red * 255.) as u8,
                 g: (self.green * 255.) as u8,
                 b: (self.blue * 255.) as u8,
             })
             .await?;
-        writer.dimmer(self.brightness).await?;
-        writer.switch(self.state).await?;
+        writer.dimmer(&self.brightness).await?;
+        writer.switch(&self.state).await?;
         writer
-            .color_temperature(self.color_temperature as u16)
+            .color_temperature(&(self.color_temperature as u16))
             .await?;
 
         // ON_OFF = 1 << 0;
@@ -1064,9 +1070,9 @@ impl EntityUpdate for api::LightStateResponse {
         // TODO FIXME is this right? Lowk i don't get the other ones
 
         if self.color_mode & (1 << 5) != 0 {
-            writer.color_mode(ColorMode::RGB).await?;
+            writer.color_mode(&ColorMode::RGB).await?;
         } else if self.color_mode & (1 << 3) != 0 {
-            writer.color_mode(ColorMode::Temperature).await?;
+            writer.color_mode(&ColorMode::Temperature).await?;
         }
 
         Ok(())
@@ -1084,7 +1090,7 @@ impl EntityUpdate for api::SensorStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.float(self.state).await
+        writer.float(&self.state).await
     }
 }
 
@@ -1095,7 +1101,7 @@ impl EntityUpdate for api::SwitchStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.switch(self.state).await
+        writer.switch(&self.state).await
     }
 }
 
@@ -1110,7 +1116,7 @@ impl EntityUpdate for api::TextSensorStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.text(self.state.clone()).await
+        writer.text(&self.state).await
     }
 }
 
@@ -1125,7 +1131,7 @@ impl EntityUpdate for api::NumberStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.float(self.state).await
+        writer.float(&self.state).await
     }
 }
 
@@ -1140,7 +1146,7 @@ impl EntityUpdate for api::SelectStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.text(self.state.clone()).await
+        writer.text(&self.state).await
     }
 }
 
@@ -1151,7 +1157,7 @@ impl EntityUpdate for api::SirenStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.bool(self.state).await
+        writer.bool(&self.state).await
     }
 }
 
@@ -1162,7 +1168,7 @@ impl EntityUpdate for api::LockStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.lock_state(self.state().as_igloo()).await
+        writer.lock_state(&self.state().as_igloo()).await
     }
 }
 
@@ -1173,9 +1179,9 @@ impl EntityUpdate for api::MediaPlayerStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.volume(self.volume).await?;
-        writer.muted(self.muted).await?;
-        writer.media_state(self.state().as_igloo()).await
+        writer.volume(&self.volume).await?;
+        writer.muted(&self.muted).await?;
+        writer.media_state(&self.state().as_igloo()).await
     }
 }
 
@@ -1186,7 +1192,7 @@ impl EntityUpdate for api::AlarmControlPanelStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.alarm_state(self.state().as_igloo()).await
+        writer.alarm_state(&self.state().as_igloo()).await
     }
 }
 
@@ -1201,7 +1207,7 @@ impl EntityUpdate for api::TextStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.text(self.state.clone()).await
+        writer.text(&self.state).await
     }
 }
 
@@ -1217,7 +1223,7 @@ impl EntityUpdate for api::DateStateResponse {
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
         writer
-            .date(Date {
+            .date(&Date {
                 year: self.year as u16, // FIXME make safe
                 month: self.month as u8,
                 day: self.day as u8,
@@ -1234,7 +1240,7 @@ impl EntityUpdate for api::TimeStateResponse {
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
         writer
-            .time(Time {
+            .time(&Time {
                 hour: self.hour as u8,
                 minute: self.minute as u8,
                 second: self.second as u8,
@@ -1250,9 +1256,9 @@ impl EntityUpdate for api::ValveStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.position(self.position).await?;
+        writer.position(&self.position).await?;
         writer
-            .valve_state(self.current_operation().as_igloo())
+            .valve_state(&self.current_operation().as_igloo())
             .await
     }
 }
@@ -1268,7 +1274,7 @@ impl EntityUpdate for api::DateTimeStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.date_time(self.epoch_seconds).await
+        writer.date_time(&self.epoch_seconds).await
     }
 }
 
@@ -1295,11 +1301,11 @@ impl EntityUpdate for api::UpdateStateResponse {
             "release_url": self.release_url
         });
 
-        writer.bool(self.in_progress).await?;
-        writer.text(content.to_string()).await?;
+        writer.bool(&self.in_progress).await?;
+        writer.text(&content.to_string()).await?;
 
         if self.has_progress {
-            writer.float(self.progress).await?;
+            writer.float(&self.progress).await?;
         }
 
         Ok(())
@@ -1324,9 +1330,9 @@ async fn add_entity_category(
     Ok(())
 }
 
-async fn add_icon(writer: &mut FloeWriterDefault, icon: &str) -> Result<(), std::io::Error> {
+async fn add_icon(writer: &mut FloeWriterDefault, icon: &String) -> Result<(), std::io::Error> {
     if !icon.is_empty() {
-        writer.icon(icon.to_string()).await?;
+        writer.icon(icon).await?;
     }
     Ok(())
 }
@@ -1336,7 +1342,7 @@ async fn add_unit(writer: &mut FloeWriterDefault, unit_str: String) -> Result<()
     if !unit_str.is_empty()
         && let Ok(unit) = Unit::try_from(unit_str)
     {
-        writer.unit(unit).await?;
+        writer.unit(&unit).await?;
     }
     Ok(())
 }
@@ -1347,10 +1353,10 @@ async fn add_f32_bounds(
     max: f32,
     step: Option<f32>,
 ) -> Result<(), std::io::Error> {
-    writer.float_min(min).await?;
-    writer.float_max(max).await?;
+    writer.float_min(&min).await?;
+    writer.float_max(&max).await?;
     if let Some(step) = step {
-        writer.float_step(step).await?;
+        writer.float_step(&step).await?;
     }
     Ok(())
 }
@@ -1360,7 +1366,7 @@ async fn add_device_class(
     device_class: String,
 ) -> Result<(), std::io::Error> {
     if !device_class.is_empty() {
-        writer.device_class(device_class).await?;
+        writer.device_class(&device_class).await?;
     }
     Ok(())
 }
@@ -1369,7 +1375,7 @@ async fn add_number_mode(
     writer: &mut FloeWriterDefault,
     number_mode: api::NumberMode,
 ) -> Result<(), std::io::Error> {
-    writer.number_mode(number_mode.as_igloo()).await?;
+    writer.number_mode(&number_mode.as_igloo()).await?;
     Ok(())
 }
 
@@ -1378,7 +1384,7 @@ async fn add_climate_modes(
     modes: impl Iterator<Item = api::ClimateMode>,
 ) -> Result<(), std::io::Error> {
     let modes = modes.map(|m| m.as_igloo()).collect();
-    writer.supported_climate_modes(modes).await?;
+    writer.supported_climate_modes(&modes).await?;
     Ok(())
 }
 
@@ -1387,7 +1393,7 @@ async fn add_fan_speeds(
     modes: impl Iterator<Item = api::ClimateFanMode>,
 ) -> Result<(), std::io::Error> {
     let speeds = modes.map(|m| m.as_igloo()).collect();
-    writer.supported_fan_speeds(speeds).await?;
+    writer.supported_fan_speeds(&speeds).await?;
     Ok(())
 }
 
@@ -1396,7 +1402,7 @@ async fn add_fan_oscillations(
     modes: impl Iterator<Item = api::ClimateSwingMode>,
 ) -> Result<(), std::io::Error> {
     let modes = modes.map(|m| m.as_igloo()).collect();
-    writer.supported_fan_oscillations(modes).await?;
+    writer.supported_fan_oscillations(&modes).await?;
     Ok(())
 }
 
@@ -1408,16 +1414,16 @@ async fn add_sensor_state_class(
         api::SensorStateClass::StateClassNone => {}
         api::SensorStateClass::StateClassMeasurement => {
             writer
-                .sensor_state_class(SensorStateClass::Measurement)
+                .sensor_state_class(&SensorStateClass::Measurement)
                 .await?;
         }
         api::SensorStateClass::StateClassTotalIncreasing => {
             writer
-                .sensor_state_class(SensorStateClass::TotalIncreasing)
+                .sensor_state_class(&SensorStateClass::TotalIncreasing)
                 .await?;
         }
         api::SensorStateClass::StateClassTotal => {
-            writer.sensor_state_class(SensorStateClass::Total).await?;
+            writer.sensor_state_class(&SensorStateClass::Total).await?;
         }
     }
     Ok(())

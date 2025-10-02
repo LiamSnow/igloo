@@ -1,92 +1,52 @@
 use igloo_interface::{Component, ComponentType};
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 /// Request a Query from the Query Engine
-#[allow(dead_code)]
-pub enum QueryEngineRequest {
-    /// One shot queries are intended for operations that don't happen very often
-    /// Every execution requires a full device tree lookup
-    ExecuteOneShot(Query<OneShotQuery>),
-
-    /// Request the registration of a persistent query
-    /// Persistent queries are optimized by
-    RegisterPersistent(Query<PersistentQuery>),
-
-    /// After registering a PersistentQuery::Set(id, types)
-    /// You can call this function with the same IDs and components of the same types
-    /// To execute it
-    CallSetPersistent(Uuid, Vec<Component>),
+#[derive(Debug)]
+pub struct GlobalQueryRequest {
+    pub filter: QueryFilter,
+    pub area: GlobalArea,
+    pub kind: QueryKind,
 }
 
-/// This is send over the broadcast channel whenever a OneShotQuery::Get or Avg is executed
-#[allow(dead_code)]
-pub enum OneShotQueryResult {
-    Get(Uuid, Vec<OneShotGetQueryResult>),
-    Avg(Uuid, Vec<Component>),
+/// Procesed [GlobalQueryRequest], dispatched to each Floe
+#[derive(Debug)]
+pub struct LocalQueryRequest {
+    pub filter: QueryFilter,
+    pub area: LocalArea,
+    pub kind: QueryKind,
 }
 
-#[allow(dead_code)]
-pub struct OneShotGetQueryResult {
-    pub device_name: String,
-    pub device_id: Uuid,
-    pub entity: String,
-    pub values: Vec<Component>,
-}
-
-#[allow(dead_code)]
-pub struct PersistentQueryUpdate {}
-
-#[allow(dead_code)]
-pub struct Query<T> {
-    kind: T,
-    filter: QueryFilter,
-    area: Area,
-    limit: Option<usize>,
-}
-
-#[allow(dead_code)]
-pub enum OneShotQuery {
+#[derive(Debug, Clone)]
+pub enum QueryKind {
     Set(Vec<Component>),
-    /// Returns the value of every component that matches this type
-    /// The Query Engine will send out the result over the broadcast channel
-    /// using the UUID you provide here
-    Get(Uuid, Vec<ComponentType>),
-    /// Returns the average of each of the components that match this type
-    /// The Query Engine will send out the result over the broadcast channel
-    /// using the UUID you provide here
-    Avg(Uuid, Vec<ComponentType>),
-    /// Gets a snapshot of the entire device tree
-    /// The Query Engine will send out the result over the broadcast channel
-    /// using the UUID you provide here
-    Snapshot(Uuid),
+    // OneGet(mpsc::Sender<()>, ComponentType),
+    // OneAvg(mpsc::Sender<()>, ComponentType),
+    // WatchGet(mpsc::Sender<()>, ComponentType),
+    // WatchAvg(mpsc::Sender<()>, ComponentType),
+    // Snapshot(mpsc::Sender<()>),
 }
 
-#[allow(dead_code)]
-pub enum PersistentQuery {
-    /// This simply specifies what you will be giving when you send QueryEngineRequest::CallSetPersistent
-    /// The UUID between this registration and your calls must match
-    Set(Uuid, Vec<ComponentType>),
-    /// Any time the components change, the query engine will send the result over this mpsc channel
-    /// In most cases, you should be using Avg
-    Get(mpsc::Sender<PersistentQueryUpdate>, Vec<ComponentType>),
-    /// Any time the components change, the query engine will send the result over this mpsc channel
-    /// This is additionally optimized by only tracking component differences
-    Avg(mpsc::Sender<PersistentQueryUpdate>, Vec<ComponentType>),
-}
-
-#[allow(dead_code)]
-pub enum Area {
+#[derive(Debug, Clone)]
+pub enum GlobalArea {
     All,
-    /// zone ID
-    Zone(String),
-    /// device name
+    /// Zone ID
+    Zone(Uuid),
+    /// Global Device ID
     Device(String),
-    /// device name, entity name
+    /// Global Device ID, Entity Name
     Entity(String, String),
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub enum LocalArea {
+    All,
+    Device(u16),
+    Entity(u16, u16),
+}
+
+#[derive(Debug, Clone)]
 pub enum QueryFilter {
     /// exclude entities that don't also have this component
     With(ComponentType),
@@ -96,18 +56,22 @@ pub enum QueryFilter {
     And(Box<(QueryFilter, QueryFilter)>),
     /// either query must be true
     Or(Box<(QueryFilter, QueryFilter)>),
-    ///
-    Condition(ComponentType, Operator, Component),
-    NestedCondition(Vec<PathSegment>, Operator, Component),
+    // Condition(ComponentType, Operator, Component),
+    // for refering to parts of components, ex. color.r
+    // NestedCondition(Vec<PathSegment>, Operator, Component),
+    // TODO think it would be cool to have filters for entity names
+    // IE `RGBCT_Bulb*`
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub enum PathSegment {
     Field(String),
     Index(usize),
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub enum Operator {
     Eq,
     Neq,
@@ -133,7 +97,7 @@ mod tests {
         let expected = Query {
             kind: Get(Uuid::now_v7(), vec![ComponentType::Dimmer]),
             filter: With(ComponentType::Light),
-            area: Area::All,
+            area: GlobalArea::All,
             limit: None,
         };
 
@@ -141,7 +105,7 @@ mod tests {
         let expected = Query {
             kind: Get(Uuid::now_v7(), vec![ComponentType::Dimmer]),
             filter: With(ComponentType::Light),
-            area: Area::All,
+            area: GlobalArea::All,
             limit: Some(1),
         };
 
@@ -156,7 +120,7 @@ mod tests {
                 With(ComponentType::Light),
                 With(ComponentType::Switch),
             ))),
-            area: Area::All,
+            area: GlobalArea::All,
             limit: None,
         };
 
@@ -164,7 +128,7 @@ mod tests {
         let expected = Query {
             kind: Get(Uuid::now_v7(), vec![ComponentType::Dimmer]),
             filter: Without(ComponentType::Light),
-            area: Area::All,
+            area: GlobalArea::All,
             limit: None,
         };
 
@@ -172,7 +136,7 @@ mod tests {
         let expected = Query {
             kind: Set(vec![Component::Dimmer(Dimmer(0.5))]),
             filter: With(ComponentType::Light),
-            area: Area::All,
+            area: GlobalArea::All,
             limit: None,
         };
     }

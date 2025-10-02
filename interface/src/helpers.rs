@@ -29,7 +29,7 @@ pub async fn floe_init() -> Result<(FloeWriterDefault, FloeReaderDefault), std::
     let reader = FramedRead::new(reader, FloeCodec::new());
 
     writer
-        .whats_up_igloo(WhatsUpIgloo {
+        .whats_up_igloo(&WhatsUpIgloo {
             max_supported_component: MAX_SUPPORTED_COMPONENT,
         })
         .await?;
@@ -54,7 +54,7 @@ impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
     pub async fn write_with_payload<P: BorshSerialize>(
         &mut self,
         cmd_id: u16,
-        payload: P,
+        payload: &P,
     ) -> Result<(), std::io::Error> {
         let mut result = Vec::with_capacity(DEFAULT_COMMAND_SIZE);
         payload.serialize(&mut result)?;

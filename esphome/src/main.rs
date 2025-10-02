@@ -59,7 +59,9 @@ async fn main() {
     ));
 
     loop {
+        println!("[Master] Waiting for reader lock");
         let mut reader = shared_reader.lock().await;
+        println!("[Master] got it, waiting for igloo");
         let Some(res) = reader.next().await else {
             println!("Socket closed. Shutting down..");
             break;
@@ -81,7 +83,7 @@ async fn main() {
 async fn handle_pending_devices(
     mut pending_devices: JoinSet<Result<(Device, String, String), DeviceError>>,
     mut add_device_rx: mpsc::Receiver<(String, ConnectionParams)>,
-    devices_tx: Arc<Mutex<HashMap<u16, mpsc::Sender<()>>>>,
+    devices_tx: Arc<Mutex<HashMap<u16, (mpsc::Sender<()>, mpsc::Receiver<()>)>>>,
     shared_writer: Arc<Mutex<FloeWriterDefault>>,
     shared_reader: Arc<Mutex<FloeReaderDefault>>,
 ) {
@@ -101,7 +103,7 @@ async fn handle_pending_devices(
                         let mut writer = shared_writer.lock().await;
 
                         writer
-                            .start_registration_transaction(StartRegistrationTransaction {
+                            .start_registration_transaction(&StartRegistrationTransaction {
                                 device_id,
                                 initial_name,
                                 device_idx: next_device_idx,
@@ -118,14 +120,17 @@ async fn handle_pending_devices(
                         writer.flush().await.unwrap();
                         drop(writer);
 
-                        let (start_recv_tx, start_recv_rx) = mpsc::channel(5);
-                        devices_tx.lock().await.insert(next_device_idx, start_recv_tx);
+                        let (start_trans_tx, start_trans_rx) = mpsc::channel(1);
+                        let (end_trans_tx, end_trans_rx) = mpsc::channel(1);
+                        {
+                            devices_tx.lock().await.insert(next_device_idx, (start_trans_tx, end_trans_rx));
+                        }
 
                         let shared_writer_copy = shared_writer.clone();
                         let shared_reader_copy = shared_reader.clone();
                         tokio::spawn(async move {
                             device
-                                .run(shared_writer_copy, shared_reader_copy, start_recv_rx)
+                                .run(shared_writer_copy, shared_reader_copy, start_trans_rx, end_trans_tx)
                                 .await
                                 .unwrap();
                         });
@@ -145,15 +150,15 @@ async fn handle_pending_devices(
 async fn process_command(
     cmd_id: u16,
     payload: Vec<u8>,
-    devices_tx: &Arc<Mutex<HashMap<u16, mpsc::Sender<()>>>>,
+    devices_tx: &Arc<Mutex<HashMap<u16, (mpsc::Sender<()>, mpsc::Receiver<()>)>>>,
     add_device_tx: &mpsc::Sender<(String, ConnectionParams)>,
 ) {
     match cmd_id {
         START_DEVICE_TRANSACTION => {
             let res: StartDeviceTransaction = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
 
-            let devices = devices_tx.lock().await;
-            let Some(tx) = devices.get(&res.device_idx) else {
+            let mut devices = devices_tx.lock().await;
+            let Some((start_trans, end_trans)) = devices.get_mut(&res.device_idx) else {
                 eprintln!(
                     "Igloo requested to start a transaction for unknown device {}",
                     res.device_idx
@@ -161,7 +166,11 @@ async fn process_command(
                 return;
             };
 
-            tx.send(()).await.unwrap(); // FIXME unwrap
+            println!("[Master] Sending start transaction");
+            start_trans.send(()).await.unwrap();
+            println!("[Master] Waiting for end transaction");
+            end_trans.recv().await;
+            println!("[Master] Transaction complete");
         }
 
         ADD_DEVICE => {

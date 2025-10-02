@@ -2,12 +2,11 @@ use std::{path::Path, process::Stdio};
 
 use futures_util::StreamExt;
 use igloo_interface::{
-    END_TRANSACTION, FloeCodec, FloeReaderDefault, FloeWriter, FloeWriterDefault,
-    MAX_SUPPORTED_COMPONENT, REGISTER_ENTITY, RegisterEntity, START_DEVICE_TRANSACTION,
-    START_REGISTRATION_TRANSACTION, StartDeviceTransaction, StartRegistrationTransaction,
-    WHATS_UP_IGLOO, WhatsUpIgloo,
+    ComponentType, DESELECT_ENTITY, END_TRANSACTION, FloeCodec, FloeReaderDefault, FloeWriter,
+    FloeWriterDefault, MAX_SUPPORTED_COMPONENT, REGISTER_ENTITY, RegisterEntity, SELECT_ENTITY,
+    START_DEVICE_TRANSACTION, START_REGISTRATION_TRANSACTION, SelectEntity, StartDeviceTransaction,
+    StartRegistrationTransaction, WHATS_UP_IGLOO, WRITE_INT, WhatsUpIgloo, read_component,
 };
-use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use tokio::{
     fs,
@@ -18,32 +17,59 @@ use tokio::{
 };
 use tokio_util::codec::FramedRead;
 
-use crate::glacier::{DeviceInfo, GlobalDeviceID, entity::Entity};
+use crate::glacier::{
+    DeviceInfo,
+    entity::{Entity, HasComponent},
+    query::{LocalArea, LocalQueryRequest, QueryKind},
+};
 
 struct FloeManager {
     name: String,
-    reg_dev_tx: mpsc::Sender<(GlobalDeviceID, DeviceInfo)>,
+    idx: usize,
+    reg_dev_tx: mpsc::Sender<(String, DeviceInfo)>,
+    query_rx: mpsc::Receiver<LocalQueryRequest>,
     writer: FloeWriterDefault,
     reader: FloeReaderDefault,
-    state: LocalState,
-}
-
-#[derive(Debug, Default)]
-struct LocalState {
-    taken_ids: FxHashSet<String>,
     devices: Vec<Device>,
 }
 
 #[derive(Debug, Default)]
 struct Device {
-    entities: SmallVec<[Entity; 16]>,
-    // TODO presence: BitSet,
+    entities: Entities,
+    presense: Presense,
+}
+
+type Entities = SmallVec<[Entity; 16]>;
+
+#[derive(Debug, Default)]
+struct Presense([u32; MAX_SUPPORTED_COMPONENT.div_ceil(32) as usize]);
+
+impl Presense {
+    #[inline]
+    fn set(&mut self, typ: ComponentType) {
+        let type_id = typ as usize;
+        let index = type_id >> 5;
+        let bit = type_id & 31;
+        self.0[index] |= 1u32 << bit;
+    }
+}
+
+impl HasComponent for Presense {
+    #[inline]
+    fn has(&self, typ: ComponentType) -> bool {
+        let type_id = typ as usize;
+        let index = type_id >> 5;
+        let bit = type_id & 31;
+        (self.0[index] & (1u32 << bit)) != 0
+    }
 }
 
 // TODO remove unwraps and panics
 pub async fn spawn(
     name: String,
-    reg_dev_tx: mpsc::Sender<(GlobalDeviceID, DeviceInfo)>,
+    idx: usize,
+    reg_dev_tx: mpsc::Sender<(String, DeviceInfo)>,
+    query_rx: mpsc::Receiver<LocalQueryRequest>,
 ) -> Result<(), std::io::Error> {
     println!("Spawning Floe '{name}'");
 
@@ -61,7 +87,6 @@ pub async fn spawn(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    println!("Spawned");
 
     proxy_stdio(&mut process, name.to_string());
 
@@ -73,10 +98,12 @@ pub async fn spawn(
     tokio::spawn(async move {
         let man = FloeManager {
             name,
+            idx,
             reg_dev_tx,
+            query_rx,
             writer,
             reader,
-            state: LocalState::default(),
+            devices: Vec::with_capacity(32),
         };
         man.run().await;
     });
@@ -86,6 +113,7 @@ pub async fn spawn(
 
 impl FloeManager {
     async fn run(mut self) {
+        // TODO implement max_supported_componets
         let max_supported_component = match self.reader.next().await {
             Some(Ok((WHATS_UP_IGLOO, payload))) => {
                 let res: WhatsUpIgloo = borsh::from_slice(&payload).unwrap();
@@ -111,45 +139,136 @@ impl FloeManager {
             }
         };
 
-        while let Some(res) = self.reader.next().await {
-            let (cmd_id, payload) = match res {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("Error reading frame from Floe '{}': {e}", self.name);
-                    continue;
-                }
-            };
+        loop {
+            tokio::select! {
+                Some(res) = self.reader.next() => {
+                    let (cmd_id, payload) = match res {
+                        Ok(f) => f,
+                        Err(e) => {
+                            eprintln!("Error reading frame from Floe '{}': {e}", self.name);
+                            continue;
+                        }
+                    };
 
-            match cmd_id {
-                START_REGISTRATION_TRANSACTION => {
-                    let params: StartRegistrationTransaction = borsh::from_slice(&payload).unwrap();
-                    self.handle_registration_transaction(params).await;
-                }
+                    match cmd_id {
+                        START_REGISTRATION_TRANSACTION => {
+                            let params: StartRegistrationTransaction = borsh::from_slice(&payload).unwrap();
+                            self.handle_registration_transaction(params).await;
+                        }
 
-                START_DEVICE_TRANSACTION => {
-                    let params: StartDeviceTransaction = borsh::from_slice(&payload).unwrap();
-                    self.handle_device_transaction(params).await;
-                }
+                        START_DEVICE_TRANSACTION => {
+                            let params: StartDeviceTransaction = borsh::from_slice(&payload).unwrap();
+                            self.handle_device_transaction(params).await;
+                        }
 
-                cmd_id => {
-                    eprintln!("Unexpected command {cmd_id} from Floe '{}'", self.name);
+                        cmd_id => {
+                            eprintln!("Unexpected command {cmd_id} from Floe '{}'", self.name);
+                        }
+                    }
+                },
+
+                Some(req) = self.query_rx.recv() => {
+                    self.handle_query_request(req).await;
                 }
             }
         }
     }
 
+    async fn handle_query_request(&mut self, req: LocalQueryRequest) {
+        match req.area {
+            LocalArea::All => {
+                for device_idx in 0..self.devices.len() {
+                    self.handle_query_request_dev(&req, device_idx as u16, None)
+                        .await;
+                }
+            }
+            LocalArea::Device(device_idx) => {
+                self.handle_query_request_dev(&req, device_idx, None).await;
+            }
+            LocalArea::Entity(device_idx, entity_idx) => {
+                self.handle_query_request_dev(&req, device_idx, Some(entity_idx))
+                    .await;
+            }
+        }
+    }
+
+    async fn handle_query_request_dev(
+        &mut self,
+        req: &LocalQueryRequest,
+        device_idx: u16,
+        entity_idx: Option<u16>,
+    ) {
+        let device = &mut self.devices[device_idx as usize];
+
+        // quick precheck
+        if !device.presense.matches_filter(&req.filter) {
+            return;
+        }
+
+        self.writer
+            .start_device_transaction(&StartDeviceTransaction { device_idx })
+            .await
+            .unwrap();
+
+        match entity_idx {
+            Some(entity_idx) => {
+                Self::handle_query_request_entity(&mut self.writer, req, device, entity_idx).await;
+            }
+            None => {
+                let len = device.entities.len() as u16;
+                for entity_idx in 0..len {
+                    Self::handle_query_request_entity(&mut self.writer, req, device, entity_idx)
+                        .await;
+                }
+            }
+        }
+
+        self.writer.end_transaction().await.unwrap();
+        self.writer.flush().await.unwrap();
+    }
+
+    async fn handle_query_request_entity(
+        writer: &mut FloeWriterDefault,
+        req: &LocalQueryRequest,
+        device: &mut Device,
+        entity_idx: u16,
+    ) {
+        let entity = &mut device.entities[entity_idx as usize];
+
+        if !entity.matches_filter(&req.filter) {
+            return;
+        }
+
+        match &req.kind {
+            QueryKind::Set(comps) => {
+                writer
+                    .select_entity(&SelectEntity { entity_idx })
+                    .await
+                    .unwrap();
+
+                for comp in comps {
+                    writer.write_component(comp).await.unwrap();
+                }
+
+                writer.deselect_entity().await.unwrap();
+            }
+        }
+    }
+
     async fn handle_registration_transaction(&mut self, params: StartRegistrationTransaction) {
-        if params.device_idx as usize != self.state.devices.len() {
+        if params.device_idx as usize != self.devices.len() {
             panic!(
                 "Floe '{}' malformed. Tried to register new device under idx={} but should have been {}",
                 self.name,
                 params.device_idx,
-                self.state.devices.len()
+                self.devices.len()
             );
         }
 
-        let mut device = Device::default();
+        let mut entities = Entities::default();
+        let mut presense = Presense::default();
         let mut entity_names = Vec::new();
+        let mut selected_entity: Option<&mut Entity> = None;
 
         while let Some(res) = self.reader.next().await {
             let (cmd_id, payload) = match res {
@@ -160,44 +279,100 @@ impl FloeManager {
                 }
             };
 
+            if cmd_id > WRITE_INT {
+                match &mut selected_entity {
+                    Some(entity) => {
+                        let val = read_component(cmd_id, payload).unwrap();
+                        // set the entity, if we added
+                        // something new, register it in presense
+                        if let Some(comp_typ) = entity.set(val) {
+                            presense.set(comp_typ);
+                        }
+                        continue;
+                    }
+                    None => {
+                        panic!(
+                            "Floe '{}' malformed when registering device '{}'. Tried to write component without an entity selected.",
+                            self.name, params.initial_name
+                        );
+                    }
+                }
+            }
+
             match cmd_id {
                 REGISTER_ENTITY => {
-                    let params: RegisterEntity = borsh::from_slice(&payload).unwrap();
+                    let rep: RegisterEntity = borsh::from_slice(&payload).unwrap();
 
-                    if params.entity_idx as usize != device.entities.len() {
+                    if rep.entity_idx as usize != entities.len() {
                         panic!(
-                            "Floe '{}' malformed when registering device idx={}. Tried to register entity under idx={} but should have been {}",
+                            "Floe '{}' malformed when registering device '{}'. Tried to register entity under idx={} but should have been {}",
                             self.name,
-                            self.state.devices.len(),
-                            params.entity_idx,
-                            device.entities.len(),
+                            params.initial_name,
+                            rep.entity_idx,
+                            entities.len(),
                         );
                     }
 
-                    entity_names.push(params.entity_name);
-                    device.entities.push(Entity::default());
+                    entity_names.push(rep.entity_name);
+                    selected_entity = None;
+                    entities.push(Entity::default());
+                    // TODO should this also select the entity?
+                }
+
+                SELECT_ENTITY => {
+                    let sep: SelectEntity = borsh::from_slice(&payload).unwrap();
+                    let entity_idx = sep.entity_idx as usize;
+                    if entity_idx > entities.len() - 1 {
+                        panic!(
+                            "Floe '{}' malformed when registering device '{}'. Tried to select entity idx={} which is not registered.",
+                            self.name, params.initial_name, sep.entity_idx,
+                        );
+                    }
+                    selected_entity = Some(entities.get_mut(entity_idx).unwrap());
+                }
+
+                DESELECT_ENTITY => {
+                    selected_entity = None;
                 }
 
                 END_TRANSACTION => {
                     break;
                 }
 
-                _ => {}
+                cmd_id => {
+                    panic!(
+                        "Floe '{}' malformed when registering device '{}'. Sent unexpected command {cmd_id}",
+                        self.name, params.initial_name,
+                    );
+                }
             }
         }
 
-        self.state.devices.push(device);
+        self.devices.push(Device { entities, presense });
 
-        let global_id = (self.name.clone(), params.device_id);
+        let global_id = format!("{}-{}", self.name, params.device_id);
         let info = DeviceInfo {
             name: params.initial_name,
+            idx: params.device_idx,
             entity_names,
+            floe_idx: self.idx,
         };
 
         self.reg_dev_tx.send((global_id, info)).await.unwrap();
     }
 
     async fn handle_device_transaction(&mut self, params: StartDeviceTransaction) {
+        let device_idx = params.device_idx as usize;
+        if device_idx > self.devices.len() - 1 {
+            panic!(
+                "Floe '{}' malformed. Tried to start device transaction with invalid device idx={}",
+                self.name, params.device_idx
+            );
+        }
+
+        let device = self.devices.get_mut(device_idx).unwrap();
+        let mut selected_entity: Option<&mut Entity> = None;
+
         while let Some(res) = self.reader.next().await {
             let (cmd_id, payload) = match res {
                 Ok(f) => f,
@@ -207,12 +382,53 @@ impl FloeManager {
                 }
             };
 
+            if cmd_id > WRITE_INT {
+                match &mut selected_entity {
+                    Some(entity) => {
+                        let val = read_component(cmd_id, payload).unwrap();
+                        // set the entity, if we added
+                        // something new, register it in presense
+                        if let Some(comp_typ) = entity.set(val) {
+                            device.presense.set(comp_typ);
+                        }
+                        continue;
+                    }
+                    None => {
+                        panic!(
+                            "Floe '{}' malformed during a transaction with device idx={device_idx}. Tried to write component without an entity selected.",
+                            self.name,
+                        );
+                    }
+                }
+            }
+
             match cmd_id {
-                END_TRANSACTION => {
-                    return;
+                SELECT_ENTITY => {
+                    let params: SelectEntity = borsh::from_slice(&payload).unwrap();
+                    let entity_idx = params.entity_idx as usize;
+                    if entity_idx > device.entities.len() - 1 {
+                        panic!(
+                            "Floe '{}' malformed during a transaction with device idx={device_idx}. Tried to select entity idx={entity_idx} which is not registered.",
+                            self.name
+                        );
+                    }
+                    selected_entity = Some(device.entities.get_mut(entity_idx).unwrap());
                 }
 
-                _ => {}
+                DESELECT_ENTITY => {
+                    selected_entity = None;
+                }
+
+                END_TRANSACTION => {
+                    break;
+                }
+
+                cmd_id => {
+                    panic!(
+                        "Floe '{}' malformed during a transaction with device idx={device_idx}. Sent unexpected command {cmd_id}",
+                        self.name,
+                    );
+                }
             }
         }
     }

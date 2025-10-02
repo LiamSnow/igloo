@@ -61,7 +61,7 @@ fn gen_helper_funcs(cmds: &[Command], comps: &[Component]) -> TokenStream {
         .map(|comp| {
             gen_helper_func(
                 &comp.name,
-                &upper_camel_to_screaming_snake(&comp.name).to_lowercase(),
+                &upper_camel_to_snake(&comp.name),
                 &comp_name_to_cmd_name(&comp.name),
                 !comp.is_marker(),
             )
@@ -84,7 +84,7 @@ fn gen_helper_func(name: &str, func_name: &str, cmd_name: &str, has_payload: boo
         quote! {
             pub async fn #func_name(
                 &mut self,
-                payload: #name,
+                payload: &#name,
             ) -> Result<(), std::io::Error> {
                 self.write_with_payload(#cmd_name, payload).await
             }
@@ -434,6 +434,17 @@ pub fn upper_camel_to_screaming_snake(s: &str) -> String {
             res.push('_');
         }
         res.push(c.to_ascii_uppercase());
+    }
+    res
+}
+
+pub fn upper_camel_to_snake(s: &str) -> String {
+    let mut res = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            res.push('_');
+        }
+        res.push(c.to_ascii_lowercase());
     }
     res
 }

@@ -1,4 +1,4 @@
-use crate::rust::{comp_name_to_cmd_name, ident};
+use crate::rust::{comp_name_to_cmd_name, ident, upper_camel_to_snake};
 
 use super::model::*;
 use proc_macro2::TokenStream;
@@ -10,6 +10,7 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let primitives_avgable = gen_primitives_avgable();
     let structs_avgable = gen_structs_avgable(comps);
     let read_comp = gen_read_comp(comps);
+    let write_comp = gen_write_comp(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
@@ -24,6 +25,8 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         #structs_avgable
 
         #read_comp
+
+        #write_comp
     };
 
     // reconstruct, format, and save
@@ -34,6 +37,40 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("server.rs");
     fs::write(&out_path, formatted).expect("Failed to write server.rs");
+}
+
+fn gen_write_comp(comps: &[Component]) -> TokenStream {
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let func_name = ident(&upper_camel_to_snake(&comp.name));
+            let name = ident(&comp.name);
+
+            if comp.is_marker() {
+                quote! {
+                    Component::#name => {
+                        self.#func_name().await
+                    }
+                }
+            } else {
+                quote! {
+                    Component::#name(payload) => {
+                        self.#func_name(payload).await
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
+            pub async fn write_component(&mut self, comp: &Component) -> Result<(), std::io::Error> {
+                match comp {
+                    #(#arms)*
+                }
+            }
+        }
+    }
 }
 
 fn gen_read_comp(comps: &[Component]) -> TokenStream {
