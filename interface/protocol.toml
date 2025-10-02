@@ -1,5 +1,5 @@
 #! 0-31 reserved for Igloo <-> Floe
-#! 31-63 reserved for Custom Floe Commands (specified in Floe.toml)
+#! 32-63 reserved for Custom Floe Commands (specified in Floe.toml)
 #! 64+ reserved for Component commands
 
 [[commands]]
@@ -11,56 +11,60 @@ fields = [
 ]
 
 [[commands]]
-name = "RegisterDevice"
+name = "EndTransaction"
 id = 1
-desc = "Floe request to register a device with Igloo"
+desc = "TODO"
+
+# TODO add comments to all the following saying they must be inside transaction
+
+[[commands]]
+name = "StartRegistrationTransaction"
+id = 2
+desc = "TODO"
 fields = [
     { name = "device_id", type = "String", desc = "Persistent device ID. You should register the device under the same ID every boot. UUIDv7 is recommended." },
     { name = "initial_name", type = "String", desc = "Name for the device for first register. Can be modified by the user later on" },
-    { name = "entity_names", type = "Vec<String>", desc = "The name of every entity you will ever have. Cannot change this after registration!" }
+    { name = "device_idx", type = "u16", desc = "Device Indexes start at 0 and increment for every device you add. Pass here for valiation." }
 ]
 
 [[commands]]
-name = "DeviceRegistered"
-id = 2
-desc = """
-Igloo has confirmed the device registration. 
-"""
-fields = [
-    { name = "id", type = "String", desc = "The ID of the device that you registered. Given for reference." },
-    { name = "successful", type = "bool", desc = "If the registration was successful" },
-]
-
-[[commands]]
-name = "StartTransaction"
+name = "RegisterEntity"
 id = 3
-desc = """
-Begins a transaction of component updates for an entity.
-During a transaction only send component commands (64+).
-All other commands will be dropped until EndTransaction is sent.
-
-If sent from a Floe, it is confirming these changes.
-If sent from Igloo, it is requesting these changed. Accept them by sending back a transaction after application.
-"""
+desc = "TODO"
 fields = [
-    { name = "device_ref", type = "u16" },
-    { name = "entity_ref", type = "u16" },
+    { name = "entity_name", type = "String" },
+    { name = "entity_idx", type = "u16", desc = "Entity Indexes start 0 and increment for every entity you add on the device. Pass here for validation." }
 ]
 
 [[commands]]
-name = "EndTransaction"
+name = "StartDeviceTransaction"
 id = 4
+desc = "TODO"
+fields = [
+    { name = "device_idx", type = "u16" }
+]
 
+[[commands]]
+name = "SelectEntity"
+id = 5
+desc = "TODO"
+fields = [
+    { name = "entity_idx", type = "u16" }
+]
+
+[[commands]]
+name = "DeselectEntity"
+id = 6
+desc = "TODO"
+
+
+# Placeholders
 [[commands]]
 name = "ExecuteQuery"
-id = 5
-desc = """
-TODO
-"""
+id = 7
+desc = "TODO"
 
 [[commands]]
-name = "QueryResult"
-id = 5
-desc = """
-TODO Probably be a transaction?? Start transaction with query ID then give parts
-"""
+name = "SelectQuery"
+id = 8
+desc = "TODO"

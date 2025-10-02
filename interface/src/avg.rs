@@ -4,15 +4,15 @@ pub trait Averageable {
     type Sum: Add<Output = Self::Sum> + Sub<Output = Self::Sum> + Clone + Default;
 
     /// convert a single item to its sum repr
-    fn to_sum_repr(&self) -> Self::Sum;
+    fn to_sum_repr(self) -> Self::Sum;
 
     /// calc sum from multiple items
-    fn to_sum(items: &[Self]) -> Self::Sum
+    fn to_sum(items: Vec<Self>) -> Self::Sum
     where
         Self: Sized,
     {
         items
-            .iter()
+            .into_iter()
             .map(|item| item.to_sum_repr())
             .fold(Self::Sum::default(), |acc, x| acc + x)
     }
@@ -41,23 +41,23 @@ impl<T: Averageable> Average<T> {
 
     pub fn from_vec(items: Vec<T>) -> Self {
         let count = items.len();
-        let sum = T::to_sum(&items);
+        let sum = T::to_sum(items);
         Self { sum, count }
     }
 
-    pub fn add(&mut self, item: &T) {
+    pub fn add(&mut self, item: T) {
         self.sum = self.sum.clone() + item.to_sum_repr();
         self.count += 1;
     }
 
-    pub fn remove(&mut self, item: &T) {
+    pub fn remove(&mut self, item: T) {
         if self.count > 0 {
             self.sum = self.sum.clone() - item.to_sum_repr();
             self.count -= 1;
         }
     }
 
-    pub fn update(&mut self, old_item: &T, new_item: &T) {
+    pub fn update(&mut self, old_item: T, new_item: T) {
         self.sum = self.sum.clone() - old_item.to_sum_repr() + new_item.to_sum_repr();
     }
 

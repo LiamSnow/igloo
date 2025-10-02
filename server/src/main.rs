@@ -1,8 +1,6 @@
-use crate::{auth::Auth, glacier::GlacierSupervisor};
+use crate::auth::Auth;
 
 mod auth;
-mod components;
-mod dashboard;
 mod glacier;
 mod penguin;
 
@@ -14,7 +12,7 @@ async fn main() {
     // make communication channels
 
     // spawn glacier
-    let glacier = GlacierSupervisor::new().await.unwrap();
+    let mut _state = glacier::run().await.unwrap();
 
     // spawn penguin executer
 
@@ -23,7 +21,6 @@ async fn main() {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             println!("Shutting down Igloo");
-            glacier.shutdown().await;
         }
     }
 }

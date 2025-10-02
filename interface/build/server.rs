@@ -13,7 +13,7 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use std::ops::{Add, Sub};
-        use crate::Averageable;
+        use crate::avg::Averageable;
 
         #comp_enum
 
@@ -33,32 +33,57 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
 }
 
 fn gen_comp_enum(comps: &[Component]) -> TokenStream {
-    let names: Vec<_> = comps.iter().map(|c| ident(&c.name)).collect();
-    let ids: Vec<_> = comps.iter().map(|c| c.id).collect();
+    let enum_variants = comps.iter().map(|comp| {
+        let name = ident(&comp.name);
+        let id = comp.id;
+        if comp.is_marker() {
+            quote! { #name = #id }
+        } else {
+            quote! { #name(#name) = #id }
+        }
+    });
+
+    let get_type_arms = comps.iter().map(|comp| {
+        let name = ident(&comp.name);
+        if comp.is_marker() {
+            quote! { Component::#name => ComponentType::#name }
+        } else {
+            quote! { Component::#name(_) => ComponentType::#name }
+        }
+    });
+
+    let get_type_id_arms = comps.iter().map(|comp| {
+        let name = ident(&comp.name);
+        let id = comp.id;
+        if comp.is_marker() {
+            quote! { Component::#name => #id }
+        } else {
+            quote! { Component::#name(_) => #id }
+        }
+    });
 
     quote! {
-        #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+        #[derive(Debug, Clone, PartialEq)]
         #[repr(u16)]
         pub enum Component {
-            #(#names(#names) = #ids),*
+            #(#enum_variants),*
         }
 
         impl Component {
             pub fn get_type(&self) -> ComponentType {
                 match self {
-                    #(Component::#names(_) => ComponentType::#names),*
+                    #(#get_type_arms),*
                 }
             }
 
             pub fn get_type_id(&self) -> u16 {
                 match self {
-                    #(Component::#names(_) => #ids),*
+                    #(#get_type_id_arms),*
                 }
             }
         }
     }
 }
-
 fn gen_structs_avgable(comps: &[Component]) -> TokenStream {
     let impls: Vec<_> = comps
         .iter()
@@ -149,7 +174,7 @@ fn gen_struct_avgable(comp: &Component, fields: &[Field]) -> TokenStream {
         impl Averageable for #name {
             type Sum = #sum_name;
 
-            fn to_sum_component(&self) -> Self::Sum {
+            fn to_sum_repr(self) -> Self::Sum {
                 #sum_name {
                     #(#to_sum_fields),*
                 }
@@ -187,19 +212,19 @@ fn gen_primitive_averageable(typ_str: &str) -> TokenStream {
     let typ: TokenStream = typ_str.parse().unwrap();
 
     let from_sum_body = if typ_str == "bool" {
-        quote! { Self((sum / len as #sum_type) != 0) }
+        quote! { (sum / len as #sum_type) != 0 }
     } else if sum_type_str != typ_str {
-        quote! { Self((sum / len as #sum_type) as #typ) }
+        quote! { (sum / len as #sum_type) as #typ }
     } else {
-        quote! { Self(sum / len as #sum_type) }
+        quote! { sum / len as #sum_type }
     };
 
     quote! {
         impl Averageable for #name {
             type Sum = #sum_type;
 
-            fn to_sum_component(&self) -> Self::Sum {
-                self.0 as Self::Sum
+            fn to_sum_repr(self) -> Self::Sum {
+                self as Self::Sum
             }
 
             fn from_sum(sum: Self::Sum, len: usize) -> Self

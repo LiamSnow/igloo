@@ -1,24 +1,24 @@
-use std::{
-    collections::HashMap,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
+use async_trait::async_trait;
+use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BytesMut;
+use futures_util::StreamExt;
 use igloo_interface::{
-    AccuracyDecimals, AlarmState, Bool, ClimateMode, Color, ColorMode, ColorTemperature, Component,
-    CoverState, Date, DateTime, DeviceClass, Diagnostic, Dimmer, FanDirection, FanOscillation,
-    FanSpeed, Float, FloatMax, FloatMin, FloatStep, Icon, Int, LockState, MediaState, Muted,
-    NumberMode, Position, RequestUpdatesPayload, SensorStateClass, SupportedClimateModes,
-    SupportedFanOscillations, SupportedFanSpeeds, Switch, Text, TextList, TextMaxLength,
-    TextMinLength, TextMode, TextPattern, TextSelect, Tilt, Time, UpdatesPayload, ValveState,
-    Volume,
-    floe::{FloeManager, FloeManagerError},
+    AlarmState, ClimateMode, Color, ColorMode, CoverState, DESELECT_ENTITY, Date, END_TRANSACTION,
+    FanDirection, FanOscillation, FanSpeed, FloeReaderDefault, FloeWriterDefault, LockState,
+    MediaState, NumberMode, SELECT_ENTITY, SelectEntity, SensorStateClass, StartDeviceTransaction,
+    TextMode, Time, Unit, ValveState, WRITE_COLOR, WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE,
+    WRITE_DIMMER, WRITE_SWITCH,
 };
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::{
     api::{self, EntityCategory, LightCommandRequest},
@@ -31,11 +31,12 @@ use crate::{
     model::MessageType,
 };
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, Debug)]
 pub struct ConnectionParams {
     pub ip: String,
     pub noise_psk: Option<String>,
     pub password: Option<String>,
+    pub name: Option<String>,
 }
 
 pub struct Device {
@@ -43,23 +44,19 @@ pub struct Device {
     pub password: String,
     pub connected: bool,
     pub last_ping: Option<SystemTime>,
-    pub manager: FloeManager,
-    /// maps ESPHome entity key -> Igloo entity ephermeral ref
-    pub entity_key_to_ref: HashMap<u32, u16>,
-    /// maps Igloo entity ephermeral ref -> ESPHome type,key
-    pub entity_ref_to_info: HashMap<u16, (EntityType, u32)>,
-    pub device_ref: Option<u16>,
-}
-
-pub struct EntityData {
-    pub name: String,
-    key: u32,
-    typ: EntityType,
-    components: Vec<Component>,
+    /// maps ESPHome entity key -> Igloo entity index
+    pub entity_key_to_idx: HashMap<u32, u16>,
+    /// maps Igloo entity index -> ESPHome type,key
+    pub entity_idx_to_info: HashMap<u16, (EntityType, u32)>,
+    pub device_idx: Option<u16>,
+    pub next_entity_idx: u16,
+    pub shared_writer: Option<Arc<Mutex<FloeWriterDefault>>>,
 }
 
 #[derive(Error, Debug)]
 pub enum DeviceError {
+    #[error("io error `{0}`")]
+    IO(#[from] std::io::Error),
     #[error("not connected")]
     NotConnected,
     #[error("device requested shutdown")]
@@ -90,12 +87,10 @@ pub enum DeviceError {
     UnknownLogLevel(i32),
     #[error("entity doesn't exist: `{0}`")]
     InvalidEntity(u16),
-    #[error("floe manager error `{0}`")]
-    FloeManager(#[from] FloeManagerError),
 }
 
 impl Device {
-    pub fn new(params: ConnectionParams, manager: FloeManager) -> Self {
+    pub fn new(params: ConnectionParams) -> Self {
         let connection = match params.noise_psk {
             Some(noise_psk) => NoiseConnection::new(params.ip, noise_psk).into(),
             None => PlainConnection::new(params.ip).into(),
@@ -106,14 +101,15 @@ impl Device {
             password: params.password.unwrap_or_default(),
             connected: false,
             last_ping: None,
-            manager,
-            device_ref: None,
-            entity_key_to_ref: HashMap::new(),
-            entity_ref_to_info: HashMap::new(),
+            device_idx: None,
+            entity_key_to_idx: HashMap::new(),
+            entity_idx_to_info: HashMap::new(),
+            next_entity_idx: 0,
+            shared_writer: None,
         }
     }
 
-    pub async fn connect(&mut self) -> Result<Vec<EntityData>, DeviceError> {
+    pub async fn connect(&mut self) -> Result<api::DeviceInfoResponse, DeviceError> {
         if self.connected {
             panic!(); // TODO should this reconnect?
         }
@@ -151,11 +147,10 @@ impl Device {
 
         self.connected = true;
 
-        self.get_entities().await
+        self.device_info().await
     }
 
     async fn subscribe_states(&mut self) -> Result<(), DeviceError> {
-        self.recv_process_msg().await?;
         self.send_msg(
             MessageType::SubscribeStatesRequest,
             &api::SubscribeStatesRequest {},
@@ -167,7 +162,6 @@ impl Device {
 
     /// Send disconnect request to device, wait for response, then disconnect socket
     pub async fn disconnect(&mut self) -> Result<(), DeviceError> {
-        self.recv_process_msg().await?;
         let _: api::DisconnectResponse = self
             .trans_msg(
                 MessageType::DisconnectRequest,
@@ -186,7 +180,6 @@ impl Device {
     }
 
     pub async fn device_info(&mut self) -> Result<api::DeviceInfoResponse, DeviceError> {
-        self.recv_process_msg().await?;
         let res: api::DeviceInfoResponse = self
             .trans_msg(
                 MessageType::DeviceInfoRequest,
@@ -215,6 +208,7 @@ impl Device {
         expected_msg_type: MessageType,
     ) -> Result<U, DeviceError> {
         let (msg_type, mut msg) = self.connection.recv_msg().await?;
+        // TODO maybe just skip?
         if msg_type != expected_msg_type {
             return Err(DeviceError::WrongMessageType(msg_type));
         }
@@ -231,65 +225,144 @@ impl Device {
         self.recv_msg(res_type).await
     }
 
-    /// after Igloo confirmed our device registration we can
-    ///  1. make our entitiy ref mappings
-    ///  2. send initial components
-    pub async fn init(
-        &mut self,
-        device_ref: u16,
-        entity_refs: Vec<u16>,
-        entities: Vec<EntityData>,
-    ) -> Result<(), DeviceError> {
-        self.device_ref = Some(device_ref);
-
-        for (entity_ref, entity) in entity_refs.into_iter().zip(entities.into_iter()) {
-            self.entity_key_to_ref.insert(entity.key, entity_ref);
-            self.entity_ref_to_info
-                .insert(entity_ref, (entity.typ, entity.key));
-
-            self.manager
-                .updates(UpdatesPayload {
-                    device: device_ref,
-                    entity: entity_ref,
-                    values: entity.components,
-                })
-                .await?;
-        }
-
-        Ok(())
-    }
-
     pub async fn run(
         mut self,
-        mut cmd_rx: mpsc::Receiver<RequestUpdatesPayload>,
+        shared_writer: Arc<Mutex<FloeWriterDefault>>,
+        shared_reader: Arc<Mutex<FloeReaderDefault>>,
+        mut start_recv: mpsc::Receiver<()>,
     ) -> Result<(), DeviceError> {
+        self.shared_writer = Some(shared_writer);
+
         self.subscribe_states().await?;
 
         loop {
             tokio::select! {
-                cmd = cmd_rx.recv() => {
-                    match cmd {
-                        Some(cmd) => {
-                            if let Err(_) = self.handle_cmd(cmd).await {
-                                // TODO: handle error
-                            }
+                res = start_recv.recv() => {
+                    if res.is_none() {
+                        // our comms to the main loop has been dropped -> shutdown
+                        // TODO send disconnect request?
+                        return Ok(());
+                    }
+
+                    self.handle_transaction(&shared_reader).await;
+                },
+
+                res = self.connection.readable() => if res.is_ok()
+                    && let Err(e) = self.recv_process_msg().await // TODO what about other errors??
+                        && matches!(e, DeviceError::DeviceRequestShutdown) {
+                            return Ok(());
                         }
-                        None => {
-                            // TODO return device disconnected err
-                            return Ok(())
+            }
+        }
+    }
+
+    async fn handle_transaction(&mut self, shared_reader: &Arc<Mutex<FloeReaderDefault>>) {
+        let mut reader = shared_reader.lock().await;
+
+        while let Some(res) = reader.next().await {
+            let (cmd_id, payload) = match res {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Frame read error: {e}");
+                    continue;
+                }
+            };
+
+            match cmd_id {
+                SELECT_ENTITY => {
+                    let res: SelectEntity = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                    let (entity_type, key) = self.entity_idx_to_info.get(&res.entity_idx).unwrap(); // FIXME unwrap
+                    match entity_type {
+                        EntityType::Light => {
+                            self.handle_light_entity_transaction(&mut reader, *key)
+                                .await;
                         }
+                        _ => todo!(),
                     }
                 }
 
-                result = self.connection.readable() => if result.is_ok() {
-                    if let Err(e) = self.recv_process_msg().await {
-                        if matches!(e, DeviceError::DeviceRequestShutdown) {
-                            return Ok(());
-                        }
-                    }
+                END_TRANSACTION => {
+                    return;
+                }
+
+                cmd_id => {
+                    eprintln!(
+                        "Igloo sent unexpected command {cmd_id} during device transaction while no entity was selected"
+                    );
                 }
             }
         }
+    }
+
+    async fn handle_light_entity_transaction(&mut self, reader: &mut FloeReaderDefault, key: u32) {
+        let mut req = LightCommandRequest {
+            key,
+            ..Default::default()
+        };
+
+        while let Some(res) = reader.next().await {
+            let (cmd_id, payload) = match res {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Frame read error: {e}");
+                    continue;
+                }
+            };
+
+            match cmd_id {
+                WRITE_COLOR => {
+                    let color: Color = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                    req.has_rgb = true;
+                    req.red = (color.r as f32) / 255.;
+                    req.green = (color.g as f32) / 255.;
+                    req.blue = (color.b as f32) / 255.;
+                }
+
+                WRITE_DIMMER => {
+                    let val: f32 = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                    req.has_color_brightness = true;
+                    req.color_brightness = val;
+                    req.has_brightness = true;
+                    req.brightness = val;
+                }
+                WRITE_SWITCH => {
+                    let state: bool = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                    req.has_state = true;
+                    req.state = state;
+                }
+                WRITE_COLOR_TEMPERATURE => {
+                    let temp: u32 = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                    req.has_color_temperature = true;
+                    req.color_temperature = temp as f32;
+                }
+                WRITE_COLOR_MODE => {
+                    let mode: ColorMode = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                    req.has_color_mode = true;
+                    req.color_mode = match mode {
+                        ColorMode::RGB => 35,
+                        ColorMode::Temperature => 11,
+                    };
+                }
+
+                DESELECT_ENTITY => {
+                    break;
+                }
+
+                END_TRANSACTION => {
+                    unreachable!(
+                        "Igloo tried to end the device transaction without deselecting the entity"
+                    );
+                }
+
+                // skip other entities
+                // TODO maybe log this or..?
+                _ => {}
+            }
+        }
+
+        self.send_msg(MessageType::LightCommandRequest, &req)
+            .await
+            .unwrap(); // FIXME unwrap
     }
 
     async fn recv_process_msg(&mut self) -> Result<(), DeviceError> {
@@ -331,8 +404,8 @@ impl Device {
             }
 
             _ => {
-                if let Some(device_ref) = self.device_ref {
-                    self.process_state_update(msg_type, msg, device_ref).await?;
+                if self.shared_writer.is_some() {
+                    self.process_state_update(msg_type, msg).await?;
                 }
                 // TODO else log?
             }
@@ -340,294 +413,18 @@ impl Device {
         Ok(())
     }
 
-    async fn process_state_update(
+    pub async fn register_entities(
         &mut self,
-        msg_type: MessageType,
-        msg: BytesMut,
-        device: u16,
+        writer: &mut FloeWriterDefault,
+        device_idx: u16,
     ) -> Result<(), DeviceError> {
-        let (key, values) = match msg_type {
-            MessageType::DisconnectRequest
-            | MessageType::PingRequest
-            | MessageType::PingResponse
-            | MessageType::GetTimeRequest
-            | MessageType::SubscribeLogsResponse => {
-                unreachable!()
-            }
-
-            MessageType::BinarySensorStateResponse => {
-                let update = api::BinarySensorStateResponse::decode(msg)?;
-                // TODO should missing state be a component or something or is
-                // ignoring it like this valid?
-                if update.missing_state {
-                    return Ok(());
-                }
-                (update.key, vec![Component::Bool(Bool(update.state))])
-            }
-
-            MessageType::CoverStateResponse => {
-                let update = api::CoverStateResponse::decode(msg)?;
-                (
-                    update.key,
-                    vec![
-                        Component::Position(Position(update.position)),
-                        Component::Tilt(Tilt(update.tilt)),
-                        Component::CoverState(update.current_operation().as_igloo()),
-                    ],
-                )
-            }
-
-            MessageType::FanStateResponse => {
-                let update = api::FanStateResponse::decode(msg)?;
-
-                (
-                    update.key,
-                    vec![
-                        Component::FanSpeed(update.speed().as_igloo()),
-                        Component::Int(Int(update.speed_level)),
-                        Component::FanDirection(update.direction().as_igloo()),
-                        Component::Text(Text(update.preset_mode)),
-                        Component::FanOscillation(match update.oscillating {
-                            true => FanOscillation::On,
-                            false => FanOscillation::Off,
-                        }),
-                    ],
-                )
-            }
-
-            MessageType::LightStateResponse => {
-                let update = api::LightStateResponse::decode(msg)?;
-                // TODO probably should be using supported modes here
-                let mut values = vec![
-                    Component::Color(Color {
-                        r: (update.red * 255.) as u8,
-                        g: (update.green * 255.) as u8,
-                        b: (update.blue * 255.) as u8,
-                    }),
-                    Component::Dimmer(Dimmer(update.brightness)),
-                    Component::Switch(Switch(update.state)),
-                    Component::ColorTemperature(ColorTemperature(update.color_temperature as u16)),
-                ];
-
-                // ON_OFF = 1 << 0;
-                // BRIGHTNESS = 1 << 1;
-                // WHITE = 1 << 2;
-                // COLOR_TEMPERATURE = 1 << 3;
-                // COLD_WARM_WHITE = 1 << 4;
-                // RGB = 1 << 5;
-
-                // TODO FIXME is this right? Lowk i don't get the other ones
-
-                if update.color_mode & (1 << 5) != 0 {
-                    values.push(Component::ColorMode(ColorMode::RGB));
-                } else if update.color_mode & (1 << 3) != 0 {
-                    values.push(Component::ColorMode(ColorMode::Temperature))
-                }
-
-                (update.key, values)
-            }
-
-            MessageType::SensorStateResponse => {
-                let update = api::SensorStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-                (update.key, vec![Component::Float(Float(update.state))])
-            }
-
-            MessageType::SwitchStateResponse => {
-                let update = api::SwitchStateResponse::decode(msg)?;
-                (update.key, vec![Component::Switch(Switch(update.state))])
-            }
-
-            MessageType::TextSensorStateResponse => {
-                let update = api::TextSensorStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-                (update.key, vec![Component::Text(Text(update.state))])
-            }
-
-            // TODO
-            // MessageType::ClimateStateResponse => {
-            //     let update = api::ClimateStateResponse::decode(msg)?;
-            //     updates.push(ComponentUpdate {
-            //         device: self.device_id,
-            //         entity: entity_name.to_string(),
-            //         values: todo!(),
-            //     });
-            // }
-            MessageType::NumberStateResponse => {
-                let update = api::NumberStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-                (update.key, vec![Component::Float(Float(update.state))])
-            }
-
-            MessageType::SelectStateResponse => {
-                let update = api::SelectStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-                (update.key, vec![Component::Text(Text(update.state))])
-            }
-
-            MessageType::SirenStateResponse => {
-                let update = api::SirenStateResponse::decode(msg)?;
-                // TODO should this be a bool or something else?
-                // Maybe the sensor component should take a bool?
-                (update.key, vec![Component::Bool(Bool(update.state))])
-            }
-
-            MessageType::LockStateResponse => {
-                let update = api::LockStateResponse::decode(msg)?;
-                (
-                    update.key,
-                    vec![Component::LockState(update.state().as_igloo())],
-                )
-            }
-
-            MessageType::MediaPlayerStateResponse => {
-                let update = api::MediaPlayerStateResponse::decode(msg)?;
-                (
-                    update.key,
-                    vec![
-                        Component::Volume(Volume(update.volume)),
-                        Component::Muted(Muted(update.muted)),
-                        Component::MediaState(update.state().as_igloo()),
-                    ],
-                )
-            }
-
-            MessageType::AlarmControlPanelStateResponse => {
-                let update = api::AlarmControlPanelStateResponse::decode(msg)?;
-                (
-                    update.key,
-                    vec![Component::AlarmState(update.state().as_igloo())],
-                )
-            }
-
-            MessageType::TextStateResponse => {
-                let update = api::TextStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-                (update.key, vec![Component::Text(Text(update.state))])
-            }
-
-            MessageType::DateStateResponse => {
-                let update = api::DateStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-                (
-                    update.key,
-                    vec![Component::Date(Date {
-                        year: update.year as u16, // FIXME make safe
-                        month: update.month as u8,
-                        day: update.day as u8,
-                    })],
-                )
-            }
-
-            MessageType::TimeStateResponse => {
-                let update = api::TimeStateResponse::decode(msg)?;
-                (
-                    update.key,
-                    vec![Component::Time(Time {
-                        hour: update.hour as u8,
-                        minute: update.minute as u8,
-                        second: update.second as u8,
-                    })],
-                )
-            }
-
-            MessageType::ValveStateResponse => {
-                let update = api::ValveStateResponse::decode(msg)?;
-                (
-                    update.key,
-                    vec![
-                        Component::Position(Position(update.position)),
-                        Component::ValveState(update.current_operation().as_igloo()),
-                    ],
-                )
-            }
-
-            MessageType::DateTimeStateResponse => {
-                let update = api::DateTimeStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-
-                (
-                    update.key,
-                    vec![Component::DateTime(DateTime(update.epoch_seconds))],
-                )
-            }
-
-            MessageType::UpdateStateResponse => {
-                let update = api::UpdateStateResponse::decode(msg)?;
-                if update.missing_state {
-                    return Ok(());
-                }
-
-                // FIXME I think the best way to handle update is by making
-                // more entities for a clearer representation
-                // But maybe this is good for reducing less used entities IDK
-
-                let content = json!({
-                    "title": update.title,
-                    "current_version": update.current_version,
-                    "latest_version": update.latest_version,
-                    "release_summary": update.release_summary,
-                    "release_url": update.release_url
-                });
-
-                let mut values = vec![
-                    Component::Bool(Bool(update.in_progress)),
-                    Component::Text(Text(content.to_string())),
-                ];
-
-                if update.has_progress {
-                    values.push(Component::Float(Float(update.progress)));
-                }
-
-                (update.key, values)
-            }
-
-            _ => {
-                panic!() // FIXME
-                // TODO log unknown msgs?
-            }
-        };
-
-        let Some(entity_ref) = self.entity_key_to_ref.get(&key) else {
-            // TODO what the hell is this? Why is it giving an update
-            // for an unknown entity. Should we be failing here??
-            return Ok(());
-        };
-
-        self.manager
-            .updates(UpdatesPayload {
-                device,
-                entity: *entity_ref,
-                values,
-            })
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn get_entities(&mut self) -> Result<Vec<EntityData>, DeviceError> {
-        self.recv_process_msg().await?;
         self.send_msg(
             MessageType::ListEntitiesRequest,
             &api::ListEntitiesRequest {},
         )
         .await?;
 
-        let mut entities = Vec::new();
+        self.device_idx = Some(device_idx);
 
         loop {
             let (msg_type, msg) = self.connection.recv_msg().await?;
@@ -636,86 +433,84 @@ impl Device {
             match msg_type {
                 MessageType::ListEntitiesServicesResponse => {
                     // TODO should we support services?
+                    continue;
                 }
                 MessageType::ListEntitiesDoneResponse => break,
 
                 MessageType::ListEntitiesBinarySensorResponse => {
                     let msg = api::ListEntitiesBinarySensorResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(4);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    components.push(Component::Sensor(igloo_interface::Sensor));
-                    entities.push(EntityData::new(msg.name, msg.key, BinarySensor, components));
+                    self.register_entity(writer, &msg.name, msg.key, BinarySensor)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    writer.sensor().await?;
                 }
 
                 MessageType::ListEntitiesCoverResponse => {
                     let msg = api::ListEntitiesCoverResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(4);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    components.push(Component::Sensor(igloo_interface::Sensor));
-                    entities.push(EntityData::new(msg.name, msg.key, Cover, components));
+                    self.register_entity(writer, &msg.name, msg.key, Cover)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    writer.sensor().await?;
                 }
 
                 MessageType::ListEntitiesFanResponse => {
                     let msg = api::ListEntitiesFanResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    entities.push(EntityData::new(msg.name, msg.key, Fan, components));
+                    self.register_entity(writer, &msg.name, msg.key, Fan)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                 }
 
                 MessageType::ListEntitiesLightResponse => {
                     let msg = api::ListEntitiesLightResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    entities.push(EntityData::new(msg.name, msg.key, Light, components));
+                    self.register_entity(writer, &msg.name, msg.key, Light)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                 }
 
                 MessageType::ListEntitiesSensorResponse => {
                     let msg = api::ListEntitiesSensorResponse::decode(msg)?;
-
-                    let mut components = Vec::with_capacity(7);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_sensor_state_class(&mut components, msg.state_class());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    add_unit(&mut components, msg.unit_of_measurement);
-                    components.push(Component::Sensor(igloo_interface::Sensor));
-                    components.push(Component::AccuracyDecimals(AccuracyDecimals(
-                        msg.accuracy_decimals,
-                    )));
-                    entities.push(EntityData::new(msg.name, msg.key, Sensor, components));
+                    self.register_entity(writer, &msg.name, msg.key, Sensor)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_sensor_state_class(writer, msg.state_class()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    add_unit(writer, msg.unit_of_measurement).await?;
+                    writer.sensor().await?;
+                    writer.accuracy_decimals(msg.accuracy_decimals).await?;
                 }
 
                 MessageType::ListEntitiesSwitchResponse => {
                     let msg = api::ListEntitiesSwitchResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(3);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    entities.push(EntityData::new(msg.name, msg.key, Switch, components));
+                    self.register_entity(writer, &msg.name, msg.key, Switch)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
                 }
 
                 MessageType::ListEntitiesTextSensorResponse => {
                     let msg = api::ListEntitiesTextSensorResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(4);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    components.push(Component::Sensor(igloo_interface::Sensor));
-                    entities.push(EntityData::new(msg.name, msg.key, TextSensor, components));
+                    self.register_entity(writer, &msg.name, msg.key, TextSensor)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    writer.sensor().await?;
                 }
 
                 MessageType::ListEntitiesCameraResponse => {
                     let msg = api::ListEntitiesCameraResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    entities.push(EntityData::new(msg.name, msg.key, Camera, components));
+                    self.register_entity(writer, &msg.name, msg.key, Camera)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                 }
 
                 // The ESPHome climate entity doesn't really match this ECS model
@@ -726,33 +521,37 @@ impl Device {
                     // Humidity
                     if msg.supports_current_humidity || msg.supports_target_humidity {
                         let name = format!("{}_humidity", msg.name);
-                        let mut components = Vec::with_capacity(4);
-                        add_entity_category(&mut components, msg.entity_category());
-                        add_icon(&mut components, &msg.icon);
+                        self.register_entity(writer, &name, msg.key, Climate)
+                            .await?;
+                        add_entity_category(writer, msg.entity_category()).await?;
+                        add_icon(writer, &msg.icon).await?;
                         add_f32_bounds(
-                            &mut components,
+                            writer,
                             msg.visual_min_humidity,
                             msg.visual_max_humidity,
                             None,
-                        );
-                        components.push(Component::Sensor(igloo_interface::Sensor));
-                        entities.push(EntityData::new(name, msg.key, Climate, components));
+                        )
+                        .await?;
+                        writer.sensor().await?;
+                        writer.deselect_entity().await?;
                     }
 
                     // Current Temperature
                     if msg.supports_current_temperature {
                         let name = format!("{}_current_temperature", msg.name);
-                        let mut components = Vec::with_capacity(4);
-                        add_entity_category(&mut components, msg.entity_category());
-                        add_icon(&mut components, &msg.icon);
+                        self.register_entity(writer, &name, msg.key, Climate)
+                            .await?;
+                        add_entity_category(writer, msg.entity_category()).await?;
+                        add_icon(writer, &msg.icon).await?;
                         add_f32_bounds(
-                            &mut components,
+                            writer,
                             msg.visual_min_temperature,
                             msg.visual_max_temperature,
                             Some(msg.visual_current_temperature_step),
-                        );
-                        components.push(Component::Sensor(igloo_interface::Sensor));
-                        entities.push(EntityData::new(name, msg.key, Climate, components));
+                        )
+                        .await?;
+                        writer.sensor().await?;
+                        writer.deselect_entity().await?;
                     }
 
                     // Two Point Temperature
@@ -761,410 +560,867 @@ impl Device {
                         // Lower
                         {
                             let name = format!("{}_target_lower_temperature", msg.name);
-                            let mut components = Vec::with_capacity(3);
-                            add_entity_category(&mut components, msg.entity_category());
-                            add_icon(&mut components, &msg.icon);
+                            self.register_entity(writer, &name, msg.key, Climate)
+                                .await?;
+                            add_entity_category(writer, msg.entity_category()).await?;
+                            add_icon(writer, &msg.icon).await?;
                             add_f32_bounds(
-                                &mut components,
+                                writer,
                                 msg.visual_min_temperature,
                                 msg.visual_max_temperature,
                                 Some(msg.visual_target_temperature_step),
-                            );
-                            entities.push(EntityData::new(name, msg.key, Climate, components));
+                            )
+                            .await?;
+                            writer.deselect_entity().await?;
                         }
 
                         // Upper
                         {
                             let name = format!("{}_target_upper_temperature", msg.name);
-                            let mut components = Vec::with_capacity(3);
-                            add_entity_category(&mut components, msg.entity_category());
-                            add_icon(&mut components, &msg.icon);
+                            self.register_entity(writer, &name, msg.key, Climate)
+                                .await?;
+                            add_entity_category(writer, msg.entity_category()).await?;
+                            add_icon(writer, &msg.icon).await?;
                             add_f32_bounds(
-                                &mut components,
+                                writer,
                                 msg.visual_min_temperature,
                                 msg.visual_max_temperature,
                                 Some(msg.visual_target_temperature_step),
-                            );
-                            entities.push(EntityData::new(name, msg.key, Climate, components));
+                            )
+                            .await?;
+                            writer.deselect_entity().await?;
                         }
                     }
                     // One Point Temperature Target
                     else {
                         let name = format!("{}_target_temperature", msg.name);
-                        let mut components = Vec::with_capacity(3);
-                        add_entity_category(&mut components, msg.entity_category());
-                        add_icon(&mut components, &msg.icon);
+                        self.register_entity(writer, &name, msg.key, Climate)
+                            .await?;
+                        add_entity_category(writer, msg.entity_category()).await?;
+                        add_icon(writer, &msg.icon).await?;
                         add_f32_bounds(
-                            &mut components,
+                            writer,
                             msg.visual_min_temperature,
                             msg.visual_max_temperature,
                             Some(msg.visual_target_temperature_step),
-                        );
-                        entities.push(EntityData::new(name, msg.key, Climate, components));
+                        )
+                        .await?;
+                        writer.deselect_entity().await?;
                     }
 
                     // Climate Mode
                     {
                         let name = format!("{}_mode", msg.name);
-                        let mut components = Vec::with_capacity(3);
-                        add_entity_category(&mut components, msg.entity_category());
-                        add_climate_modes(&mut components, msg.supported_modes());
-                        add_icon(&mut components, &msg.icon);
-                        entities.push(EntityData::new(name, msg.key, Climate, components));
+                        self.register_entity(writer, &name, msg.key, Climate)
+                            .await?;
+                        add_entity_category(writer, msg.entity_category()).await?;
+                        add_climate_modes(writer, msg.supported_modes()).await?;
+                        add_icon(writer, &msg.icon).await?;
+                        writer.deselect_entity().await?;
                     }
 
                     // Fan
                     {
                         let name = format!("{}_fan", msg.name);
-                        let mut components = Vec::with_capacity(4);
-                        add_entity_category(&mut components, msg.entity_category());
-                        add_fan_speeds(&mut components, msg.supported_fan_modes());
-                        add_fan_oscillations(&mut components, msg.supported_swing_modes());
-                        add_icon(&mut components, &msg.icon);
-                        entities.push(EntityData::new(name, msg.key, Climate, components));
+                        self.register_entity(writer, &name, msg.key, Climate)
+                            .await?;
+                        add_entity_category(writer, msg.entity_category()).await?;
+                        add_fan_speeds(writer, msg.supported_fan_modes()).await?;
+                        add_fan_oscillations(writer, msg.supported_swing_modes()).await?;
+                        add_icon(writer, &msg.icon).await?;
+                        writer.deselect_entity().await?;
                     }
-                    // preset
+
+                    // Preset
                     {
                         let name = format!("{}_preset", msg.name);
-                        let mut components = Vec::with_capacity(4);
-                        add_entity_category(&mut components, msg.entity_category());
-                        add_icon(&mut components, &msg.icon);
-                        components.push(Component::TextSelect(TextSelect));
-                        components.push(Component::TextList(TextList(
-                            msg.supported_presets()
-                                .map(|preset| format!("{preset:#?}"))
-                                .chain(msg.supported_custom_presets.iter().cloned())
-                                .collect(),
-                        )));
-                        entities.push(EntityData::new(name, msg.key, Climate, components));
+                        self.register_entity(writer, &name, msg.key, Climate)
+                            .await?;
+                        add_entity_category(writer, msg.entity_category()).await?;
+                        add_icon(writer, &msg.icon).await?;
+                        writer.text_select().await?;
+                        writer
+                            .text_list(
+                                msg.supported_presets()
+                                    .map(|preset| format!("{preset:#?}"))
+                                    .chain(msg.supported_custom_presets.iter().cloned())
+                                    .collect(),
+                            )
+                            .await?;
                     }
                 }
 
                 MessageType::ListEntitiesNumberResponse => {
                     let msg = api::ListEntitiesNumberResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(6);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_number_mode(&mut components, msg.mode());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    add_f32_bounds(
-                        &mut components,
-                        msg.min_value,
-                        msg.max_value,
-                        Some(msg.step),
-                    );
-                    add_unit(&mut components, msg.unit_of_measurement);
-                    entities.push(EntityData::new(msg.name, msg.key, Number, components));
+                    self.register_entity(writer, &msg.name, msg.key, Number)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_number_mode(writer, msg.mode()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    add_f32_bounds(writer, msg.min_value, msg.max_value, Some(msg.step)).await?;
+                    add_unit(writer, msg.unit_of_measurement).await?;
                 }
 
                 MessageType::ListEntitiesSelectResponse => {
                     let msg = api::ListEntitiesSelectResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(4);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    components.push(Component::TextSelect(TextSelect));
-                    components.push(Component::TextList(TextList(msg.options)));
-                    entities.push(EntityData::new(msg.name, msg.key, Select, components));
+                    self.register_entity(writer, &msg.name, msg.key, Select)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    writer.text_select().await?;
+                    writer.text_list(msg.options).await?;
                 }
 
                 MessageType::ListEntitiesSirenResponse => {
                     let msg = api::ListEntitiesSirenResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(5);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    components.push(Component::TextSelect(TextSelect));
-                    components.push(Component::TextList(TextList(msg.tones)));
-                    components.push(Component::Siren(igloo_interface::Siren));
-                    entities.push(EntityData::new(msg.name, msg.key, Siren, components));
+                    self.register_entity(writer, &msg.name, msg.key, Siren)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    writer.text_select().await?;
+                    writer.text_list(msg.tones).await?;
+                    writer.siren().await?;
                 }
 
                 MessageType::ListEntitiesLockResponse => {
                     let msg = api::ListEntitiesLockResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(3);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    components.push(Component::Text(igloo_interface::Text(msg.code_format))); // TODO is this right?
-                    entities.push(EntityData::new(msg.name, msg.key, Lock, components));
+                    self.register_entity(writer, &msg.name, msg.key, Lock)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    writer.text(msg.code_format).await?; // TODO is this right?
                 }
 
                 MessageType::ListEntitiesButtonResponse => {
                     let msg = api::ListEntitiesButtonResponse::decode(msg)?;
                     // TODO should this have a Button component or something?
                     // to produce an event?
-                    let mut components = Vec::with_capacity(3);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    entities.push(EntityData::new(msg.name, msg.key, Button, components));
+                    self.register_entity(writer, &msg.name, msg.key, Button)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
                 }
 
                 MessageType::ListEntitiesMediaPlayerResponse => {
                     let msg = api::ListEntitiesMediaPlayerResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
+                    self.register_entity(writer, &msg.name, msg.key, MediaPlayer)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                     // TODO .supported_formats
-                    entities.push(EntityData::new(msg.name, msg.key, MediaPlayer, components));
                 }
 
                 MessageType::ListEntitiesAlarmControlPanelResponse => {
                     let msg = api::ListEntitiesAlarmControlPanelResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
+                    self.register_entity(writer, &msg.name, msg.key, AlarmControlPanel)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                     // TODO .supported_features
-                    entities.push(EntityData::new(
-                        msg.name,
-                        msg.key,
-                        AlarmControlPanel,
-                        components,
-                    ));
                 }
 
                 MessageType::ListEntitiesTextResponse => {
                     let msg = api::ListEntitiesTextResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(6);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    components.push(Component::TextMode(msg.mode().as_igloo()));
-                    components.push(Component::TextMinLength(TextMinLength(msg.min_length)));
-                    components.push(Component::TextMaxLength(TextMaxLength(msg.max_length)));
-                    components.push(Component::TextPattern(TextPattern(msg.pattern)));
-                    entities.push(EntityData::new(msg.name, msg.key, Text, components));
+                    self.register_entity(writer, &msg.name, msg.key, Text)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    writer.text_mode(msg.mode().as_igloo()).await?;
+                    writer.text_min_length(msg.min_length).await?;
+                    writer.text_max_length(msg.max_length).await?;
+                    writer.text_pattern(msg.pattern).await?;
                 }
 
                 MessageType::ListEntitiesDateResponse => {
                     let msg = api::ListEntitiesDateResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    entities.push(EntityData::new(msg.name, msg.key, Date, components));
+                    self.register_entity(writer, &msg.name, msg.key, Date)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                 }
 
                 MessageType::ListEntitiesTimeResponse => {
                     let msg = api::ListEntitiesTimeResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    entities.push(EntityData::new(msg.name, msg.key, Time, components));
+                    self.register_entity(writer, &msg.name, msg.key, Time)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                 }
 
                 MessageType::ListEntitiesEventResponse => {
                     let msg = api::ListEntitiesEventResponse::decode(msg)?;
                     // TODO should this have an event component?
-                    let mut components = Vec::with_capacity(4);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    components.push(Component::TextList(TextList(msg.event_types)));
-                    entities.push(EntityData::new(msg.name, msg.key, Event, components));
+                    self.register_entity(writer, &msg.name, msg.key, Event)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    writer.text_list(msg.event_types).await?;
                 }
 
                 MessageType::ListEntitiesValveResponse => {
                     let msg = api::ListEntitiesValveResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(4);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    components.push(Component::Valve(igloo_interface::Valve));
+                    self.register_entity(writer, &msg.name, msg.key, Valve)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
+                    writer.valve().await?;
                     // TODO supports position/stop?
-                    entities.push(EntityData::new(msg.name, msg.key, Valve, components));
                 }
 
                 MessageType::ListEntitiesDateTimeResponse => {
                     let msg = api::ListEntitiesDateTimeResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(2);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    entities.push(EntityData::new(msg.name, msg.key, DateTime, components));
+                    self.register_entity(writer, &msg.name, msg.key, DateTime)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
                 }
 
                 MessageType::ListEntitiesUpdateResponse => {
                     let msg = api::ListEntitiesUpdateResponse::decode(msg)?;
-                    let mut components = Vec::with_capacity(3);
-                    add_entity_category(&mut components, msg.entity_category());
-                    add_icon(&mut components, &msg.icon);
-                    add_device_class(&mut components, msg.device_class);
-                    entities.push(EntityData::new(msg.name, msg.key, Update, components));
+                    self.register_entity(writer, &msg.name, msg.key, Update)
+                        .await?;
+                    add_entity_category(writer, msg.entity_category()).await?;
+                    add_icon(writer, &msg.icon).await?;
+                    add_device_class(writer, msg.device_class).await?;
                 }
 
-                _ => {}
+                _ => continue,
             }
+
+            writer.deselect_entity().await?;
         }
 
-        Ok(entities)
+        Ok(())
     }
 
-    pub async fn handle_cmd(&mut self, cmd: RequestUpdatesPayload) -> Result<(), DeviceError> {
-        let (typ, key) = self
-            .entity_ref_to_info
-            .get(&cmd.entity)
-            .ok_or(DeviceError::InvalidEntity(cmd.entity))?;
+    async fn register_entity(
+        &mut self,
+        writer: &mut FloeWriterDefault,
+        name: &str,
+        key: u32,
+        entity_type: EntityType,
+    ) -> Result<(), std::io::Error> {
+        writer
+            .register_entity(igloo_interface::RegisterEntity {
+                entity_name: name.to_string(),
+                entity_idx: self.next_entity_idx,
+            })
+            .await?;
 
-        match typ {
-            // TODO all
-            EntityType::BinarySensor => todo!(),
-            EntityType::Cover => todo!(),
-            EntityType::Fan => todo!(),
-            EntityType::Light => {
-                let mut res = LightCommandRequest {
-                    key: *key,
-                    ..Default::default()
-                };
+        self.entity_key_to_idx.insert(key, self.next_entity_idx);
+        self.entity_idx_to_info
+            .insert(self.next_entity_idx, (entity_type, key));
 
-                for value in cmd.values {
-                    match value {
-                        Component::Color(color) => {
-                            res.has_rgb = true;
-                            res.red = (color.r as f32) / 255.;
-                            res.green = (color.g as f32) / 255.;
-                            res.blue = (color.b as f32) / 255.;
-                        }
-                        Component::Dimmer(Dimmer(val)) => {
-                            res.has_color_brightness = true;
-                            res.color_brightness = val;
-                            res.has_brightness = true;
-                            res.brightness = val;
-                        }
-                        Component::Switch(Switch(state)) => {
-                            res.has_state = true;
-                            res.state = state;
-                        }
-                        Component::ColorTemperature(ColorTemperature(temp)) => {
-                            res.has_color_temperature = true;
-                            res.color_temperature = temp as f32;
-                        }
-                        Component::ColorMode(mode) => {
-                            res.has_color_mode = true;
-                            res.color_mode = match mode {
-                                ColorMode::RGB => 35,
-                                ColorMode::Temperature => 11,
-                                ColorMode::Custom(_) => panic!(), // FIXME
-                            };
-                        }
-                        _ => {} // TODO send error?
-                    }
-                }
+        writer
+            .select_entity(SelectEntity {
+                entity_idx: self.next_entity_idx,
+            })
+            .await?;
 
-                self.send_msg(MessageType::LightCommandRequest, &res)
+        self.next_entity_idx += 1;
+
+        Ok(())
+    }
+
+    async fn process_state_update(
+        &mut self,
+        msg_type: MessageType,
+        msg: BytesMut,
+    ) -> Result<(), DeviceError> {
+        match msg_type {
+            MessageType::DisconnectRequest
+            | MessageType::PingRequest
+            | MessageType::PingResponse
+            | MessageType::GetTimeRequest
+            | MessageType::SubscribeLogsResponse => {
+                unreachable!()
+            }
+
+            MessageType::BinarySensorStateResponse => {
+                self.apply_entity_update(api::BinarySensorStateResponse::decode(msg)?)
                     .await?;
             }
-            // TODO all
-            EntityType::Sensor => todo!(),
-            EntityType::Switch => todo!(),
-            EntityType::TextSensor => todo!(),
-            EntityType::Camera => todo!(),
-            EntityType::Climate => todo!(),
-            EntityType::Number => todo!(),
-            EntityType::Select => todo!(),
-            EntityType::Siren => todo!(),
-            EntityType::Lock => todo!(),
-            EntityType::Button => todo!(),
-            EntityType::MediaPlayer => todo!(),
-            EntityType::AlarmControlPanel => todo!(),
-            EntityType::Text => todo!(),
-            EntityType::Date => todo!(),
-            EntityType::Time => todo!(),
-            EntityType::Event => todo!(),
-            EntityType::Valve => todo!(),
-            EntityType::DateTime => todo!(),
-            EntityType::Update => todo!(),
+
+            MessageType::CoverStateResponse => {
+                self.apply_entity_update(api::CoverStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::FanStateResponse => {
+                self.apply_entity_update(api::FanStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::LightStateResponse => {
+                self.apply_entity_update(api::LightStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::SensorStateResponse => {
+                self.apply_entity_update(api::SensorStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::SwitchStateResponse => {
+                self.apply_entity_update(api::SwitchStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::TextSensorStateResponse => {
+                self.apply_entity_update(api::TextSensorStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::NumberStateResponse => {
+                self.apply_entity_update(api::NumberStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::SelectStateResponse => {
+                self.apply_entity_update(api::SelectStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::SirenStateResponse => {
+                self.apply_entity_update(api::SirenStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::LockStateResponse => {
+                self.apply_entity_update(api::LockStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::MediaPlayerStateResponse => {
+                self.apply_entity_update(api::MediaPlayerStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::AlarmControlPanelStateResponse => {
+                self.apply_entity_update(api::AlarmControlPanelStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::TextStateResponse => {
+                self.apply_entity_update(api::TextStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::DateStateResponse => {
+                self.apply_entity_update(api::DateStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::TimeStateResponse => {
+                self.apply_entity_update(api::TimeStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::ValveStateResponse => {
+                self.apply_entity_update(api::ValveStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::DateTimeStateResponse => {
+                self.apply_entity_update(api::DateTimeStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            MessageType::UpdateStateResponse => {
+                self.apply_entity_update(api::UpdateStateResponse::decode(msg)?)
+                    .await?;
+            }
+
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    async fn apply_entity_update<T: EntityUpdate>(&self, update: T) -> Result<(), DeviceError> {
+        if update.should_skip() {
+            return Ok(());
+        }
+
+        let Some(entity_idx) = self.entity_key_to_idx.get(&update.key()) else {
+            // TODO log err - update for unknown entity
+            return Ok(());
+        };
+
+        let shared_writer = self.shared_writer.as_ref().unwrap();
+        let mut writer = shared_writer.lock().await;
+
+        writer
+            .start_device_transaction(StartDeviceTransaction {
+                device_idx: self.device_idx.unwrap(),
+            })
+            .await?;
+
+        writer
+            .select_entity(SelectEntity {
+                entity_idx: *entity_idx,
+            })
+            .await?;
+
+        update.write_to(&mut writer).await?;
+
+        writer.end_transaction().await?;
+        writer.flush().await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+trait EntityUpdate {
+    fn key(&self) -> u32;
+    fn should_skip(&self) -> bool {
+        false
+    }
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error>;
+}
+
+#[async_trait]
+impl EntityUpdate for api::BinarySensorStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.bool(self.state).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::CoverStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.position(self.position).await?;
+        writer.tilt(self.tilt).await?;
+        writer
+            .cover_state(self.current_operation().as_igloo())
+            .await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::FanStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.fan_speed(self.speed().as_igloo()).await?;
+        writer.int(self.speed_level).await?;
+        writer.fan_direction(self.direction().as_igloo()).await?;
+        writer.text(self.preset_mode.clone()).await?;
+        writer
+            .fan_oscillation(match self.oscillating {
+                true => FanOscillation::On,
+                false => FanOscillation::Off,
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::LightStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer
+            .color(Color {
+                r: (self.red * 255.) as u8,
+                g: (self.green * 255.) as u8,
+                b: (self.blue * 255.) as u8,
+            })
+            .await?;
+        writer.dimmer(self.brightness).await?;
+        writer.switch(self.state).await?;
+        writer
+            .color_temperature(self.color_temperature as u16)
+            .await?;
+
+        // ON_OFF = 1 << 0;
+        // BRIGHTNESS = 1 << 1;
+        // WHITE = 1 << 2;
+        // COLOR_TEMPERATURE = 1 << 3;
+        // COLD_WARM_WHITE = 1 << 4;
+        // RGB = 1 << 5;
+
+        // TODO FIXME is this right? Lowk i don't get the other ones
+
+        if self.color_mode & (1 << 5) != 0 {
+            writer.color_mode(ColorMode::RGB).await?;
+        } else if self.color_mode & (1 << 3) != 0 {
+            writer.color_mode(ColorMode::Temperature).await?;
         }
 
         Ok(())
     }
 }
 
-impl EntityData {
-    fn new(name: String, key: u32, typ: EntityType, components: Vec<Component>) -> Self {
-        Self {
-            name,
-            key,
-            typ,
-            components,
-        }
+#[async_trait]
+impl EntityUpdate for api::SensorStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.float(self.state).await
     }
 }
 
-fn add_entity_category(values: &mut Vec<Component>, category: EntityCategory) {
+#[async_trait]
+impl EntityUpdate for api::SwitchStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.switch(self.state).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::TextSensorStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.text(self.state.clone()).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::NumberStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.float(self.state).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::SelectStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.text(self.state.clone()).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::SirenStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.bool(self.state).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::LockStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.lock_state(self.state().as_igloo()).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::MediaPlayerStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.volume(self.volume).await?;
+        writer.muted(self.muted).await?;
+        writer.media_state(self.state().as_igloo()).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::AlarmControlPanelStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.alarm_state(self.state().as_igloo()).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::TextStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.text(self.state.clone()).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::DateStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer
+            .date(Date {
+                year: self.year as u16, // FIXME make safe
+                month: self.month as u8,
+                day: self.day as u8,
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::TimeStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer
+            .time(Time {
+                hour: self.hour as u8,
+                minute: self.minute as u8,
+                second: self.second as u8,
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::ValveStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.position(self.position).await?;
+        writer
+            .valve_state(self.current_operation().as_igloo())
+            .await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::DateTimeStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        writer.date_time(self.epoch_seconds).await
+    }
+}
+
+#[async_trait]
+impl EntityUpdate for api::UpdateStateResponse {
+    fn key(&self) -> u32 {
+        self.key
+    }
+
+    fn should_skip(&self) -> bool {
+        self.missing_state
+    }
+
+    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+        // FIXME I think the best way to handle update is by making
+        // more entities for a clearer representation
+        // But maybe this is good for reducing less used entities IDK
+
+        let content = json!({
+            "title": self.title,
+            "current_version": self.current_version,
+            "latest_version": self.latest_version,
+            "release_summary": self.release_summary,
+            "release_url": self.release_url
+        });
+
+        writer.bool(self.in_progress).await?;
+        writer.text(content.to_string()).await?;
+
+        if self.has_progress {
+            writer.float(self.progress).await?;
+        }
+
+        Ok(())
+    }
+}
+
+// --------------------------------------------
+
+async fn add_entity_category(
+    writer: &mut FloeWriterDefault,
+    category: EntityCategory,
+) -> Result<(), std::io::Error> {
     match category {
         EntityCategory::None => {}
         EntityCategory::Config => {
-            values.push(Component::Config(igloo_interface::Config));
+            writer.config().await?;
         }
         EntityCategory::Diagnostic => {
-            values.push(Component::Diagnostic(Diagnostic));
+            writer.diagnostic().await?;
         }
     }
+    Ok(())
 }
 
-fn add_icon(values: &mut Vec<Component>, icon: &str) {
+async fn add_icon(writer: &mut FloeWriterDefault, icon: &str) -> Result<(), std::io::Error> {
     if !icon.is_empty() {
-        values.push(Component::Icon(Icon(icon.to_string())));
+        writer.icon(icon.to_string()).await?;
     }
+    Ok(())
 }
 
-fn add_unit(values: &mut Vec<Component>, unit: String) {
-    if !unit.is_empty() {
-        values.push(Component::Unit(unit.into()));
+async fn add_unit(writer: &mut FloeWriterDefault, unit_str: String) -> Result<(), std::io::Error> {
+    // TODO log error, something else? if parsing failed..?
+    if !unit_str.is_empty()
+        && let Ok(unit) = Unit::try_from(unit_str)
+    {
+        writer.unit(unit).await?;
     }
+    Ok(())
 }
 
-fn add_f32_bounds(values: &mut Vec<Component>, min: f32, max: f32, step: Option<f32>) {
-    values.push(Component::FloatMin(FloatMin(min)));
-    values.push(Component::FloatMax(FloatMax(max)));
+async fn add_f32_bounds(
+    writer: &mut FloeWriterDefault,
+    min: f32,
+    max: f32,
+    step: Option<f32>,
+) -> Result<(), std::io::Error> {
+    writer.float_min(min).await?;
+    writer.float_max(max).await?;
     if let Some(step) = step {
-        values.push(Component::FloatStep(FloatStep(step)));
+        writer.float_step(step).await?;
     }
+    Ok(())
 }
 
-fn add_device_class(values: &mut Vec<Component>, device_class: String) {
+async fn add_device_class(
+    writer: &mut FloeWriterDefault,
+    device_class: String,
+) -> Result<(), std::io::Error> {
     if !device_class.is_empty() {
-        values.push(Component::DeviceClass(DeviceClass(device_class)));
+        writer.device_class(device_class).await?;
     }
+    Ok(())
 }
 
-fn add_number_mode(values: &mut Vec<Component>, number_mode: api::NumberMode) {
-    values.push(Component::NumberMode(number_mode.as_igloo()));
+async fn add_number_mode(
+    writer: &mut FloeWriterDefault,
+    number_mode: api::NumberMode,
+) -> Result<(), std::io::Error> {
+    writer.number_mode(number_mode.as_igloo()).await?;
+    Ok(())
 }
 
-fn add_climate_modes(values: &mut Vec<Component>, modes: impl Iterator<Item = api::ClimateMode>) {
+async fn add_climate_modes(
+    writer: &mut FloeWriterDefault,
+    modes: impl Iterator<Item = api::ClimateMode>,
+) -> Result<(), std::io::Error> {
     let modes = modes.map(|m| m.as_igloo()).collect();
-    values.push(Component::SupportedClimateModes(SupportedClimateModes(
-        modes,
-    )));
+    writer.supported_climate_modes(modes).await?;
+    Ok(())
 }
 
-fn add_fan_speeds(values: &mut Vec<Component>, modes: impl Iterator<Item = api::ClimateFanMode>) {
+async fn add_fan_speeds(
+    writer: &mut FloeWriterDefault,
+    modes: impl Iterator<Item = api::ClimateFanMode>,
+) -> Result<(), std::io::Error> {
     let speeds = modes.map(|m| m.as_igloo()).collect();
-    values.push(Component::SupportedFanSpeeds(SupportedFanSpeeds(speeds)));
+    writer.supported_fan_speeds(speeds).await?;
+    Ok(())
 }
 
-fn add_fan_oscillations(
-    values: &mut Vec<Component>,
+async fn add_fan_oscillations(
+    writer: &mut FloeWriterDefault,
     modes: impl Iterator<Item = api::ClimateSwingMode>,
-) {
+) -> Result<(), std::io::Error> {
     let modes = modes.map(|m| m.as_igloo()).collect();
-    values.push(Component::SupportedFanOscillations(
-        SupportedFanOscillations(modes),
-    ));
+    writer.supported_fan_oscillations(modes).await?;
+    Ok(())
 }
 
-fn add_sensor_state_class(values: &mut Vec<Component>, state_class: api::SensorStateClass) {
+async fn add_sensor_state_class(
+    writer: &mut FloeWriterDefault,
+    state_class: api::SensorStateClass,
+) -> Result<(), std::io::Error> {
     match state_class {
         api::SensorStateClass::StateClassNone => {}
         api::SensorStateClass::StateClassMeasurement => {
-            values.push(Component::SensorStateClass(SensorStateClass::Measurement));
+            writer
+                .sensor_state_class(SensorStateClass::Measurement)
+                .await?;
         }
         api::SensorStateClass::StateClassTotalIncreasing => {
-            values.push(Component::SensorStateClass(
-                SensorStateClass::TotalIncreasing,
-            ));
+            writer
+                .sensor_state_class(SensorStateClass::TotalIncreasing)
+                .await?;
         }
         api::SensorStateClass::StateClassTotal => {
-            values.push(Component::SensorStateClass(SensorStateClass::Total));
+            writer.sensor_state_class(SensorStateClass::Total).await?;
         }
     }
+    Ok(())
 }
 
 impl api::NumberMode {
@@ -1308,6 +1564,7 @@ impl api::ValveOperation {
     }
 }
 
+#[derive(Clone)]
 pub enum EntityType {
     BinarySensor,
     Cover,

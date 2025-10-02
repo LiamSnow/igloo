@@ -55,10 +55,19 @@ fn validate_component_ids(comps: &[Component]) {
 
 /// makes sure IDs are in reserved zone (0-31)
 fn validate_command_ids(cmds: &[Command]) {
+    let mut ids = HashSet::new();
+
     for cmd in cmds {
         if cmd.id > 31 {
             panic!(
                 "Command {} has invalid ID {}. Must be 0-31",
+                cmd.name, cmd.id
+            );
+        }
+
+        if !ids.insert(cmd.id) {
+            panic!(
+                "Command {} tried to use ID {} but it's already taken! Please take extreme caution to make sure IDs are consistent with old versions",
                 cmd.name, cmd.id
             );
         }

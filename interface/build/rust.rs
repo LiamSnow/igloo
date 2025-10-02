@@ -8,6 +8,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
     let max_id = comps.iter().map(|comp| comp.id).max().unwrap();
     let cmd_ids = gen_cmd_ids(cmds, comps);
     let comp_type = gen_comp_type(comps);
+    let helper_funcs = gen_helper_funcs(cmds, comps);
     let comps = gen_comps(comps);
     let cmds = gen_cmd_payloads(cmds);
 
@@ -15,6 +16,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use borsh::{BorshSerialize, BorshDeserialize};
+        use tokio::io::AsyncWriteExt;
 
         pub const MAX_SUPPORTED_COMPONENT: u16 = #max_id;
 
@@ -28,6 +30,8 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         #comps
 
         #cmds
+
+        #helper_funcs
     };
 
     // reconstruct, format, and save
@@ -38,6 +42,60 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("out.rs");
     fs::write(&out_path, formatted).expect("Failed to write out.rs");
+}
+
+fn gen_helper_funcs(cmds: &[Command], comps: &[Component]) -> TokenStream {
+    let cmds: Vec<_> = cmds
+        .iter()
+        .map(|cmd| {
+            gen_helper_func(
+                &cmd.name,
+                &upper_camel_to_screaming_snake(&cmd.name).to_lowercase(),
+                &upper_camel_to_screaming_snake(&cmd.name),
+                !cmd.fields.is_empty(),
+            )
+        })
+        .collect();
+    let comps: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            gen_helper_func(
+                &comp.name,
+                &upper_camel_to_screaming_snake(&comp.name).to_lowercase(),
+                &comp_name_to_cmd_name(&comp.name),
+                !comp.is_marker(),
+            )
+        })
+        .collect();
+    quote! {
+        impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
+            #(#cmds)*
+            #(#comps)*
+        }
+    }
+}
+
+fn gen_helper_func(name: &str, func_name: &str, cmd_name: &str, has_payload: bool) -> TokenStream {
+    let func_name = ident(func_name);
+    let cmd_name = ident(cmd_name);
+    let name = ident(name);
+
+    if has_payload {
+        quote! {
+            pub async fn #func_name(
+                &mut self,
+                payload: #name,
+            ) -> Result<(), std::io::Error> {
+                self.write_with_payload(#cmd_name, payload).await
+            }
+        }
+    } else {
+        quote! {
+            pub async fn #func_name(&mut self) -> Result<(), std::io::Error> {
+                self.write_no_payload(#cmd_name).await
+            }
+        }
+    }
 }
 
 fn gen_comp_type(comps: &[Component]) -> TokenStream {
@@ -136,7 +194,7 @@ impl Command {
         } else {
             self.name.clone()
         };
-        let intro_doc = format!("Command ID for sending a {}", name_part);
+        let intro_doc = format!("Command ID for writing a {}", name_part);
         let desc = &self.desc;
 
         quote! {
@@ -149,7 +207,7 @@ impl Command {
 
 impl Component {
     fn gen_id_const(&self) -> TokenStream {
-        let scream = ident(&upper_camel_to_screaming_snake(&self.name));
+        let cmd_name = ident(&comp_name_to_cmd_name(&self.name));
         let id = self.id + 64;
 
         let name_part = if !self.is_marker() {
@@ -157,13 +215,13 @@ impl Component {
         } else {
             self.name.clone()
         };
-        let intro_doc = format!("Command ID for sending a {}", name_part);
+        let intro_doc = format!("Command ID for writing a {}", name_part);
         let component_doc = self.gen_doc();
 
         quote! {
             #[doc = #intro_doc]
             #component_doc
-            pub const #scream: u16 = #id;
+            pub const #cmd_name: u16 = #id;
         }
     }
 }
@@ -191,7 +249,7 @@ impl Component {
         }
     }
 
-    fn is_marker(&self) -> bool {
+    pub fn is_marker(&self) -> bool {
         matches!(self.kind, ComponentKind::Marker)
     }
 
@@ -362,6 +420,11 @@ impl Component {
             quote! { #[doc = #combined_doc] }
         }
     }
+}
+
+/// ex. maps `Int` -> `SET_INT`
+fn comp_name_to_cmd_name(comp_name: &str) -> String {
+    format!("WRITE_{}", upper_camel_to_screaming_snake(comp_name))
 }
 
 fn upper_camel_to_screaming_snake(s: &str) -> String {

@@ -1,184 +1,248 @@
-use igloo_interface::{FloeCommand, IglooCommand, InitPayload};
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::process::Stdio;
-use tokio::fs;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use std::{path::Path, process::Stdio};
 
-use crate::glacier::GlacierError;
-use crate::glacier::tree::DeviceTreeUpdate;
+use futures_util::StreamExt;
+use igloo_interface::{
+    END_TRANSACTION, FloeCodec, FloeReaderDefault, FloeWriter, FloeWriterDefault,
+    MAX_SUPPORTED_COMPONENT, REGISTER_ENTITY, RegisterEntity, START_DEVICE_TRANSACTION,
+    START_REGISTRATION_TRANSACTION, StartDeviceTransaction, StartRegistrationTransaction,
+    WHATS_UP_IGLOO, WhatsUpIgloo,
+};
+use rustc_hash::FxHashSet;
+use smallvec::SmallVec;
+use tokio::{
+    fs,
+    io::BufWriter,
+    net::UnixListener,
+    process::{Child, Command},
+    sync::mpsc,
+};
+use tokio_util::codec::FramedRead;
 
-pub struct FloeHandle {
-    pub name: String,
-    pub process: Child,
-    pub stdin: ChildStdin,
-    pub reader_task: JoinHandle<()>,
+use crate::glacier::{DeviceInfo, GlobalDeviceID, entity::Entity};
+
+struct FloeManager {
+    name: String,
+    reg_dev_tx: mpsc::Sender<(GlobalDeviceID, DeviceInfo)>,
+    writer: FloeWriterDefault,
+    reader: FloeReaderDefault,
+    state: LocalState,
 }
 
-// TODO remove
-#[derive(Deserialize, Serialize, Clone)]
-pub struct ConnectionParams {
-    pub ip: String,
-    pub noise_psk: Option<String>,
-    pub password: Option<String>,
+#[derive(Debug, Default)]
+struct LocalState {
+    taken_ids: FxHashSet<String>,
+    devices: Vec<Device>,
 }
 
-impl FloeHandle {
-    pub async fn new(
-        name: &str,
-        update_tx: mpsc::Sender<DeviceTreeUpdate>,
-    ) -> Result<Self, GlacierError> {
-        println!("Spawning Floe: {name}");
+#[derive(Debug, Default)]
+struct Device {
+    entities: SmallVec<[Entity; 16]>,
+    // TODO presence: BitSet,
+}
 
-        // FIXME should be reading binary name from `Floe.toml`
+// TODO remove unwraps and panics
+pub async fn spawn(
+    name: String,
+    reg_dev_tx: mpsc::Sender<(GlobalDeviceID, DeviceInfo)>,
+) -> Result<(), std::io::Error> {
+    println!("Spawning Floe '{name}'");
 
-        let path = format!("./floes/{name}/floe");
+    let cwd = format!("./floes/{name}");
 
-        let mut child = Command::new(Path::new(&path))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| GlacierError::SpawnError(format!("{path}: {e}")))?;
+    let data_path = format!("{cwd}/data");
+    fs::create_dir_all(&data_path).await?;
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| GlacierError::SpawnError("Failed to get stdin".into()))?;
+    let socket_path = format!("{cwd}/floe.sock");
+    let _ = fs::remove_file(&socket_path).await;
+    let listener = UnixListener::bind(&socket_path)?;
 
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| GlacierError::SpawnError("Failed to get stdout".into()))?;
+    let mut process = Command::new(Path::new("./floe"))
+        .current_dir(cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    println!("Spawned");
 
-        let reader_task = tokio::spawn(reader_task(name.to_string(), stdout, update_tx));
+    proxy_stdio(&mut process, name.to_string());
 
-        let mut handle = FloeHandle {
-            name: name.to_string(),
-            process: child,
-            stdin,
-            reader_task,
+    let (stream, _) = listener.accept().await?;
+    let (reader, writer) = stream.into_split();
+    let writer = FloeWriter(BufWriter::new(writer));
+    let reader = FramedRead::new(reader, FloeCodec::new());
+
+    tokio::spawn(async move {
+        let man = FloeManager {
+            name,
+            reg_dev_tx,
+            writer,
+            reader,
+            state: LocalState::default(),
+        };
+        man.run().await;
+    });
+
+    Ok(())
+}
+
+impl FloeManager {
+    async fn run(mut self) {
+        let max_supported_component = match self.reader.next().await {
+            Some(Ok((WHATS_UP_IGLOO, payload))) => {
+                let res: WhatsUpIgloo = borsh::from_slice(&payload).unwrap();
+
+                if res.max_supported_component > MAX_SUPPORTED_COMPONENT {
+                    panic!(
+                        "Floe '{}' has a newer protocol than Igloo. Please upgrade Igloo",
+                        self.name
+                    )
+                }
+
+                println!("Floe '{}' initialized!!!", self.name);
+                res.max_supported_component
+            }
+            Some(Ok((cmd_id, _))) => {
+                panic!("Floe '{}' didn't init. Sent {cmd_id} instead.", self.name)
+            }
+            Some(Err(e)) => {
+                panic!("Failed to read Floe '{}'s init message: {e}", self.name)
+            }
+            None => {
+                panic!("Floe '{}' immediately closed the socket!", self.name)
+            }
         };
 
-        let config = fs::read_to_string(format!("./floes/{name}/config.txt"))
-            .await
-            .ok();
-        let init = IglooCommand::Init(InitPayload { config });
-        handle.send_command(&init).await?;
-        println!("Sent init command to Floe {name}");
-
-        // TODO remove
-        if name == "ESPHome" {
-            handle
-                .send_command(&IglooCommand::Custom(
-                    "add_device".to_string(),
-                    serde_json::to_string(&ConnectionParams {
-                        ip: "192.168.1.18:6053".to_string(),
-                        noise_psk: Some("GwsvILrvcN/BHAG9m7Hgzcqzc4Dx9neT/1RfEDmsecw=".to_string()),
-                        password: None,
-                    })
-                    .unwrap(),
-                ))
-                .await?;
-        }
-
-        Ok(handle)
-    }
-
-    pub async fn send_command(&mut self, command: &IglooCommand) -> Result<(), GlacierError> {
-        let json = serde_json::to_string(command)?;
-        self.stdin.write_all(json.as_bytes()).await?;
-        self.stdin.write_all(b"\n").await?;
-        self.stdin.flush().await?;
-        Ok(())
-    }
-
-    pub async fn shutdown(mut self) {
-        // soft shutdown
-        drop(self.stdin);
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), self.process.wait()).await;
-
-        // force kill
-        let _ = self.process.kill().await;
-
-        self.reader_task.abort();
-    }
-}
-
-/// reads commands from Floe and forwards to `tx`
-async fn reader_task(floe_name: String, stdout: ChildStdout, tx: mpsc::Sender<DeviceTreeUpdate>) {
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-
-    loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => {
-                // EOF
-                println!("Floe {floe_name} disconnected");
-                break;
-            }
-            Ok(_) => match serde_json::from_str::<FloeCommand>(&line) {
-                Ok(cmd) => {
-                    if !handle_cmd(cmd, &floe_name, &tx).await {
-                        break;
-                    }
-                }
+        while let Some(res) = self.reader.next().await {
+            let (cmd_id, payload) = match res {
+                Ok(f) => f,
                 Err(e) => {
-                    eprintln!(
-                        "Failed to parse FloeCommand from {floe_name}: {e} - Line: {}",
-                        line.trim()
-                    );
+                    eprintln!("Error reading frame from Floe '{}': {e}", self.name);
+                    continue;
                 }
-            },
-            Err(e) => {
-                eprintln!("Error reading from Floe {floe_name}: {e}");
-                break;
+            };
+
+            match cmd_id {
+                START_REGISTRATION_TRANSACTION => {
+                    let params: StartRegistrationTransaction = borsh::from_slice(&payload).unwrap();
+                    self.handle_registration_transaction(params).await;
+                }
+
+                START_DEVICE_TRANSACTION => {
+                    let params: StartDeviceTransaction = borsh::from_slice(&payload).unwrap();
+                    self.handle_device_transaction(params).await;
+                }
+
+                cmd_id => {
+                    eprintln!("Unexpected command {cmd_id} from Floe '{}'", self.name);
+                }
+            }
+        }
+    }
+
+    async fn handle_registration_transaction(&mut self, params: StartRegistrationTransaction) {
+        if params.device_idx as usize != self.state.devices.len() {
+            panic!(
+                "Floe '{}' malformed. Tried to register new device under idx={} but should have been {}",
+                self.name,
+                params.device_idx,
+                self.state.devices.len()
+            );
+        }
+
+        let mut device = Device::default();
+        let mut entity_names = Vec::new();
+
+        while let Some(res) = self.reader.next().await {
+            let (cmd_id, payload) = match res {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Error reading frame from Floe '{}': {e}", self.name);
+                    continue;
+                }
+            };
+
+            match cmd_id {
+                REGISTER_ENTITY => {
+                    let params: RegisterEntity = borsh::from_slice(&payload).unwrap();
+
+                    if params.entity_idx as usize != device.entities.len() {
+                        panic!(
+                            "Floe '{}' malformed when registering device idx={}. Tried to register entity under idx={} but should have been {}",
+                            self.name,
+                            self.state.devices.len(),
+                            params.entity_idx,
+                            device.entities.len(),
+                        );
+                    }
+
+                    entity_names.push(params.entity_name);
+                    device.entities.push(Entity::default());
+                }
+
+                END_TRANSACTION => {
+                    break;
+                }
+
+                _ => {}
+            }
+        }
+
+        self.state.devices.push(device);
+
+        let global_id = (self.name.clone(), params.device_id);
+        let info = DeviceInfo {
+            name: params.initial_name,
+            entity_names,
+        };
+
+        self.reg_dev_tx.send((global_id, info)).await.unwrap();
+    }
+
+    async fn handle_device_transaction(&mut self, params: StartDeviceTransaction) {
+        while let Some(res) = self.reader.next().await {
+            let (cmd_id, payload) = match res {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Error reading frame from Floe '{}': {e}", self.name);
+                    continue;
+                }
+            };
+
+            match cmd_id {
+                END_TRANSACTION => {
+                    return;
+                }
+
+                _ => {}
             }
         }
     }
 }
 
-async fn handle_cmd(
-    cmd: FloeCommand,
-    floe_name: &str,
-    tx: &mpsc::Sender<DeviceTreeUpdate>,
-) -> bool {
-    let update = match cmd {
-        FloeCommand::AddDevice(id, name, entities) => DeviceTreeUpdate::AddDevice {
-            floe_name: floe_name.to_string(),
-            id,
-            name,
-            entities,
-        },
-        FloeCommand::ComponentUpdates(updates) => DeviceTreeUpdate::ComponentUpdates {
-            floe_name: floe_name.to_string(),
-            updates,
-        },
-        FloeCommand::Log(message) => {
-            println!("[{floe_name}]: {message}");
-            return true;
-        }
-        FloeCommand::CustomError(error) => {
-            eprintln!("[{floe_name}]: ERROR {error}");
-            return true;
-        }
-        FloeCommand::SaveConfig(contents) => {
-            // TODO return result instead of unwrap
-            fs::write(format!("./floes/{floe_name}/config.txt"), contents)
-                .await
-                .unwrap();
-            return true;
-        }
-    };
+/// Proxies stdout and stderr to this process prefixed with Floe's name
+fn proxy_stdio(child: &mut Child, name: String) {
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
 
-    if let Err(e) = tx.send(update).await {
-        eprintln!("[{floe_name}] Failed to send update: {e}");
-        return false;
+    if let Some(stdout) = stdout {
+        let name_stdout = name.clone();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                println!("[{name_stdout}] {line}");
+            }
+        });
     }
 
-    true
+    if let Some(stderr) = stderr {
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("[{name}] {line}");
+            }
+        });
+    }
 }

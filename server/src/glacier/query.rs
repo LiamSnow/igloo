@@ -88,10 +88,15 @@ pub enum Area {
 
 #[allow(dead_code)]
 pub enum QueryFilter {
+    /// exclude entities that don't also have this component
     With(ComponentType),
+    /// exclude entities that have this component
     Without(ComponentType),
+    /// both queries must be true
     And(Box<(QueryFilter, QueryFilter)>),
+    /// either query must be true
     Or(Box<(QueryFilter, QueryFilter)>),
+    ///
     Condition(ComponentType, Operator, Component),
     NestedCondition(Vec<PathSegment>, Operator, Component),
 }
@@ -163,9 +168,9 @@ mod tests {
             limit: None,
         };
 
-        // set all Dimmer components to 155 that exist on entities that also have a Light component
+        // set all Dimmer components to 50% that exist on entities that also have a Light component
         let expected = Query {
-            kind: Set(vec![Component::Dimmer(Dimmer(155))]),
+            kind: Set(vec![Component::Dimmer(Dimmer(0.5))]),
             filter: With(ComponentType::Light),
             area: Area::All,
             limit: None,
