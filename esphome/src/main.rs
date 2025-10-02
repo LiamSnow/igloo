@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 pub mod connection;
 pub mod device;
+pub mod entity;
 pub mod api {
     include!(concat!(env!("OUT_DIR"), "/_.rs"));
 }

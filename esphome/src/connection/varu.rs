@@ -1,57 +1,85 @@
+use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use tokio::{
     io::{self, AsyncReadExt},
     net::TcpStream,
 };
 
+#[async_trait]
 pub trait Varu32: AsyncReadExt {
     async fn read_varu32(&mut self) -> io::Result<u32>;
 }
 
+#[async_trait]
 impl Varu32 for TcpStream {
+    /// [Docs](https://sqlite.org/src4/doc/trunk/www/varint.wiki)
     async fn read_varu32(&mut self) -> io::Result<u32> {
-        let mut result: u32 = 0;
-        let mut shift: u32 = 0;
+        let first_byte = self.read_u8().await?;
 
-        loop {
-            let mut buf = [0u8; 1];
+        if first_byte <= 240 {
+            Ok(first_byte as u32)
+        } else if first_byte <= 248 {
+            let low = self.read_u8().await?;
+            let high = (first_byte - 241) as u32;
+            Ok(240 + (high << 8) + low as u32)
+        } else if first_byte == 249 {
+            let mut buf = [0u8; 2];
             self.read_exact(&mut buf).await?;
-            let byte = buf[0];
-
-            result |= ((byte & 0x7f) as u32) << shift;
-            shift += 7;
-
-            if byte & 0x80 == 0 {
-                break;
-            }
-
-            if shift >= 32 || (shift == 28 && byte > 0x0F) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Varu32 too long",
-                ));
-            }
+            let high = buf[0] as u32;
+            let low = buf[1] as u32;
+            Ok(2288 + (high << 8) + low)
+        } else if first_byte == 250 {
+            let mut buf = [0u8; 3];
+            self.read_exact(&mut buf).await?;
+            let b1 = buf[0] as u32;
+            let b2 = buf[1] as u32;
+            let b3 = buf[2] as u32;
+            Ok(67824 + (b1 << 16) + (b2 << 8) + b3)
+        } else if first_byte == 251 {
+            let mut buf = [0u8; 4];
+            self.read_exact(&mut buf).await?;
+            let b1 = buf[0] as u32;
+            let b2 = buf[1] as u32;
+            let b3 = buf[2] as u32;
+            let b4 = buf[3] as u32;
+            Ok(16777216 + (b1 << 24) + (b2 << 16) + (b3 << 8) + b4)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid varint first byte",
+            ))
         }
-
-        Ok(result)
     }
 }
 
-pub fn varu32_to_bytes(mut value: u32) -> BytesMut {
+/// [Docs](https://sqlite.org/src4/doc/trunk/www/varint.wiki)
+pub fn varu32_to_bytes(value: u32) -> BytesMut {
     let mut bytes = BytesMut::new();
 
-    if value <= 0x7F {
+    if value <= 240 {
         bytes.put_u8(value as u8);
-        return bytes;
-    }
-
-    while value != 0 {
-        let temp = (value & 0x7F) as u8;
-        value >>= 7;
-        match value == 0 {
-            false => bytes.put_u8(temp | 0x80),
-            true => bytes.put_u8(temp),
-        }
+    } else if value <= 2287 {
+        let offset = value - 240;
+        bytes.put_u8(241 + (offset >> 8) as u8);
+        bytes.put_u8((offset & 0xFF) as u8);
+    } else if value <= 67823 {
+        let offset = value - 2288;
+        bytes.put_u8(249);
+        bytes.put_u8((offset >> 8) as u8);
+        bytes.put_u8((offset & 0xFF) as u8);
+    } else if value <= 16777215 {
+        let offset = value - 67824;
+        bytes.put_u8(250);
+        bytes.put_u8((offset >> 16) as u8);
+        bytes.put_u8((offset >> 8) as u8);
+        bytes.put_u8((offset & 0xFF) as u8);
+    } else {
+        let offset = value - 16777216;
+        bytes.put_u8(251);
+        bytes.put_u8((offset >> 24) as u8);
+        bytes.put_u8((offset >> 16) as u8);
+        bytes.put_u8((offset >> 8) as u8);
+        bytes.put_u8((offset & 0xFF) as u8);
     }
 
     bytes

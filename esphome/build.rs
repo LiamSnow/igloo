@@ -1,109 +1,122 @@
 extern crate prost_build;
 
+use proc_macro2::{Span, TokenStream};
+use quote::quote;
 use std::env;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use syn::Ident;
 
 fn main() {
-    prost_build::compile_protos(&["src/api.proto"], &["src/"]).unwrap();
-
-    // generate MessageType enum in model.rs
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
-    let output_path = PathBuf::from(out_dir).join("model.rs");
-
-    generate_message_type_enum("src/api.proto", &output_path.to_string_lossy())
-        .expect("Failed to generate model.rs");
-}
-
-fn generate_message_type_enum(proto_path: &str, output_path: &str) -> std::io::Result<()> {
-    let messages = parse_proto_messages(proto_path)?;
-    write_enum_file(output_path, messages)?;
-
     println!("cargo:rerun-if-changed=src/api.proto");
 
-    Ok(())
+    prost_build::compile_protos(&["src/api.proto"], &["src/"]).unwrap();
+
+    let msgs = parse_proto_messages("src/api.proto");
+    let entities = extract_entity_types(&msgs);
+    let states = extract_state_responses(&msgs);
+
+    let msg_enum = gen_message_type_enum(&msgs);
+    let entity_enum = gen_entity_type_enum(&entities);
+    let process_fn = gen_process_state_update(&states);
+    let register_fn = gen_register_entities(&entities);
+
+    let code = quote! {
+        // THIS IS GENERATED CODE - DO NOT MODIFY
+
+        use strum_macros::{Display, FromRepr};
+        use crate::api;
+        use prost::Message;
+        use crate::entity::{EntityRegister};
+        use crate::device::{Device, DeviceError};
+        use bytes::BytesMut;
+        use igloo_interface::FloeWriterDefault;
+        use crate::connection::base::Connectionable;
+
+        #msg_enum
+
+        #entity_enum
+
+        #process_fn
+
+        #register_fn
+    };
+
+    let syntax = syn::parse2::<syn::File>(code).unwrap();
+    let formatted = prettyplease::unparse(&syntax);
+
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let out_path = PathBuf::from(out_dir).join("model.rs");
+    fs::write(&out_path, formatted).unwrap();
 }
 
-fn parse_proto_messages(proto_path: &str) -> std::io::Result<Vec<(String, u16)>> {
-    let file = File::open(proto_path)?;
+fn parse_proto_messages(path: &str) -> Vec<(String, u16)> {
+    let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
 
-    let mut current_message: Option<String> = None;
-    let mut brace_depth = 0;
-    let mut messages: Vec<(String, u16)> = Vec::new();
+    let mut current: Option<String> = None;
+    let mut depth = 0;
+    let mut msgs = Vec::new();
 
     for line in reader.lines() {
-        let line = line?;
+        let line = line.unwrap();
+        let trimmed = line.trim();
 
-        if should_skip_line(&line) {
+        if trimmed.is_empty() || trimmed.starts_with("//") {
             continue;
         }
 
         if let Some(name) = extract_message_name(&line) {
-            current_message = Some(name);
-            brace_depth = 1;
+            current = Some(name);
+            depth = 1;
             continue;
         }
 
-        // not inside message -> skip
-        let message_name = match current_message.as_ref() {
-            Some(name) => name,
+        let msg_name = match current.as_ref() {
+            Some(n) => n,
             None => continue,
         };
 
-        update_brace_depth(&line, &mut brace_depth);
-        if brace_depth == 0 {
-            current_message = None;
+        update_depth(&line, &mut depth);
+        if depth == 0 {
+            current = None;
             continue;
         }
 
         if let Some(id) = extract_option_id(&line) {
-            messages.push((message_name.clone(), id));
+            msgs.push((msg_name.clone(), id));
         }
     }
 
-    messages.sort_by_key(|&(_, id)| id);
-    Ok(messages)
+    msgs.sort_by_key(|&(_, id)| id);
+    msgs
 }
 
-fn should_skip_line(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed.is_empty() || trimmed.starts_with("//")
-}
-
-/// ex. `message HelloRequest {`
 fn extract_message_name(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-
-    if !trimmed.starts_with("message ") || !trimmed.contains('{') {
+    let t = line.trim();
+    if !t.starts_with("message ") || !t.contains('{') {
         return None;
     }
-
-    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    let parts: Vec<&str> = t.split_whitespace().collect();
     if parts.len() < 2 {
         return None;
     }
-
     Some(parts[1].trim_end_matches('{').to_string())
 }
 
-/// ex. `option (id) = 1;`
 fn extract_option_id(line: &str) -> Option<u16> {
-    let trimmed = line.trim();
-
-    if !trimmed.starts_with("option (id)") && !trimmed.starts_with("option(id)") {
+    let t = line.trim();
+    if !t.starts_with("option (id)") && !t.starts_with("option(id)") {
         return None;
     }
-
-    let eq_pos = trimmed.find('=')?;
-    let after_eq = &trimmed[eq_pos + 1..];
-
-    let id_str = after_eq.trim().trim_end_matches(';').trim();
+    let eq = t.find('=')?;
+    let after = &t[eq + 1..];
+    let id_str = after.trim().trim_end_matches(';').trim();
     id_str.parse::<u16>().ok()
 }
 
-fn update_brace_depth(line: &str, depth: &mut i32) {
+fn update_depth(line: &str, depth: &mut i32) {
     for ch in line.chars() {
         match ch {
             '{' => *depth += 1,
@@ -113,23 +126,151 @@ fn update_brace_depth(line: &str, depth: &mut i32) {
     }
 }
 
-fn write_enum_file(output_path: &str, messages: Vec<(String, u16)>) -> std::io::Result<()> {
-    let mut content = String::new();
+fn extract_entity_types(msgs: &[(String, u16)]) -> Vec<String> {
+    msgs.iter()
+        .filter_map(|(name, _)| {
+            if !name.starts_with("ListEntities")
+                || !name.ends_with("Response")
+                || name == "ListEntitiesDoneResponse"
+                || name == "ListEntitiesServicesResponse"
+            {
+                return None;
+            }
+            let start = "ListEntities".len();
+            let end = name.len() - "Response".len();
+            if start >= end {
+                return None;
+            }
+            Some(name[start..end].to_string())
+        })
+        .collect()
+}
 
-    content.push_str("use strum_macros::{Display, FromRepr};\n");
-    content.push('\n');
-    content.push_str("#[derive(FromRepr, Display, Debug, PartialEq, Clone)]\n");
-    content.push_str("#[repr(u16)]\n");
-    content.push_str("pub enum MessageType {\n");
+fn extract_state_responses(msgs: &[(String, u16)]) -> Vec<String> {
+    msgs.iter()
+        .filter_map(|(name, _)| {
+            if name.ends_with("StateResponse") && !name.contains("HomeAssistant") {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
 
-    for (name, id) in &messages {
-        content.push_str(&format!("    {} = {},\n", name, id));
+fn gen_message_type_enum(msgs: &[(String, u16)]) -> TokenStream {
+    let variants = msgs.iter().map(|(name, id)| {
+        let ident = Ident::new(name, Span::call_site());
+        quote! { #ident = #id }
+    });
+
+    quote! {
+        #[derive(FromRepr, Display, Debug, PartialEq, Clone)]
+        #[repr(u16)]
+        pub enum MessageType {
+            #(#variants,)*
+        }
     }
+}
 
-    content.push_str("}\n");
+fn gen_entity_type_enum(entities: &[String]) -> TokenStream {
+    let variants = entities.iter().map(|name| {
+        let ident = Ident::new(name, Span::call_site());
+        quote! { #ident }
+    });
 
-    let mut output = File::create(output_path)?;
-    output.write_all(content.as_bytes())?;
+    quote! {
+        #[derive(Clone)]
+        pub enum EntityType {
+            #(#variants,)*
+        }
+    }
+}
 
-    Ok(())
+fn gen_process_state_update(states: &[String]) -> TokenStream {
+    let arms = states.iter().map(|name| {
+        let msg_type = Ident::new(name, Span::call_site());
+        let api_type = Ident::new(name, Span::call_site());
+        quote! {
+            MessageType::#msg_type => {
+                self.apply_entity_update(api::#api_type::decode(msg)?).await?;
+            }
+        }
+    });
+
+    quote! {
+        impl Device {
+            pub async fn process_state_update(
+                &mut self,
+                msg_type: MessageType,
+                msg: BytesMut,
+            ) -> Result<(), DeviceError> {
+                match msg_type {
+                    MessageType::DisconnectRequest
+                    | MessageType::PingRequest
+                    | MessageType::PingResponse
+                    | MessageType::GetTimeRequest
+                    | MessageType::SubscribeLogsResponse => {
+                        unreachable!()
+                    }
+                    #(#arms)*
+                    _ => {}
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn gen_register_entities(entities: &[String]) -> TokenStream {
+    let arms = entities.iter().map(|entity| {
+        let msg = Ident::new(
+            &format!("ListEntities{}Response", entity),
+            Span::call_site(),
+        );
+        let api = Ident::new(
+            &format!("ListEntities{}Response", entity),
+            Span::call_site(),
+        );
+        quote! {
+            MessageType::#msg => {
+                let msg = api::#api::decode(msg)?;
+                msg.register(self, writer).await?;
+            }
+        }
+    });
+
+    quote! {
+        impl Device {
+            pub async fn register_entities(
+                &mut self,
+                writer: &mut FloeWriterDefault,
+                device_idx: u16,
+            ) -> Result<(), DeviceError> {
+                self.send_msg(
+                    MessageType::ListEntitiesRequest,
+                    &api::ListEntitiesRequest {},
+                ).await?;
+
+                self.device_idx = Some(device_idx);
+
+                loop {
+                    let (msg_type, msg) = self.connection.recv_msg().await?;
+
+                    match msg_type {
+                        MessageType::ListEntitiesServicesResponse => {
+                            continue;
+                        }
+                        MessageType::ListEntitiesDoneResponse => break,
+                        #(#arms)*
+                        _ => continue,
+                    }
+
+                    writer.deselect_entity().await?;
+                }
+
+                Ok(())
+            }
+        }
+    }
 }
