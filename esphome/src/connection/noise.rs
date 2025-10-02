@@ -162,7 +162,7 @@ impl NoiseConnection {
         message.extend_from_slice(&header);
         message.extend_from_slice(&[0x00]);
         message.extend_from_slice(&frame);
-        stream.write(&message).await?;
+        stream.write_all(&message).await?;
         Ok(())
     }
 
@@ -189,13 +189,12 @@ impl NoiseConnection {
     }
 
     async fn read_frame(stream: &mut TcpStream) -> Result<BytesMut, ConnectionError> {
-        let frame_size;
         let mut header = [0u8; 3];
         stream.read_exact(&mut header).await?;
         if header[0] != 0x01 {
             return Err(ConnectionError::FrameHadWrongPreamble(header[0]));
         }
-        frame_size = u16::from_be_bytes([header[1], header[2]]) as usize;
+        let frame_size = u16::from_be_bytes([header[1], header[2]]) as usize;
 
         let mut frame = BytesMut::with_capacity(frame_size);
         let size = stream.read_buf(&mut frame).await?;

@@ -34,6 +34,13 @@ pub struct Config {
     device_map: HashMap<String, ConnectionParams>,
 }
 
+// ! TODO: While this approach works, its kinda strange.
+// I think really what should happen is we have 1 reader
+// which reads the entire transaction, and ships those bytes over
+// to each device
+// This way if one device is unresponsive, we dont have to sit
+// around waiting for it.
+
 #[tokio::main]
 async fn main() {
     let contents = fs::read_to_string(CONFIG_FILE).await.unwrap();
@@ -60,9 +67,7 @@ async fn main() {
     ));
 
     loop {
-        println!("[Master] Waiting for reader lock");
         let mut reader = shared_reader.lock().await;
-        println!("[Master] got it, waiting for igloo");
         let Some(res) = reader.next().await else {
             println!("Socket closed. Shutting down..");
             break;
@@ -167,11 +172,8 @@ async fn process_command(
                 return;
             };
 
-            println!("[Master] Sending start transaction");
             start_trans.send(()).await.unwrap();
-            println!("[Master] Waiting for end transaction");
             end_trans.recv().await;
-            println!("[Master] Transaction complete");
         }
 
         ADD_DEVICE => {

@@ -233,31 +233,33 @@ impl Device {
         self.subscribe_states().await?;
 
         loop {
-            // TODO FIXME ok so technically this works fine, but it means
-            // that while igloo is communicating a transaction with us
-            // we cannot read from the device
-            // We _should_ spawn two separate tasks for this, assuming
-            // ESPHome can handle that fine
-            // Maybe it doesn't matter thought because igloo _may_
-            // not be able handle bidrectional communications anyways
-            // maybe just keep transactions short idk
             tokio::select! {
                 _ = start_trans.recv() => {
-                    println!("[Device] Recieved Start Transaction, Waiting for Reader Lock");
                     let mut reader = shared_reader.lock().await;
-                    println!("[Device] Got Reader Lock. Sending End Transaction");
                     end_trans.send(()).await.unwrap();
                     self.handle_transaction(&mut reader).await;
                     drop(reader);
                 },
 
-                res = self.connection.readable() => if res.is_ok()
-                    && let Err(e) = self.recv_process_msg().await // TODO what about other errors??
-                        && matches!(e, DeviceError::DeviceRequestShutdown) {
-                            return Ok(());
+                result = self.connection.recv_msg() => {
+                    match result {
+                        Ok((msg_type, msg)) => {
+                            if let Err(e) = self.process_msg(msg_type, msg).await {
+                                eprintln!("[Device] Error processing message: {:?}", e);
+                                if matches!(e, DeviceError::DeviceRequestShutdown) {
+                                    break;
+                                }
+                            }
                         }
+                        Err(e) => {
+                            eprintln!("[Device] Error receiving message: {:?}", e);
+                        }
+                    }
+                }
             }
         }
+
+        Ok(())
     }
 
     async fn handle_transaction(&mut self, reader: &mut FloeReaderDefault) {
@@ -265,7 +267,7 @@ impl Device {
             let (cmd_id, payload) = match res {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("Frame read error: {e}");
+                    eprintln!("[Device] Frame read error: {e}");
                     continue;
                 }
             };
@@ -295,6 +297,8 @@ impl Device {
         }
     }
 
+    // TODO move this to entity/light
+    //  + implement for others
     async fn handle_light_entity_transaction(&mut self, reader: &mut FloeReaderDefault, key: u32) {
         let mut req = LightCommandRequest {
             key,
@@ -366,9 +370,11 @@ impl Device {
             .unwrap(); // FIXME unwrap
     }
 
-    async fn recv_process_msg(&mut self) -> Result<(), DeviceError> {
-        let (msg_type, msg) = self.connection.recv_msg().await?;
-
+    async fn process_msg(
+        &mut self,
+        msg_type: MessageType,
+        msg: BytesMut,
+    ) -> Result<(), DeviceError> {
         match msg_type {
             MessageType::DisconnectRequest => {
                 self.send_msg(MessageType::DisconnectResponse, &api::DisconnectResponse {})
