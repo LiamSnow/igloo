@@ -1,8 +1,8 @@
 use crate::device::{ConnectionParams, Device, DeviceError};
 use futures_util::StreamExt;
 use igloo_interface::{
-    FloeReaderDefault, FloeWriterDefault, START_DEVICE_TRANSACTION, StartDeviceTransaction,
-    StartRegistrationTransaction, floe_init_shared,
+    END_TRANSACTION, FloeWriterDefault, START_DEVICE_TRANSACTION, StartDeviceTransaction,
+    StartRegistrationTransaction, floe_init,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -46,7 +46,8 @@ async fn main() {
     let contents = fs::read_to_string(CONFIG_FILE).await.unwrap();
     let config: Config = serde_json::from_str(&contents).unwrap();
 
-    let (shared_writer, shared_reader) = floe_init_shared().await.unwrap();
+    let (writer, mut reader) = floe_init().await.unwrap();
+    let shared_writer = Arc::new(Mutex::new(writer));
 
     let devices_tx = Arc::new(Mutex::new(HashMap::new()));
 
@@ -63,16 +64,15 @@ async fn main() {
         add_device_rx,
         devices_tx.clone(),
         shared_writer.clone(),
-        shared_reader.clone(),
     ));
 
+    let mut cur_device_tx = None;
+
     loop {
-        let mut reader = shared_reader.lock().await;
         let Some(res) = reader.next().await else {
             println!("Socket closed. Shutting down..");
             break;
         };
-        drop(reader);
 
         let (cmd_id, payload) = match res {
             Ok(f) => f,
@@ -82,16 +82,55 @@ async fn main() {
             }
         };
 
-        process_command(cmd_id, payload, &devices_tx, &add_device_tx).await;
+        match cmd_id {
+            START_DEVICE_TRANSACTION => {
+                let res: StartDeviceTransaction = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                let devices = devices_tx.lock().await;
+                let Some(stream_tx) = devices.get(&res.device_idx) else {
+                    eprintln!(
+                        "Igloo requested to start a transaction for unknown device {}",
+                        res.device_idx
+                    );
+                    continue;
+                };
+                cur_device_tx = Some(stream_tx.clone());
+            }
+            END_TRANSACTION => {
+                cur_device_tx = None;
+            }
+            ADD_DEVICE => {
+                let params: ConnectionParams = borsh::from_slice(&payload).unwrap();
+                add_device_tx
+                    .send((Uuid::now_v7().to_string(), params))
+                    .await
+                    .unwrap();
+            }
+            _ => {
+                if let Some(stream_tx) = &mut cur_device_tx {
+                    match stream_tx.try_send((cmd_id, payload)) {
+                        Ok(_) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            eprintln!("Device is slow during transaction. Cancelling!");
+                            cur_device_tx = None;
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            eprintln!("Device disconnected during transaction");
+                            cur_device_tx = None;
+                        }
+                    }
+                } else {
+                    eprintln!("Got unexpected command {cmd_id} while not in transaction!");
+                }
+            }
+        }
     }
 }
 
 async fn handle_pending_devices(
     mut pending_devices: JoinSet<Result<(Device, String, String), DeviceError>>,
     mut add_device_rx: mpsc::Receiver<(String, ConnectionParams)>,
-    devices_tx: Arc<Mutex<HashMap<u16, (mpsc::Sender<()>, mpsc::Receiver<()>)>>>,
+    devices_tx: Arc<Mutex<HashMap<u16, mpsc::Sender<(u16, Vec<u8>)>>>>,
     shared_writer: Arc<Mutex<FloeWriterDefault>>,
-    shared_reader: Arc<Mutex<FloeReaderDefault>>,
 ) {
     let mut next_device_idx = 0u16;
 
@@ -126,17 +165,15 @@ async fn handle_pending_devices(
                         writer.flush().await.unwrap();
                         drop(writer);
 
-                        let (start_trans_tx, start_trans_rx) = mpsc::channel(1);
-                        let (end_trans_tx, end_trans_rx) = mpsc::channel(1);
+                        let (stream_tx, stream_rx) = mpsc::channel(100);
                         {
-                            devices_tx.lock().await.insert(next_device_idx, (start_trans_tx, end_trans_rx));
+                            devices_tx.lock().await.insert(next_device_idx, stream_tx);
                         }
 
                         let shared_writer_copy = shared_writer.clone();
-                        let shared_reader_copy = shared_reader.clone();
                         tokio::spawn(async move {
                             device
-                                .run(shared_writer_copy, shared_reader_copy, start_trans_rx, end_trans_tx)
+                                .run(shared_writer_copy, stream_rx)
                                 .await
                                 .unwrap();
                         });
@@ -149,43 +186,6 @@ async fn handle_pending_devices(
                     }
                 }
             }
-        }
-    }
-}
-
-async fn process_command(
-    cmd_id: u16,
-    payload: Vec<u8>,
-    devices_tx: &Arc<Mutex<HashMap<u16, (mpsc::Sender<()>, mpsc::Receiver<()>)>>>,
-    add_device_tx: &mpsc::Sender<(String, ConnectionParams)>,
-) {
-    match cmd_id {
-        START_DEVICE_TRANSACTION => {
-            let res: StartDeviceTransaction = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-
-            let mut devices = devices_tx.lock().await;
-            let Some((start_trans, end_trans)) = devices.get_mut(&res.device_idx) else {
-                eprintln!(
-                    "Igloo requested to start a transaction for unknown device {}",
-                    res.device_idx
-                );
-                return;
-            };
-
-            start_trans.send(()).await.unwrap();
-            end_trans.recv().await;
-        }
-
-        ADD_DEVICE => {
-            let params: ConnectionParams = borsh::from_slice(&payload).unwrap();
-            add_device_tx
-                .send((Uuid::now_v7().to_string(), params))
-                .await
-                .unwrap();
-        }
-
-        cmd_id => {
-            eprintln!("Igloo sent unexpected command {cmd_id}");
         }
     }
 }

@@ -1,14 +1,14 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BytesMut;
-use futures_util::StreamExt;
 use igloo_interface::{
-    Color, ColorMode, DESELECT_ENTITY, END_TRANSACTION, FloeReaderDefault, FloeWriterDefault,
-    SELECT_ENTITY, SelectEntity, StartDeviceTransaction, WRITE_COLOR, WRITE_COLOR_MODE,
-    WRITE_COLOR_TEMPERATURE, WRITE_DIMMER, WRITE_SWITCH,
+    Color, ColorMode, DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, SELECT_ENTITY,
+    SelectEntity, StartDeviceTransaction, WRITE_COLOR, WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE,
+    WRITE_DIMMER, WRITE_SWITCH,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    mem,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -224,21 +224,41 @@ impl Device {
     pub async fn run(
         mut self,
         shared_writer: Arc<Mutex<FloeWriterDefault>>,
-        shared_reader: Arc<Mutex<FloeReaderDefault>>,
-        mut start_trans: mpsc::Receiver<()>,
-        end_trans: mpsc::Sender<()>,
+        mut stream_rx: mpsc::Receiver<(u16, Vec<u8>)>,
     ) -> Result<(), DeviceError> {
         self.shared_writer = Some(shared_writer);
 
         self.subscribe_states().await?;
 
+        // collect all messages inside each select|deselect
+        // entity pairs then process them together
+        let mut cur_entity_info = None;
+        let mut cur_entity_trans = Vec::with_capacity(100);
+
         loop {
             tokio::select! {
-                _ = start_trans.recv() => {
-                    let mut reader = shared_reader.lock().await;
-                    end_trans.send(()).await.unwrap();
-                    self.handle_transaction(&mut reader).await;
-                    drop(reader);
+                Some((cmd_id, payload)) = stream_rx.recv() => {
+                    match cmd_id {
+                        SELECT_ENTITY => {
+                            let res: SelectEntity = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                            cur_entity_info = Some(self.entity_idx_to_info.get(&res.entity_idx).unwrap().clone()); // FIXME unwrap
+                            cur_entity_trans.clear();
+                        }
+
+                        DESELECT_ENTITY => {
+                            if cur_entity_info.is_some() {
+                                self.process_entity_trans(cur_entity_info.take().unwrap(), mem::take(&mut cur_entity_trans)).await;
+                            }
+                        }
+
+                        cmd_id => {
+                            if cur_entity_info.is_some() {
+                                cur_entity_trans.push((cmd_id, payload));
+                            } else {
+                                eprintln!("Device got unexpected command {cmd_id} during transaction.");
+                            }
+                        }
+                    }
                 },
 
                 result = self.connection.recv_msg() => {
@@ -262,58 +282,32 @@ impl Device {
         Ok(())
     }
 
-    async fn handle_transaction(&mut self, reader: &mut FloeReaderDefault) {
-        while let Some(res) = reader.next().await {
-            let (cmd_id, payload) = match res {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("[Device] Frame read error: {e}");
-                    continue;
-                }
-            };
+    async fn process_entity_trans(
+        &mut self,
+        info: (EntityType, u32),
+        commands: Vec<(u16, Vec<u8>)>,
+    ) {
+        let (entity_type, key) = info;
+        match entity_type {
+            EntityType::Light => {
+                self.process_light_trans(key, commands).await;
+            }
 
-            match cmd_id {
-                SELECT_ENTITY => {
-                    let res: SelectEntity = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                    let (entity_type, key) = self.entity_idx_to_info.get(&res.entity_idx).unwrap(); // FIXME unwrap
-                    match entity_type {
-                        EntityType::Light => {
-                            self.handle_light_entity_transaction(reader, *key).await;
-                        }
-                        _ => todo!(),
-                    }
-                }
-
-                END_TRANSACTION => {
-                    return;
-                }
-
-                cmd_id => {
-                    eprintln!(
-                        "Igloo sent unexpected command {cmd_id} during device transaction while no entity was selected"
-                    );
-                }
+            _ => {
+                unimplemented!()
             }
         }
     }
 
-    // TODO move this to entity/light
+    // TODO move this to entity/light.rs
     //  + implement for others
-    async fn handle_light_entity_transaction(&mut self, reader: &mut FloeReaderDefault, key: u32) {
+    async fn process_light_trans(&mut self, key: u32, commands: Vec<(u16, Vec<u8>)>) {
         let mut req = LightCommandRequest {
             key,
             ..Default::default()
         };
 
-        while let Some(res) = reader.next().await {
-            let (cmd_id, payload) = match res {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("Frame read error: {e}");
-                    continue;
-                }
-            };
-
+        for (cmd_id, payload) in commands {
             match cmd_id {
                 WRITE_COLOR => {
                     let color: Color = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
