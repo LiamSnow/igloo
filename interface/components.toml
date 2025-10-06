@@ -519,9 +519,9 @@ id = 75
 kind = "marker"
 desc = ""
 related = [
-    { id = 0, name = "CoverState", reason = "current state" },
-    { id = 1, name = "Position", reason = "position of the cover" },
-    { id = 2, name = "Tilt", reason = "tilt of the cover" },
+    { name = "CoverState", reason = "current state" },
+    { name = "Position", reason = "position of the cover" },
+    { name = "Tilt", reason = "tilt of the cover" },
 ]
 
 [[components]]
@@ -557,8 +557,8 @@ id = 80
 kind = "marker"
 desc = ""
 related = [
-    { id = 0, name = "ValveState", reason = "current state" },
-    { id = 1, name = "Position", reason = "position of the valve" },
+    { name = "ValveState", reason = "current state" },
+    { name = "Position", reason = "position of the valve" },
 ]
 
 [[components]]
