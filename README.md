@@ -1,8 +1,6 @@
-# igloo
+# igloo WIP
 
-WIP An intuitive, customizable smart home automation platform.
-
-See [PLANNING.md](PLANNING.md)
+A secure, fast, & powerful smart home platform.
 
 ## Penguin
 A visual-programming language for the smart home world.
@@ -45,11 +43,11 @@ All Rust 🦀
 ## Server File Structure
 ```bash
 igloo       # binary
-auth.ron
-state.ron
-penguin.ron
+auth.toml
+state.toml
+penguin.toml
 penguin/
-  SCRIPT.ron
+  SCRIPT.toml
   ...
 dashboards/
   DASHBOARD.ron
