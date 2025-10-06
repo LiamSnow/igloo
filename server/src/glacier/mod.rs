@@ -15,7 +15,7 @@ mod entity;
 mod floe;
 pub mod query;
 
-pub const STATE_FILE: &str = "state.json";
+pub const STATE_FILE: &str = "state.toml";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GlacierState {
@@ -54,8 +54,6 @@ pub struct DeviceInfo {
 
 impl GlacierState {
     pub async fn dispatch_query(&self, req: GlobalQueryRequest) {
-        println!("Dispatch Query: {req:#?}");
-
         // TODO this _should_ be parallelized at some point
         match req.area {
             GlobalArea::All => {
@@ -65,6 +63,7 @@ impl GlacierState {
                         filter: req.filter.clone(),
                         kind: req.kind.clone(),
                         area: LocalArea::All,
+                        started_at: req.started_at,
                     };
                     floe.query_tx.send(req).await.unwrap();
                 }
@@ -81,6 +80,7 @@ impl GlacierState {
                         filter: req.filter.clone(),
                         kind: req.kind.clone(),
                         area: LocalArea::Device(*dev_idx),
+                        started_at: req.started_at,
                     };
                     self.floes[*floe_idx].query_tx.send(req).await.unwrap();
                 }
@@ -94,6 +94,7 @@ impl GlacierState {
                     filter: req.filter.clone(),
                     kind: req.kind.clone(),
                     area: LocalArea::Device(device.idx),
+                    started_at: req.started_at,
                 };
                 self.floes[device.floe_idx]
                     .query_tx
@@ -116,6 +117,7 @@ impl GlacierState {
                     filter: req.filter.clone(),
                     kind: req.kind.clone(),
                     area: LocalArea::Entity(device.idx, entity_idx as u16),
+                    started_at: req.started_at,
                 };
 
                 self.floes[device.floe_idx]
@@ -186,7 +188,7 @@ impl GlacierState {
     pub async fn load() -> Self {
         match fs::try_exists(STATE_FILE).await {
             Ok(true) => match fs::read_to_string(STATE_FILE).await {
-                Ok(contents) => serde_json::from_str(&contents).unwrap_or_else(|e| {
+                Ok(contents) => toml::from_str(&contents).unwrap_or_else(|e| {
                     panic!("Failed to parse state file: {}", e);
                 }),
                 Err(e) => {
@@ -202,7 +204,7 @@ impl GlacierState {
     }
 
     async fn save(&self) {
-        let json = serde_json::to_string_pretty(self).expect("Failed to serialize state");
+        let json = toml::to_string_pretty(self).expect("Failed to serialize state");
         fs::write(STATE_FILE, json)
             .await
             .expect("Failed to write state file");

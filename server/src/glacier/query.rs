@@ -1,4 +1,5 @@
 use igloo_interface::{Component, ComponentType};
+use std::time::Instant;
 use uuid::Uuid;
 
 /// Request a Query from the Query Engine
@@ -7,6 +8,7 @@ pub struct GlobalQueryRequest {
     pub filter: QueryFilter,
     pub area: GlobalArea,
     pub kind: QueryKind,
+    pub started_at: Instant,
 }
 
 /// Procesed [GlobalQueryRequest], dispatched to each Floe
@@ -15,6 +17,7 @@ pub struct LocalQueryRequest {
     pub filter: QueryFilter,
     pub area: LocalArea,
     pub kind: QueryKind,
+    pub started_at: Instant,
 }
 
 #[derive(Debug, Clone)]

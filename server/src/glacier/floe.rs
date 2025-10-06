@@ -205,6 +205,11 @@ impl FloeManager {
             return;
         }
 
+        println!(
+            "Query dispatch to start transaction latency: {:?}",
+            req.started_at.elapsed()
+        );
+
         self.writer
             .start_device_transaction(&StartDeviceTransaction { device_idx })
             .await
@@ -225,6 +230,10 @@ impl FloeManager {
 
         self.writer.end_transaction().await.unwrap();
         self.writer.flush().await.unwrap();
+        println!(
+            "Query dispatch to end transaction latency: {:?}",
+            req.started_at.elapsed()
+        );
     }
 
     async fn handle_query_request_entity(

@@ -1,4 +1,5 @@
 use igloo_interface::{Component, ComponentType};
+use std::time::Instant;
 
 use crate::{
     auth::Auth,
@@ -17,7 +18,7 @@ async fn main() {
     // make communication channels
 
     // spawn glacier
-    let mut shared_state = glacier::run().await.unwrap();
+    let shared_state = glacier::run().await.unwrap();
 
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
@@ -28,10 +29,41 @@ async fn main() {
             .dispatch_query(GlobalQueryRequest {
                 filter: QueryFilter::With(ComponentType::Light),
                 area: glacier::query::GlobalArea::All,
-                kind: glacier::query::QueryKind::Set(vec![Component::Dimmer(0.5)]),
+                kind: glacier::query::QueryKind::Set(vec![Component::Switch(true)]),
+                started_at: Instant::now(),
             })
             .await;
     }
+
+    // loop {
+    //     {
+    //         let state = shared_state.lock().await;
+
+    //         state
+    //             .dispatch_query(GlobalQueryRequest {
+    //                 filter: QueryFilter::With(ComponentType::Light),
+    //                 area: glacier::query::GlobalArea::All,
+    //                 kind: glacier::query::QueryKind::Set(vec![Component::Switch(false)]),
+    //             })
+    //             .await;
+    //     }
+
+    //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    //     {
+    //         let state = shared_state.lock().await;
+
+    //         state
+    //             .dispatch_query(GlobalQueryRequest {
+    //                 filter: QueryFilter::With(ComponentType::Light),
+    //                 area: glacier::query::GlobalArea::All,
+    //                 kind: glacier::query::QueryKind::Set(vec![Component::Switch(true)]),
+    //             })
+    //             .await;
+    //     }
+
+    //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // }
 
     // spawn penguin executer
 

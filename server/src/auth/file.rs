@@ -3,21 +3,23 @@ use tokio::{fs, io};
 
 use super::model::Auth;
 
-const FILE: &str = "auth.json";
+const FILE: &str = "auth.toml";
 
 #[derive(Error, Debug)]
 pub enum AuthFileError {
     #[error("file system error: {0}")]
     FileSystem(#[from] io::Error),
-    #[error("json error: {0}")]
-    Json(#[from] serde_json::Error),
+    #[error("toml deserialize error: {0}")]
+    TomlDe(#[from] toml::de::Error),
+    #[error("toml serialize error: {0}")]
+    TomlSer(#[from] toml::ser::Error),
 }
 
 impl Auth {
     pub async fn load() -> Result<Self, AuthFileError> {
         if fs::try_exists(FILE).await? {
             let contents = fs::read_to_string(FILE).await?;
-            let res = serde_json::from_str(&contents)?;
+            let res = toml::from_str(&contents)?;
             Ok(res)
         } else {
             // TODO change to make blank
@@ -35,7 +37,7 @@ impl Auth {
     }
 
     pub async fn save(&self) -> Result<(), AuthFileError> {
-        let contents = serde_json::to_string(self)?;
+        let contents = toml::to_string_pretty(self)?;
         fs::write(FILE, contents).await?;
         Ok(())
     }
