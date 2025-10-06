@@ -1,6 +1,6 @@
 # igloo WIP
 
-A secure, fast, & powerful smart home platform.
+A secure, fast, & intuitive smart home platform.
 
 ## Penguin
 A visual-programming language for the smart home world.
