@@ -1,8 +1,6 @@
 use borsh::BorshSerialize;
 use bytes::{Buf, BytesMut};
 use std::io;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::{
     io::{AsyncWriteExt, BufWriter},
     net::{
@@ -36,12 +34,6 @@ pub async fn floe_init() -> Result<(FloeWriterDefault, FloeReaderDefault), std::
     writer.flush().await?;
 
     Ok((writer, reader))
-}
-
-pub async fn floe_init_shared()
--> Result<(Arc<Mutex<FloeWriterDefault>>, Arc<Mutex<FloeReaderDefault>>), std::io::Error> {
-    let (writer, reader) = floe_init().await?;
-    Ok((Arc::new(Mutex::new(writer)), Arc::new(Mutex::new(reader))))
 }
 
 impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
