@@ -10,7 +10,7 @@ impl EntityRegister for crate::api::ListEntitiesCameraResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::device::EntityType::Camera)
+            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Camera)
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;

@@ -1,8 +1,12 @@
-use crate::{api, entity::EntityUpdate};
+use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
+use crate::{
+    api,
+    device::{Device, DeviceError},
+    entity::EntityUpdate,
+};
 use async_trait::async_trait;
 use igloo_interface::FloeWriterDefault;
 use serde_json::json;
-use super::{add_entity_category, add_icon, add_device_class, EntityRegister};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesUpdateResponse {
@@ -12,7 +16,12 @@ impl EntityRegister for crate::api::ListEntitiesUpdateResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::device::EntityType::Update)
+            .register_entity(
+                writer,
+                &self.name,
+                self.key,
+                crate::model::EntityType::Update,
+            )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
@@ -53,4 +62,39 @@ impl EntityUpdate for api::UpdateStateResponse {
 
         Ok(())
     }
+}
+
+pub async fn process(
+    device: &mut Device,
+    key: u32,
+    commands: Vec<(u16, Vec<u8>)>,
+) -> Result<(), DeviceError> {
+    eprintln!("ESPHOME UPDATE ENTITY IS NOT IMPLEMENTED");
+    Ok(())
+
+    // TODO how should we be handling this?
+    // Lowkey I dont think it should even be in the ECS
+    // and just custom commands?
+
+    // Maybe make a trigger entity?
+    // let req = api::UpdateCommandRequest {
+    //     key,
+    //     command: api::UpdateCommand::Update.into(),
+    // };
+
+    // for (cmd_id, _payload) in commands {
+    //     match cmd_id {
+    //         DESELECT_ENTITY | END_TRANSACTION => {
+    //             unreachable!();
+    //         }
+
+    //         _ => {
+    //             println!("Update got unexpected command {cmd_id} during transaction. Skipping..");
+    //         }
+    //     }
+    // }
+
+    // device
+    //     .send_msg(MessageType::UpdateCommandRequest, &req)
+    //     .await
 }

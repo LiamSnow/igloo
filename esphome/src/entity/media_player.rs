@@ -1,7 +1,15 @@
-use crate::{api, entity::EntityUpdate};
+use super::{EntityRegister, add_entity_category, add_icon};
+use crate::{
+    api,
+    device::{Device, DeviceError},
+    entity::EntityUpdate,
+    model::MessageType,
+};
 use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, MediaState};
-use super::{add_entity_category, add_icon, EntityRegister};
+use igloo_interface::{
+    DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, MediaState, WRITE_MEDIA_STATE,
+    WRITE_MUTED, WRITE_VOLUME,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesMediaPlayerResponse {
@@ -11,7 +19,12 @@ impl EntityRegister for crate::api::ListEntitiesMediaPlayerResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::device::EntityType::MediaPlayer)
+            .register_entity(
+                writer,
+                &self.name,
+                self.key,
+                crate::model::EntityType::MediaPlayer,
+            )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
@@ -41,4 +54,65 @@ impl EntityUpdate for api::MediaPlayerStateResponse {
         writer.muted(&self.muted).await?;
         writer.media_state(&self.state().as_igloo()).await
     }
+}
+
+fn media_state_to_command(state: &MediaState) -> api::MediaPlayerCommand {
+    match state {
+        MediaState::Playing => api::MediaPlayerCommand::Play,
+        MediaState::Paused => api::MediaPlayerCommand::Pause,
+        MediaState::Idle => api::MediaPlayerCommand::Stop,
+        MediaState::Unknown => api::MediaPlayerCommand::Stop,
+    }
+}
+
+pub async fn process(
+    device: &mut Device,
+    key: u32,
+    commands: Vec<(u16, Vec<u8>)>,
+) -> Result<(), DeviceError> {
+    let mut req = api::MediaPlayerCommandRequest {
+        key,
+        ..Default::default()
+    };
+
+    for (cmd_id, payload) in commands {
+        match cmd_id {
+            WRITE_VOLUME => {
+                let volume: f32 = borsh::from_slice(&payload)?;
+                req.has_volume = true;
+                req.volume = volume;
+            }
+
+            WRITE_MUTED => {
+                let muted: bool = borsh::from_slice(&payload)?;
+                req.has_command = true;
+                req.command = if muted {
+                    api::MediaPlayerCommand::Mute
+                } else {
+                    api::MediaPlayerCommand::Unmute
+                }
+                .into();
+            }
+
+            WRITE_MEDIA_STATE => {
+                let state: MediaState = borsh::from_slice(&payload)?;
+                req.has_command = true;
+                req.command = media_state_to_command(&state).into();
+            }
+
+            DESELECT_ENTITY | END_TRANSACTION => {
+                unreachable!();
+            }
+
+            _ => {
+                println!(
+                    "MediaPlayer got unexpected command {cmd_id} during transaction. Skipping.."
+                );
+            }
+        }
+    }
+
+    device
+        .send_msg(MessageType::MediaPlayerCommandRequest, &req)
+        .await
 }

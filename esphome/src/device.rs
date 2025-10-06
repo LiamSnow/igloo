@@ -1,9 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BytesMut;
 use igloo_interface::{
-    Color, ColorMode, DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, SELECT_ENTITY,
-    SelectEntity, StartDeviceTransaction, WRITE_COLOR, WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE,
-    WRITE_DIMMER, WRITE_SWITCH,
+    DESELECT_ENTITY, FloeWriterDefault, SELECT_ENTITY, SelectEntity, StartDeviceTransaction,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,15 +14,15 @@ use thiserror::Error;
 use tokio::sync::{Mutex, mpsc};
 
 use crate::{
-    api::{self, LightCommandRequest},
+    api,
     connection::{
         base::{Connection, Connectionable},
         error::ConnectionError,
         noise::NoiseConnection,
         plain::PlainConnection,
     },
-    entity::EntityUpdate,
-    model::MessageType,
+    entity::{self, EntityUpdate},
+    model::{EntityType, MessageType},
 };
 
 #[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, Debug)]
@@ -122,8 +120,7 @@ impl Device {
                 },
                 MessageType::HelloResponse,
             )
-            .await
-            .unwrap();
+            .await?;
 
         let res = self
             .trans_msg::<api::ConnectResponse>(
@@ -240,14 +237,26 @@ impl Device {
                 Some((cmd_id, payload)) = stream_rx.recv() => {
                     match cmd_id {
                         SELECT_ENTITY => {
-                            let res: SelectEntity = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                            cur_entity_info = Some(self.entity_idx_to_info.get(&res.entity_idx).unwrap().clone()); // FIXME unwrap
+                            let res: SelectEntity = borsh::from_slice(&payload).expect("Failed to parse SelectEntity. Crashing");
+                            let Some(entity_info) = self.entity_idx_to_info.get(&res.entity_idx) else {
+                                eprintln!("Igloo selected invalid entity {}", res.entity_idx);
+                                continue;
+                            };
+                            cur_entity_info = Some(entity_info.clone());
                             cur_entity_trans.clear();
                         }
 
                         DESELECT_ENTITY => {
                             if cur_entity_info.is_some() {
-                                self.process_entity_trans(cur_entity_info.take().unwrap(), mem::take(&mut cur_entity_trans)).await;
+                                let res = self.process_entity_trans(
+                                    cur_entity_info.take().unwrap(), // always succeeds
+                                    mem::take(&mut cur_entity_trans)
+                                ).await;
+                                if let Err(e) = res {
+                                    eprintln!("Error processing entity transaction: {e}");
+                                }
+                            } else {
+                                eprintln!("Igloo deselected nothing");
                             }
                         }
 
@@ -286,82 +295,35 @@ impl Device {
         &mut self,
         info: (EntityType, u32),
         commands: Vec<(u16, Vec<u8>)>,
-    ) {
+    ) -> Result<(), DeviceError> {
         let (entity_type, key) = info;
         match entity_type {
-            EntityType::Light => {
-                self.process_light_trans(key, commands).await;
+            EntityType::Light => entity::light::process(self, key, commands).await,
+            EntityType::Switch => entity::switch::process(self, key, commands).await,
+            EntityType::Button => entity::button::process(self, key, commands).await,
+            EntityType::Number => entity::number::process(self, key, commands).await,
+            EntityType::Select => entity::select::process(self, key, commands).await,
+            EntityType::Text => entity::text::process(self, key, commands).await,
+            EntityType::Fan => entity::fan::process(self, key, commands).await,
+            EntityType::Cover => entity::cover::process(self, key, commands).await,
+            EntityType::Valve => entity::valve::process(self, key, commands).await,
+            EntityType::Siren => entity::siren::process(self, key, commands).await,
+            EntityType::Lock => entity::lock::process(self, key, commands).await,
+            EntityType::MediaPlayer => entity::media_player::process(self, key, commands).await,
+            EntityType::Date => entity::date::process(self, key, commands).await,
+            EntityType::Time => entity::time::process(self, key, commands).await,
+            EntityType::DateTime => entity::date_time::process(self, key, commands).await,
+            EntityType::AlarmControlPanel => {
+                entity::alarm_control_panel::process(self, key, commands).await
             }
+            EntityType::Update => entity::update::process(self, key, commands).await,
+            EntityType::Climate => entity::climate::process(self, key, commands).await,
 
             _ => {
-                unimplemented!()
+                eprintln!("{entity_type:#?} currently does not support commands. Skipping..");
+                Ok(())
             }
         }
-    }
-
-    // TODO move this to entity/light.rs
-    //  + implement for others
-    async fn process_light_trans(&mut self, key: u32, commands: Vec<(u16, Vec<u8>)>) {
-        let mut req = LightCommandRequest {
-            key,
-            ..Default::default()
-        };
-
-        for (cmd_id, payload) in commands {
-            match cmd_id {
-                WRITE_COLOR => {
-                    let color: Color = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                    req.has_rgb = true;
-                    req.red = (color.r as f32) / 255.;
-                    req.green = (color.g as f32) / 255.;
-                    req.blue = (color.b as f32) / 255.;
-                }
-
-                WRITE_DIMMER => {
-                    let val: f32 = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                    req.has_color_brightness = true;
-                    req.color_brightness = val;
-                    req.has_brightness = true;
-                    req.brightness = val;
-                }
-                WRITE_SWITCH => {
-                    let state: bool = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                    req.has_state = true;
-                    req.state = state;
-                }
-                WRITE_COLOR_TEMPERATURE => {
-                    let temp: u32 = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                    req.has_color_temperature = true;
-                    req.color_temperature = temp as f32;
-                }
-                WRITE_COLOR_MODE => {
-                    let mode: ColorMode = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
-                    req.has_color_mode = true;
-                    req.color_mode = match mode {
-                        ColorMode::RGB => 35,
-                        ColorMode::Temperature => 11,
-                    };
-                }
-
-                DESELECT_ENTITY => {
-                    break;
-                }
-
-                END_TRANSACTION => {
-                    unreachable!(
-                        "Igloo tried to end the device transaction without deselecting the entity"
-                    );
-                }
-
-                // skip other entities
-                // TODO maybe log this or..?
-                _ => {}
-            }
-        }
-
-        self.send_msg(MessageType::LightCommandRequest, &req)
-            .await
-            .unwrap(); // FIXME unwrap
     }
 
     async fn process_msg(
@@ -453,12 +415,12 @@ impl Device {
             return Ok(());
         };
 
-        let shared_writer = self.shared_writer.as_ref().unwrap();
+        let shared_writer = self.shared_writer.as_ref().unwrap(); // always succeeds
         let mut writer = shared_writer.lock().await;
 
         writer
             .start_device_transaction(&StartDeviceTransaction {
-                device_idx: self.device_idx.unwrap(),
+                device_idx: self.device_idx.unwrap(), // always succeeds
             })
             .await?;
 
@@ -475,32 +437,4 @@ impl Device {
 
         Ok(())
     }
-}
-
-// TODO generate
-#[derive(Clone)]
-pub enum EntityType {
-    BinarySensor,
-    Cover,
-    Fan,
-    Light,
-    Sensor,
-    Switch,
-    TextSensor,
-    Camera,
-    Climate,
-    Number,
-    Select,
-    Siren,
-    Lock,
-    Button,
-    MediaPlayer,
-    AlarmControlPanel,
-    Text,
-    Date,
-    Time,
-    Event,
-    Valve,
-    DateTime,
-    Update,
 }

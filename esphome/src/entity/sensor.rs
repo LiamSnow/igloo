@@ -18,7 +18,7 @@ impl EntityRegister for crate::api::ListEntitiesSensorResponse {
                 writer,
                 &self.name,
                 self.key,
-                crate::device::EntityType::Sensor,
+                crate::model::EntityType::Sensor,
             )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;

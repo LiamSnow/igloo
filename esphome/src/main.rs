@@ -23,7 +23,7 @@ pub mod model {
     include!(concat!(env!("OUT_DIR"), "/model.rs"));
 }
 
-pub const CONFIG_FILE: &str = "./data/config.json";
+pub const CONFIG_FILE: &str = "./data/config.toml";
 
 /// Eventually this will be described in the Floe.toml file
 pub const ADD_DEVICE: u16 = 32;
@@ -31,29 +31,26 @@ pub const ADD_DEVICE: u16 = 32;
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Config {
     /// maps Persisnt Igloo Device ID -> Connection Params
-    device_map: HashMap<String, ConnectionParams>,
+    devices: HashMap<String, ConnectionParams>,
 }
 
-// ! TODO: While this approach works, its kinda strange.
-// I think really what should happen is we have 1 reader
-// which reads the entire transaction, and ships those bytes over
-// to each device
-// This way if one device is unresponsive, we dont have to sit
-// around waiting for it.
+pub type CommandAndPayload = (u16, Vec<u8>);
 
 #[tokio::main]
 async fn main() {
-    let contents = fs::read_to_string(CONFIG_FILE).await.unwrap();
-    let config: Config = serde_json::from_str(&contents).unwrap();
+    let contents = fs::read_to_string(CONFIG_FILE)
+        .await
+        .expect("Failed to read config file");
+    let mut config: Config = toml::from_str(&contents).expect("Failed to parse config file");
 
-    let (writer, mut reader) = floe_init().await.unwrap();
+    let (writer, mut reader) = floe_init().await.expect("Failed to initialize Floe");
     let shared_writer = Arc::new(Mutex::new(writer));
 
     let devices_tx = Arc::new(Mutex::new(HashMap::new()));
 
     // connect to devices in config
     let mut pending_devices = JoinSet::new();
-    for (device_id, params) in config.device_map {
+    for (device_id, params) in config.devices.clone() {
         connect_device(&mut pending_devices, device_id, params);
     }
 
@@ -84,7 +81,8 @@ async fn main() {
 
         match cmd_id {
             START_DEVICE_TRANSACTION => {
-                let res: StartDeviceTransaction = borsh::from_slice(&payload).unwrap(); // FIXME unwrap
+                let res: StartDeviceTransaction = borsh::from_slice(&payload)
+                    .expect("Failed to parse StartDeviceTransaction. Crashing..");
                 let devices = devices_tx.lock().await;
                 let Some(stream_tx) = devices.get(&res.device_idx) else {
                     eprintln!(
@@ -99,11 +97,22 @@ async fn main() {
                 cur_device_tx = None;
             }
             ADD_DEVICE => {
-                let params: ConnectionParams = borsh::from_slice(&payload).unwrap();
-                add_device_tx
-                    .send((Uuid::now_v7().to_string(), params))
+                let Ok(params) = borsh::from_slice::<ConnectionParams>(&payload) else {
+                    eprintln!("Failed to parse ConnectionParams for AddDevice command. Skipping..");
+                    continue;
+                };
+
+                let id = Uuid::now_v7().to_string();
+                let res = add_device_tx.send((id.clone(), params.clone())).await;
+                if let Err(e) = res {
+                    eprintln!("Failed to sent to `add_device_tx`: {e}");
+                }
+
+                config.devices.insert(id.to_string(), params);
+                let contents = toml::to_string_pretty(&config).expect("Failed to serialize config");
+                fs::write(CONFIG_FILE, contents)
                     .await
-                    .unwrap();
+                    .expect("Failed to write config");
             }
             _ => {
                 if let Some(stream_tx) = &mut cur_device_tx {
@@ -129,7 +138,7 @@ async fn main() {
 async fn handle_pending_devices(
     mut pending_devices: JoinSet<Result<(Device, String, String), DeviceError>>,
     mut add_device_rx: mpsc::Receiver<(String, ConnectionParams)>,
-    devices_tx: Arc<Mutex<HashMap<u16, mpsc::Sender<(u16, Vec<u8>)>>>>,
+    devices_tx: Arc<Mutex<HashMap<u16, mpsc::Sender<CommandAndPayload>>>>,
     shared_writer: Arc<Mutex<FloeWriterDefault>>,
 ) {
     let mut next_device_idx = 0u16;

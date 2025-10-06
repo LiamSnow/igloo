@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use igloo_interface::FloeWriterDefault;
 
-use crate::{api, device::EntityType, entity::EntityUpdate};
+use crate::{api, entity::EntityUpdate, model::EntityType};
 
 use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
 

@@ -180,7 +180,7 @@ fn gen_entity_type_enum(entities: &[String]) -> TokenStream {
     });
 
     quote! {
-        #[derive(Clone)]
+        #[derive(Clone, Debug)]
         pub enum EntityType {
             #(#variants,)*
         }

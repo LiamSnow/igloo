@@ -1,14 +1,25 @@
 use async_trait::async_trait;
-use igloo_interface::{ClimateMode, FanOscillation, FanSpeed, FloeWriterDefault};
+use igloo_interface::{
+    ClimateMode, DESELECT_ENTITY, END_TRANSACTION, FanOscillation, FanSpeed, FloeWriterDefault,
+    WRITE_CLIMATE_MODE, WRITE_FAN_OSCILLATION, WRITE_FAN_SPEED, WRITE_FLOAT, WRITE_TEXT,
+};
 
 use super::{
     EntityRegister, add_climate_modes, add_entity_category, add_f32_bounds, add_fan_oscillations,
     add_fan_speeds, add_icon,
 };
-use crate::{api, entity::EntityUpdate};
+use crate::{
+    api,
+    device::{Device, DeviceError},
+    entity::EntityUpdate,
+    model::MessageType,
+};
 
 // The ESPHome climate entity doesn't really match this ECS model
-// So we are breaking it up into a few entities
+// Currently we aren't publishing Humidity or Cur Temp
+// The best way to do this is probably by splitting into more entities
+// but I didn't really setup device.rs to handle that properly bc
+// its annoying.
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesClimateResponse {
@@ -17,145 +28,40 @@ impl EntityRegister for crate::api::ListEntitiesClimateResponse {
         device: &mut crate::device::Device,
         writer: &mut igloo_interface::FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
-        // Humidity
-        if self.supports_current_humidity || self.supports_target_humidity {
-            let name = format!("{}_humidity", self.name);
-            device
-                .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                .await?;
-            add_entity_category(writer, self.entity_category()).await?;
-            add_icon(writer, &self.icon).await?;
-            add_f32_bounds(
+        device
+            .register_entity(
                 writer,
-                self.visual_min_humidity,
-                self.visual_max_humidity,
-                None,
+                &self.name,
+                self.key,
+                crate::model::EntityType::Climate,
             )
             .await?;
-            writer.sensor().await?;
-            writer.deselect_entity().await?;
-        }
 
-        // Current Temperature
-        if self.supports_current_temperature {
-            let name = format!("{}_current_temperature", self.name);
-            device
-                .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                .await?;
-            add_entity_category(writer, self.entity_category()).await?;
-            add_icon(writer, &self.icon).await?;
-            add_f32_bounds(
-                writer,
-                self.visual_min_temperature,
-                self.visual_max_temperature,
-                Some(self.visual_current_temperature_step),
+        add_entity_category(writer, self.entity_category()).await?;
+        add_icon(writer, &self.icon).await?;
+        add_f32_bounds(
+            writer,
+            self.visual_min_temperature,
+            self.visual_max_temperature,
+            Some(self.visual_target_temperature_step),
+        )
+        .await?;
+
+        add_climate_modes(writer, self.supported_modes()).await?;
+
+        add_fan_speeds(writer, self.supported_fan_modes()).await?;
+        add_fan_oscillations(writer, self.supported_swing_modes()).await?;
+
+        writer.text_select().await?;
+        writer
+            .text_list(
+                &self
+                    .supported_presets()
+                    .map(|preset| format!("{preset:#?}"))
+                    .chain(self.supported_custom_presets.iter().cloned())
+                    .collect(),
             )
             .await?;
-            writer.sensor().await?;
-            writer.deselect_entity().await?;
-        }
-
-        // Two Point Temperature
-        if self.supports_two_point_target_temperature {
-            // TODO verify this is right
-            // Lower
-            {
-                let name = format!("{}_target_lower_temperature", self.name);
-                device
-                    .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                    .await?;
-                add_entity_category(writer, self.entity_category()).await?;
-                add_icon(writer, &self.icon).await?;
-                add_f32_bounds(
-                    writer,
-                    self.visual_min_temperature,
-                    self.visual_max_temperature,
-                    Some(self.visual_target_temperature_step),
-                )
-                .await?;
-                writer.deselect_entity().await?;
-            }
-
-            // Upper
-            {
-                let name = format!("{}_target_upper_temperature", self.name);
-                device
-                    .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                    .await?;
-                add_entity_category(writer, self.entity_category()).await?;
-                add_icon(writer, &self.icon).await?;
-                add_f32_bounds(
-                    writer,
-                    self.visual_min_temperature,
-                    self.visual_max_temperature,
-                    Some(self.visual_target_temperature_step),
-                )
-                .await?;
-                writer.deselect_entity().await?;
-            }
-        }
-        // One Point Temperature Target
-        else {
-            let name = format!("{}_target_temperature", self.name);
-            device
-                .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                .await?;
-            add_entity_category(writer, self.entity_category()).await?;
-            add_icon(writer, &self.icon).await?;
-            add_f32_bounds(
-                writer,
-                self.visual_min_temperature,
-                self.visual_max_temperature,
-                Some(self.visual_target_temperature_step),
-            )
-            .await?;
-            writer.deselect_entity().await?;
-        }
-
-        // Climate Mode
-        {
-            let name = format!("{}_mode", self.name);
-            device
-                .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                .await?;
-            add_entity_category(writer, self.entity_category()).await?;
-            add_climate_modes(writer, self.supported_modes()).await?;
-            add_icon(writer, &self.icon).await?;
-            writer.deselect_entity().await?;
-        }
-
-        // Fan
-        {
-            let name = format!("{}_fan", self.name);
-            device
-                .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                .await?;
-            add_entity_category(writer, self.entity_category()).await?;
-            add_fan_speeds(writer, self.supported_fan_modes()).await?;
-            add_fan_oscillations(writer, self.supported_swing_modes()).await?;
-            add_icon(writer, &self.icon).await?;
-            writer.deselect_entity().await?;
-        }
-
-        // Preset
-        {
-            let name = format!("{}_preset", self.name);
-            device
-                .register_entity(writer, &name, self.key, crate::device::EntityType::Climate)
-                .await?;
-            add_entity_category(writer, self.entity_category()).await?;
-            add_icon(writer, &self.icon).await?;
-            writer.text_select().await?;
-            writer
-                .text_list(
-                    &self
-                        .supported_presets()
-                        .map(|preset| format!("{preset:#?}"))
-                        .chain(self.supported_custom_presets.iter().cloned())
-                        .collect(),
-                )
-                .await?;
-        }
 
         Ok(())
     }
@@ -168,8 +74,17 @@ impl EntityUpdate for api::ClimateStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        // TODO FIXME plz implement!!!! :)
-        println!("ERROR CLIMATE HAS NOT BEEN IMPLEMENTED");
+        writer.float(&self.target_temperature).await?;
+
+        writer.climate_mode(&self.mode().as_igloo()).await?;
+
+        writer.fan_speed(&self.fan_mode().as_igloo()).await?;
+        writer
+            .fan_oscillation(&self.swing_mode().as_igloo())
+            .await?;
+
+        writer.text(&format!("{:#?}", self.preset())).await?;
+        writer.text(&self.custom_preset).await?;
 
         Ok(())
     }
@@ -214,4 +129,99 @@ impl api::ClimateFanMode {
             api::ClimateFanMode::ClimateFanQuiet => FanSpeed::Quiet,
         }
     }
+}
+
+fn climate_mode_to_api(mode: &ClimateMode) -> api::ClimateMode {
+    match mode {
+        ClimateMode::Off => api::ClimateMode::Off,
+        ClimateMode::HeatCool => api::ClimateMode::HeatCool,
+        ClimateMode::Cool => api::ClimateMode::Cool,
+        ClimateMode::Heat => api::ClimateMode::Heat,
+        ClimateMode::FanOnly => api::ClimateMode::FanOnly,
+        ClimateMode::Dry => api::ClimateMode::Dry,
+        ClimateMode::Auto => api::ClimateMode::Auto,
+        ClimateMode::Eco => api::ClimateMode::Auto,
+    }
+}
+
+fn fan_speed_to_climate_fan(speed: &FanSpeed) -> api::ClimateFanMode {
+    match speed {
+        FanSpeed::On => api::ClimateFanMode::ClimateFanOn,
+        FanSpeed::Off => api::ClimateFanMode::ClimateFanOff,
+        FanSpeed::Auto => api::ClimateFanMode::ClimateFanAuto,
+        FanSpeed::Low => api::ClimateFanMode::ClimateFanLow,
+        FanSpeed::Medium => api::ClimateFanMode::ClimateFanMedium,
+        FanSpeed::High => api::ClimateFanMode::ClimateFanHigh,
+        FanSpeed::Middle => api::ClimateFanMode::ClimateFanMiddle,
+        FanSpeed::Focus => api::ClimateFanMode::ClimateFanFocus,
+        FanSpeed::Diffuse => api::ClimateFanMode::ClimateFanDiffuse,
+        FanSpeed::Quiet => api::ClimateFanMode::ClimateFanQuiet,
+    }
+}
+
+fn fan_oscillation_to_swing(oscillation: &FanOscillation) -> api::ClimateSwingMode {
+    match oscillation {
+        FanOscillation::Off => api::ClimateSwingMode::ClimateSwingOff,
+        FanOscillation::On => api::ClimateSwingMode::ClimateSwingBoth,
+        FanOscillation::Vertical => api::ClimateSwingMode::ClimateSwingVertical,
+        FanOscillation::Horizontal => api::ClimateSwingMode::ClimateSwingHorizontal,
+        FanOscillation::Both => api::ClimateSwingMode::ClimateSwingBoth,
+    }
+}
+
+pub async fn process(
+    device: &mut Device,
+    key: u32,
+    commands: Vec<(u16, Vec<u8>)>,
+) -> Result<(), DeviceError> {
+    let mut req = api::ClimateCommandRequest {
+        key,
+        ..Default::default()
+    };
+
+    for (cmd_id, payload) in commands {
+        match cmd_id {
+            WRITE_CLIMATE_MODE => {
+                let mode: ClimateMode = borsh::from_slice(&payload)?;
+                req.has_mode = true;
+                req.mode = climate_mode_to_api(&mode).into();
+            }
+
+            WRITE_FAN_SPEED => {
+                let speed: FanSpeed = borsh::from_slice(&payload)?;
+                req.has_fan_mode = true;
+                req.fan_mode = fan_speed_to_climate_fan(&speed).into();
+            }
+
+            WRITE_FAN_OSCILLATION => {
+                let oscillation: FanOscillation = borsh::from_slice(&payload)?;
+                req.has_swing_mode = true;
+                req.swing_mode = fan_oscillation_to_swing(&oscillation).into();
+            }
+
+            WRITE_FLOAT => {
+                let temperature: f32 = borsh::from_slice(&payload)?;
+                req.has_target_temperature = true;
+                req.target_temperature = temperature;
+            }
+
+            WRITE_TEXT => {
+                let text: String = borsh::from_slice(&payload)?;
+                req.has_custom_preset = true;
+                req.custom_preset = text;
+            }
+
+            DESELECT_ENTITY | END_TRANSACTION => {
+                unreachable!();
+            }
+
+            _ => {
+                println!("Climate got unexpected command {cmd_id} during transaction. Skipping..");
+            }
+        }
+    }
+
+    device
+        .send_msg(MessageType::ClimateCommandRequest, &req)
+        .await
 }

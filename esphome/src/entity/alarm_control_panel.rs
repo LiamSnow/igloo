@@ -1,8 +1,15 @@
 use async_trait::async_trait;
-use igloo_interface::{AlarmState, FloeWriterDefault};
+use igloo_interface::{
+    AlarmState, DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_ALARM_STATE, WRITE_TEXT,
+};
 
-use crate::{api, entity::EntityUpdate};
-use super::{add_entity_category, add_icon, EntityRegister};
+use super::{EntityRegister, add_entity_category, add_icon};
+use crate::{
+    api,
+    device::{Device, DeviceError},
+    entity::EntityUpdate,
+    model::MessageType,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesAlarmControlPanelResponse {
@@ -12,7 +19,12 @@ impl EntityRegister for crate::api::ListEntitiesAlarmControlPanelResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::device::EntityType::AlarmControlPanel)
+            .register_entity(
+                writer,
+                &self.name,
+                self.key,
+                crate::model::EntityType::AlarmControlPanel,
+            )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
@@ -46,4 +58,63 @@ impl EntityUpdate for api::AlarmControlPanelStateResponse {
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
         writer.alarm_state(&self.state().as_igloo()).await
     }
+}
+
+fn alarm_state_to_command(state: &AlarmState) -> api::AlarmControlPanelStateCommand {
+    match state {
+        AlarmState::Disarmed => api::AlarmControlPanelStateCommand::AlarmControlPanelDisarm,
+        AlarmState::ArmedHome => api::AlarmControlPanelStateCommand::AlarmControlPanelArmHome,
+        AlarmState::ArmedAway => api::AlarmControlPanelStateCommand::AlarmControlPanelArmAway,
+        AlarmState::ArmedNight => api::AlarmControlPanelStateCommand::AlarmControlPanelArmNight,
+        AlarmState::ArmedVacation => {
+            api::AlarmControlPanelStateCommand::AlarmControlPanelArmVacation
+        }
+        AlarmState::ArmedUnknown => {
+            api::AlarmControlPanelStateCommand::AlarmControlPanelArmCustomBypass
+        }
+        AlarmState::Pending => api::AlarmControlPanelStateCommand::AlarmControlPanelDisarm,
+        AlarmState::Triggered => api::AlarmControlPanelStateCommand::AlarmControlPanelTrigger,
+        AlarmState::Arming => api::AlarmControlPanelStateCommand::AlarmControlPanelArmHome,
+        AlarmState::Disarming => api::AlarmControlPanelStateCommand::AlarmControlPanelDisarm,
+    }
+}
+
+pub async fn process(
+    device: &mut Device,
+    key: u32,
+    commands: Vec<(u16, Vec<u8>)>,
+) -> Result<(), DeviceError> {
+    let mut req = api::AlarmControlPanelCommandRequest {
+        key,
+        command: api::AlarmControlPanelStateCommand::AlarmControlPanelDisarm.into(),
+        code: String::new(),
+    };
+
+    for (cmd_id, payload) in commands {
+        match cmd_id {
+            WRITE_TEXT => {
+                let code: String = borsh::from_slice(&payload)?;
+                req.code = code;
+            }
+
+            WRITE_ALARM_STATE => {
+                let state: AlarmState = borsh::from_slice(&payload)?;
+                req.command = alarm_state_to_command(&state).into();
+            }
+
+            DESELECT_ENTITY | END_TRANSACTION => {
+                unreachable!();
+            }
+
+            _ => {
+                println!(
+                    "AlarmControlPanel got unexpected command {cmd_id} during transaction. Skipping.."
+                );
+            }
+        }
+    }
+
+    device
+        .send_msg(MessageType::AlarmControlPanelCommandRequest, &req)
+        .await
 }

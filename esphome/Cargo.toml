@@ -14,13 +14,14 @@ tokio = { version = "1.47.1", features = ["bytes", "full"] }
 igloo-interface = { path = "../interface/" }
 serde = { version = "1.0.224", features = ["derive"] }
 uuid = { version = "1.18.1", features = ["v7", "serde"] }
-serde_json = "1.0.145"
 strum = "0.27.2"
 strum_macros = "0.27.2"
 borsh = "1.5.7"
 async-trait = "0.1.89"
 tokio-util = { version = "0.7.16", features = ["codec"] }
 futures-util = "0.3.31"
+toml = "0.9.7"
+serde_json = "1.0.145"
 
 [build-dependencies]
 prost-build = "0.13.4"
@@ -28,3 +29,10 @@ quote = "1.0.40"
 proc-macro2 = "1.0.101"
 syn = { version = "2.0.106", features = ["full", "parsing"] }
 prettyplease = "0.2.37"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
