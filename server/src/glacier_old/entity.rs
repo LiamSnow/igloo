@@ -5,6 +5,8 @@ use crate::glacier::query::QueryFilter;
 
 #[derive(Debug)]
 pub struct Entity {
+    pub name: String,
+
     /// stores the actual components
     components: SmallVec<[Component; 8]>,
 
@@ -13,18 +15,13 @@ pub struct Entity {
     indices: [u8; MAX_SUPPORTED_COMPONENT as usize],
 }
 
-impl Default for Entity {
-    fn default() -> Self {
+impl Entity {
+    pub fn new(name: String) -> Self {
         Self {
+            name,
             components: SmallVec::new(),
             indices: [0xFF; MAX_SUPPORTED_COMPONENT as usize],
         }
-    }
-}
-
-impl Entity {
-    pub fn get_comps(&self) -> &SmallVec<[Component; 8]> {
-        &self.components
     }
 
     #[inline(always)]

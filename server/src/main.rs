@@ -1,73 +1,52 @@
-use igloo_interface::{Component, ComponentType};
-use std::time::Instant;
+use igloo_interface::ComponentType;
+use tokio::sync::oneshot;
 
-use crate::{
-    auth::Auth,
-    glacier::query::{GlobalQueryRequest, QueryFilter},
-};
+use crate::glacier::query::{Query, QueryKind, QueryTarget};
 
-mod auth;
+// mod auth;
 mod glacier;
 mod penguin;
+// mod web;
 
 #[tokio::main]
 async fn main() {
-    // load
-    let _auth = Auth::load().await.unwrap();
+    // let _auth = Auth::load().await.unwrap();
 
-    // make communication channels
-
-    // spawn glacier
-    let shared_state = glacier::run().await.unwrap();
+    let query_tx = glacier::spawn().await.unwrap();
 
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-    {
-        let state = shared_state.lock().await;
+    let (tx, rx) = oneshot::channel();
 
-        state
-            .dispatch_query(GlobalQueryRequest {
-                filter: QueryFilter::With(ComponentType::Light),
-                area: glacier::query::GlobalArea::All,
-                kind: glacier::query::QueryKind::Set(vec![Component::Switch(true)]),
-                started_at: Instant::now(),
-            })
-            .await;
-    }
+    println!("Sending query");
 
-    // loop {
-    //     {
-    //         let state = shared_state.lock().await;
+    query_tx
+        .send(Query {
+            filter: None,
+            target: QueryTarget::All,
+            kind: QueryKind::GetOne(tx, ComponentType::Color),
+        })
+        .await
+        .unwrap();
 
-    //         state
-    //             .dispatch_query(GlobalQueryRequest {
-    //                 filter: QueryFilter::With(ComponentType::Light),
-    //                 area: glacier::query::GlobalArea::All,
-    //                 kind: glacier::query::QueryKind::Set(vec![Component::Switch(false)]),
-    //             })
-    //             .await;
-    //     }
+    println!("Query sent");
 
-    //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let res = rx.await;
 
-    //     {
-    //         let state = shared_state.lock().await;
+    println!("{res:#?}");
 
-    //         state
-    //             .dispatch_query(GlobalQueryRequest {
-    //                 filter: QueryFilter::With(ComponentType::Light),
-    //                 area: glacier::query::GlobalArea::All,
-    //                 kind: glacier::query::QueryKind::Set(vec![Component::Switch(true)]),
-    //             })
-    //             .await;
-    //     }
+    // {
+    //     let state = shared_state.lock().await;
 
-    //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    //     state
+    //         .dispatch_query(Query {
+    //             filter: QueryFilter::With(ComponentType::Light),
+    //             area: glacier::query::Area::All,
+    //             kind: glacier::query::QueryKind::Set(vec![Component::Switch(true)]),
+    //             started_at: Instant::now(),
+    //         })
+    //         .await;
     // }
-
-    // spawn penguin executer
-
-    // spawn axum server
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
