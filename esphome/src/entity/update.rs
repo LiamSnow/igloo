@@ -6,7 +6,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::FloeWriterDefault;
-use serde_json::json;
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesUpdateResponse {
@@ -45,13 +44,14 @@ impl EntityUpdate for api::UpdateStateResponse {
         // more entities for a clearer representation
         // But maybe this is good for reducing less used entities IDK
 
-        let content = json!({
-            "title": self.title,
-            "current_version": self.current_version,
-            "latest_version": self.latest_version,
-            "release_summary": self.release_summary,
-            "release_url": self.release_url
-        });
+        let content = format!(
+            "title:{},current_version:{},latest_version:{},release_summary:{},release_url:{}",
+            self.title,
+            self.current_version,
+            self.latest_version,
+            self.release_summary,
+            self.release_url
+        );
 
         writer.bool(&self.in_progress).await?;
         writer.text(&content.to_string()).await?;
@@ -65,9 +65,9 @@ impl EntityUpdate for api::UpdateStateResponse {
 }
 
 pub async fn process(
-    device: &mut Device,
-    key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    _device: &mut Device,
+    _key: u32,
+    _commands: Vec<(u16, Vec<u8>)>,
 ) -> Result<(), DeviceError> {
     eprintln!("ESPHOME UPDATE ENTITY IS NOT IMPLEMENTED");
     Ok(())

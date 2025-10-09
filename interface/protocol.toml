@@ -7,64 +7,71 @@ name = "WhatsUpIgloo"
 id = 0
 desc = "Initialize communication with Igloo."
 fields = [
-    { name = "max_supported_component", type = "u16", desc = "Specifies the newest component you know." },
+    { name = "max_supported_component", type = "u16", desc = "The newest component you know." },
+]
+
+[[commands]]
+name = "CreateDevice"
+id = 1
+desc = "TODO"
+fields = [
+    { name = "name", type = "String" }
+]
+
+[[commands]]
+name = "DeviceCreated"
+id = 2
+desc = "TODO"
+fields = [
+    { name = "name", type = "String", desc = "Passback" },
+    { name = "id", type = "u64", desc = "Persistent reference for this device" }
+]
+
+[[commands]]
+name = "StartTransaction"
+id = 3
+desc = "TODO"
+fields = [
+    { name = "device_id", type = "u64", desc = "Persistent device reference" },
 ]
 
 [[commands]]
 name = "EndTransaction"
-id = 1
+id = 4
 desc = "TODO"
 
 # TODO add comments to all the following saying they must be inside transaction
 
 [[commands]]
-name = "StartRegistrationTransaction"
-id = 2
-desc = "TODO"
-fields = [
-    { name = "device_id", type = "String", desc = "Persistent device ID. You should register the device under the same ID every boot. UUIDv7 is recommended." },
-    { name = "initial_name", type = "String", desc = "Name for the device for first register. Can be modified by the user later on" },
-    { name = "device_idx", type = "u16", desc = "Device Indexes start at 0 and increment for every device you add. Pass here for valiation." }
-]
-
-[[commands]]
 name = "RegisterEntity"
-id = 3
+id = 5
 desc = "TODO"
 fields = [
     { name = "entity_name", type = "String" },
-    { name = "entity_idx", type = "u16", desc = "Entity Indexes start 0 and increment for every entity you add on the device. Pass here for validation." }
-]
-
-[[commands]]
-name = "StartDeviceTransaction"
-id = 4
-desc = "TODO"
-fields = [
-    { name = "device_idx", type = "u16" }
+    { name = "entity_idx", type = "u32", desc = "Entity indexes start 0 and increment for every entity you add on the device. Pass here for validation." }
 ]
 
 [[commands]]
 name = "SelectEntity"
-id = 5
+id = 6
 desc = "TODO"
 fields = [
-    { name = "entity_idx", type = "u16" }
+    { name = "entity_idx", type = "u32" }
 ]
 
 [[commands]]
 name = "DeselectEntity"
-id = 6
+id = 7
 desc = "TODO"
 
 
 # Placeholders
 [[commands]]
 name = "ExecuteQuery"
-id = 7
+id = 8
 desc = "TODO"
 
 [[commands]]
 name = "SelectQuery"
-id = 8
+id = 9
 desc = "TODO"

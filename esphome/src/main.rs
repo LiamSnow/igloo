@@ -1,17 +1,15 @@
-use crate::device::{ConnectionParams, Device, DeviceError};
+use crate::device::{ConnectionParams, Device};
 use futures_util::StreamExt;
 use igloo_interface::{
-    END_TRANSACTION, FloeWriterDefault, START_DEVICE_TRANSACTION, StartDeviceTransaction,
-    StartRegistrationTransaction, floe_init,
+    CreateDevice, DEVICE_CREATED, DeviceCreated, END_TRANSACTION, START_TRANSACTION,
+    StartTransaction, floe_init,
 };
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use ini::Ini;
+use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::{
     fs,
     sync::{Mutex, mpsc},
-    task::JoinSet,
 };
-use uuid::Uuid;
 
 pub mod connection;
 pub mod device;
@@ -23,54 +21,51 @@ pub mod model {
     include!(concat!(env!("OUT_DIR"), "/model.rs"));
 }
 
-pub const CONFIG_FILE: &str = "./data/config.toml";
+pub const CONFIG_FILE: &str = "./data/config.ini";
 
 /// Eventually this will be described in the Floe.toml file
 pub const ADD_DEVICE: u16 = 32;
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Config {
     /// maps Persisnt Igloo Device ID -> Connection Params
-    devices: HashMap<String, ConnectionParams>,
+    devices: HashMap<u64, ConnectionParams>,
 }
 
 pub type CommandAndPayload = (u16, Vec<u8>);
 
 #[tokio::main]
 async fn main() {
-    let contents = fs::read_to_string(CONFIG_FILE)
-        .await
-        .expect("Failed to read config file");
-    let mut config: Config = toml::from_str(&contents).expect("Failed to parse config file");
+    let mut config = Config::load().await.unwrap();
 
     let (writer, mut reader) = floe_init().await.expect("Failed to initialize Floe");
     let shared_writer = Arc::new(Mutex::new(writer));
 
-    let devices_tx = Arc::new(Mutex::new(HashMap::new()));
+    let mut devices_tx = HashMap::new();
 
     // connect to devices in config
-    let mut pending_devices = JoinSet::new();
     for (device_id, params) in config.devices.clone() {
-        connect_device(&mut pending_devices, device_id, params);
+        let (stream_tx, stream_rx) = mpsc::channel(100);
+        devices_tx.insert(device_id, stream_tx);
+        let mut device = Device::new(device_id, params);
+        let shared_writer_copy = shared_writer.clone();
+        tokio::spawn(async move {
+            let did = device.id;
+            if let Err(e) = device.connect().await {
+                eprintln!("Error connecting device ID={did}: {e}");
+                return;
+            }
+            if let Err(e) = device.run(shared_writer_copy, stream_rx).await {
+                eprintln!("Error running device ID={did}: {e}");
+            }
+        });
     }
 
-    // handle when new devices connect
-    let (add_device_tx, add_device_rx) = mpsc::channel(10);
-    tokio::spawn(handle_pending_devices(
-        pending_devices,
-        add_device_rx,
-        devices_tx.clone(),
-        shared_writer.clone(),
-    ));
-
+    let pending_creation: Arc<Mutex<HashMap<String, Device>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut cur_device_tx = None;
 
-    loop {
-        let Some(res) = reader.next().await else {
-            println!("Socket closed. Shutting down..");
-            break;
-        };
-
+    while let Some(res) = reader.next().await {
         let (cmd_id, payload) = match res {
             Ok(f) => f,
             Err(e) => {
@@ -80,14 +75,13 @@ async fn main() {
         };
 
         match cmd_id {
-            START_DEVICE_TRANSACTION => {
-                let res: StartDeviceTransaction = borsh::from_slice(&payload)
-                    .expect("Failed to parse StartDeviceTransaction. Crashing..");
-                let devices = devices_tx.lock().await;
-                let Some(stream_tx) = devices.get(&res.device_idx) else {
+            START_TRANSACTION => {
+                let res: StartTransaction = borsh::from_slice(&payload)
+                    .expect("Failed to parse StartTransaction. Crashing..");
+                let Some(stream_tx) = devices_tx.get(&res.device_id) else {
                     eprintln!(
                         "Igloo requested to start a transaction for unknown device {}",
-                        res.device_idx
+                        res.device_id
                     );
                     continue;
                 };
@@ -96,23 +90,58 @@ async fn main() {
             END_TRANSACTION => {
                 cur_device_tx = None;
             }
+            DEVICE_CREATED => {
+                let Ok(params) = borsh::from_slice::<DeviceCreated>(&payload) else {
+                    eprintln!("Failed to parse DeviceCreated. Skipping..");
+                    continue;
+                };
+
+                // pull out pending device
+                let mut pc = pending_creation.lock().await;
+                let Some(mut device) = pc.remove(&params.name) else {
+                    eprintln!("Igloo sent DeviceCreated for unknown device. Skipping..");
+                    continue;
+                };
+                drop(pc);
+
+                // save to disk
+                config.devices.insert(params.id, device.params.clone());
+                config.save().await.unwrap();
+
+                // give actual ID now
+                device.id = params.id;
+
+                // run
+                let (stream_tx, stream_rx) = mpsc::channel(100);
+                devices_tx.insert(params.id, stream_tx);
+                let shared_writer_copy = shared_writer.clone();
+                tokio::spawn(async move {
+                    device.run(shared_writer_copy, stream_rx).await.unwrap(); // TODO log?
+                });
+            }
             ADD_DEVICE => {
                 let Ok(params) = borsh::from_slice::<ConnectionParams>(&payload) else {
                     eprintln!("Failed to parse ConnectionParams for AddDevice command. Skipping..");
                     continue;
                 };
 
-                let id = Uuid::now_v7().to_string();
-                let res = add_device_tx.send((id.clone(), params.clone())).await;
-                if let Err(e) = res {
-                    eprintln!("Failed to sent to `add_device_tx`: {e}");
-                }
-
-                config.devices.insert(id.to_string(), params);
-                let contents = toml::to_string_pretty(&config).expect("Failed to serialize config");
-                fs::write(CONFIG_FILE, contents)
-                    .await
-                    .expect("Failed to write config");
+                let mut device = Device::new(0, params);
+                let shared_writer_copy = shared_writer.clone();
+                let pending_creation_copy = pending_creation.clone();
+                tokio::spawn(async move {
+                    let info = device.connect().await.unwrap();
+                    let mut writer = shared_writer_copy.lock().await;
+                    writer
+                        .create_device(&CreateDevice {
+                            name: info.name.clone(),
+                        })
+                        .await
+                        .unwrap();
+                    drop(writer);
+                    let mut pc = pending_creation_copy.lock().await;
+                    pc.insert(info.name, device);
+                    drop(pc);
+                });
             }
             _ => {
                 if let Some(stream_tx) = &mut cur_device_tx {
@@ -135,84 +164,53 @@ async fn main() {
     }
 }
 
-async fn handle_pending_devices(
-    mut pending_devices: JoinSet<Result<(Device, String, String), DeviceError>>,
-    mut add_device_rx: mpsc::Receiver<(String, ConnectionParams)>,
-    devices_tx: Arc<Mutex<HashMap<u16, mpsc::Sender<CommandAndPayload>>>>,
-    shared_writer: Arc<Mutex<FloeWriterDefault>>,
-) {
-    let mut next_device_idx = 0u16;
+impl Config {
+    async fn load() -> Result<Self, Box<dyn Error>> {
+        let mut me = Self::default();
 
-    loop {
-        tokio::select! {
-            // connect to new device
-            Some((device_id, params)) = add_device_rx.recv() => {
-                connect_device(&mut pending_devices, device_id, params);
-            }
+        let content = fs::read_to_string(CONFIG_FILE).await?;
+        let ini = Ini::load_from_str(&content)?;
 
-            // device has connected -> register
-            Some(res) = pending_devices.join_next() => {
-                match res {
-                    Ok(Ok((mut device, device_id, initial_name))) => {
-                        let mut writer = shared_writer.lock().await;
+        for did_str in ini.sections() {
+            let Some(did_str) = did_str else { continue };
+            let did: u64 = did_str.parse()?;
+            let section = ini.section(Some(did_str)).unwrap();
 
-                        writer
-                            .start_registration_transaction(&StartRegistrationTransaction {
-                                device_id,
-                                initial_name,
-                                device_idx: next_device_idx,
-                            })
-                            .await
-                            .unwrap();
-
-                        device
-                            .register_entities(&mut writer, next_device_idx)
-                            .await
-                            .unwrap();
-
-                        writer.end_transaction().await.unwrap();
-                        writer.flush().await.unwrap();
-                        drop(writer);
-
-                        let (stream_tx, stream_rx) = mpsc::channel(100);
-                        {
-                            devices_tx.lock().await.insert(next_device_idx, stream_tx);
-                        }
-
-                        let shared_writer_copy = shared_writer.clone();
-                        tokio::spawn(async move {
-                            device
-                                .run(shared_writer_copy, stream_rx)
-                                .await
-                                .unwrap();
-                        });
-
-                        next_device_idx += 1;
-                    }
-                    Ok(Err(_)) => {} // already logged, maybe log here instead?
-                    Err(e) => {
-                        eprintln!("Device connection task panicked: {:?}", e);
-                    }
-                }
-            }
+            me.devices.insert(
+                did,
+                ConnectionParams {
+                    ip: section.get("ip").ok_or("Mising 'ip'")?.to_string(),
+                    name: section.get("name").map(|o| o.to_string()),
+                    noise_psk: section.get("noise_psk").map(|o| o.to_string()),
+                    password: section.get("password").map(|o| o.to_string()),
+                },
+            );
         }
+
+        Ok(me)
     }
-}
 
-fn connect_device(
-    join_set: &mut JoinSet<Result<(Device, String, String), DeviceError>>,
-    device_id: String,
-    params: ConnectionParams,
-) {
-    join_set.spawn(async move {
-        let name = params.name.clone();
-        let mut device = Device::new(params);
-        match device.connect().await {
-            Ok(info) => Ok((device, device_id, name.unwrap_or(info.name))),
-            Err(e) => {
-                eprintln!("Failed to connect to device {}: {:?}", device_id, e);
-                Err(e)
+    async fn save(&self) -> Result<(), Box<dyn Error>> {
+        let mut ini = Ini::new();
+
+        for (id, params) in &self.devices {
+            let mut section = ini.with_section(Some(id.to_string()));
+            section.set("ip", &params.ip);
+            if let Some(name) = &params.name {
+                section.set("name", name);
+            }
+            if let Some(noise_psk) = &params.noise_psk {
+                section.set("noise_psk", noise_psk);
+            }
+            if let Some(password) = &params.password {
+                section.set("password", password);
             }
         }
-    });
+
+        let mut buf = Vec::new();
+        ini.write_to(&mut buf)?;
+        fs::write(CONFIG_FILE, buf).await?;
+
+        Ok(())
+    }
 }

@@ -11,14 +11,14 @@ jiff = "0.2.15"
 ron = "0.11.0"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["full"] }
-uuid = { version = "1.18.1", features = ["v7", "serde"] }
-smallvec = { version = "1.15.1", features = ["serde"] }
+smallvec = { version = "1.15.1" }
 bit-set = "0.8.0"
 compact_string = "0.1.0"
 rustc-hash = "2.1.1"
 tokio-util = { version = "0.7.16", features = ["codec"] }
 futures-util = { version = "0.3.31", features = ["sink"] }
 borsh = { version = "1.5.7", features = ["derive"] }
+rust-ini = "0.21.3"
 
 
 [profile.release]

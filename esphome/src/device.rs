@@ -1,9 +1,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BytesMut;
 use igloo_interface::{
-    DESELECT_ENTITY, FloeWriterDefault, SELECT_ENTITY, SelectEntity, StartDeviceTransaction,
+    DESELECT_ENTITY, FloeWriterDefault, SELECT_ENTITY, SelectEntity, StartTransaction,
 };
-use serde::{Deserialize, Serialize};
+use prost::Message;
 use std::{
     collections::HashMap,
     mem,
@@ -21,11 +21,11 @@ use crate::{
         noise::NoiseConnection,
         plain::PlainConnection,
     },
-    entity::{self, EntityUpdate},
+    entity::{self, EntityRegister, EntityUpdate},
     model::{EntityType, MessageType},
 };
 
-#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
 pub struct ConnectionParams {
     pub ip: String,
     pub noise_psk: Option<String>,
@@ -34,17 +34,17 @@ pub struct ConnectionParams {
 }
 
 pub struct Device {
+    pub id: u64,
+    pub params: ConnectionParams,
     pub connection: Connection,
-    pub password: String,
-    pub connected: bool,
-    pub last_ping: Option<SystemTime>,
+    password: String,
+    connected: bool,
+    last_ping: Option<SystemTime>,
     /// maps ESPHome entity key -> Igloo entity index
-    pub entity_key_to_idx: HashMap<u32, u16>,
+    entity_key_to_idx: HashMap<u32, u32>,
     /// maps Igloo entity index -> ESPHome type,key
-    pub entity_idx_to_info: HashMap<u16, (EntityType, u32)>,
-    pub device_idx: Option<u16>,
-    pub next_entity_idx: u16,
-    pub shared_writer: Option<Arc<Mutex<FloeWriterDefault>>>,
+    entity_idx_to_info: Vec<(EntityType, u32)>,
+    next_entity_idx: u32,
 }
 
 #[derive(Error, Debug)]
@@ -84,28 +84,114 @@ pub enum DeviceError {
 }
 
 impl Device {
-    pub fn new(params: ConnectionParams) -> Self {
-        let connection = match params.noise_psk {
-            Some(noise_psk) => NoiseConnection::new(params.ip, noise_psk).into(),
-            None => PlainConnection::new(params.ip).into(),
+    pub fn new(id: u64, params: ConnectionParams) -> Self {
+        let connection = match &params.noise_psk {
+            Some(noise_psk) => {
+                NoiseConnection::new(params.ip.clone(), noise_psk.to_string()).into()
+            }
+            None => PlainConnection::new(params.ip.clone()).into(),
         };
 
         Device {
+            id,
             connection,
-            password: params.password.unwrap_or_default(),
+            password: params.password.clone().unwrap_or_default(),
+            params,
             connected: false,
             last_ping: None,
-            device_idx: None,
             entity_key_to_idx: HashMap::new(),
-            entity_idx_to_info: HashMap::new(),
+            entity_idx_to_info: Vec::new(),
             next_entity_idx: 0,
-            shared_writer: None,
         }
+    }
+
+    pub async fn run(
+        mut self,
+        shared_writer: Arc<Mutex<FloeWriterDefault>>,
+        mut stream_rx: mpsc::Receiver<(u16, Vec<u8>)>,
+    ) -> Result<(), DeviceError> {
+        if !self.connected {
+            unreachable!()
+        }
+
+        // publish entities
+        let mut writer = shared_writer.lock().await;
+        writer
+            .start_transaction(&StartTransaction { device_id: self.id })
+            .await?;
+        self.register_entities(&mut writer).await?; // TODO timeout, then crash
+        writer.end_transaction().await?;
+        drop(writer);
+
+        self.subscribe_states().await?;
+
+        // collect all messages inside each select|deselect
+        // entity pairs then process them together
+        let mut cur_entity_info = None;
+        let mut cur_entity_trans = Vec::with_capacity(100);
+
+        loop {
+            tokio::select! {
+                Some((cmd_id, payload)) = stream_rx.recv() => {
+                    match cmd_id {
+                        SELECT_ENTITY => {
+                            let res: SelectEntity = borsh::from_slice(&payload).expect("Failed to parse SelectEntity. Crashing");
+                            let Some(entity_info) = self.entity_idx_to_info.get(res.entity_idx as usize) else {
+                                eprintln!("Igloo selected invalid entity {}", res.entity_idx);
+                                continue;
+                            };
+                            cur_entity_info = Some(entity_info.clone());
+                            cur_entity_trans.clear();
+                        }
+
+                        DESELECT_ENTITY => {
+                            if cur_entity_info.is_some() {
+                                let res = self.process_entity_trans(
+                                    cur_entity_info.take().unwrap(), // always succeeds
+                                    mem::take(&mut cur_entity_trans)
+                                ).await;
+                                if let Err(e) = res {
+                                    eprintln!("Error processing entity transaction: {e}");
+                                }
+                            } else {
+                                eprintln!("Igloo deselected nothing");
+                            }
+                        }
+
+                        cmd_id => {
+                            if cur_entity_info.is_some() {
+                                cur_entity_trans.push((cmd_id, payload));
+                            } else {
+                                eprintln!("Device got unexpected command {cmd_id} during transaction.");
+                            }
+                        }
+                    }
+                },
+
+                result = self.connection.recv_msg() => {
+                    match result {
+                        Ok((msg_type, msg)) => {
+                            if let Err(e) = self.process_msg(&shared_writer, msg_type, msg).await {
+                                eprintln!("[Device] Error processing message: {:?}", e);
+                                if matches!(e, DeviceError::DeviceRequestShutdown) {
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[Device] Error receiving message: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn connect(&mut self) -> Result<api::DeviceInfoResponse, DeviceError> {
         if self.connected {
-            panic!(); // TODO should this reconnect?
+            unreachable!();
         }
 
         self.connection.connect().await?;
@@ -218,79 +304,6 @@ impl Device {
         self.recv_msg(res_type).await
     }
 
-    pub async fn run(
-        mut self,
-        shared_writer: Arc<Mutex<FloeWriterDefault>>,
-        mut stream_rx: mpsc::Receiver<(u16, Vec<u8>)>,
-    ) -> Result<(), DeviceError> {
-        self.shared_writer = Some(shared_writer);
-
-        self.subscribe_states().await?;
-
-        // collect all messages inside each select|deselect
-        // entity pairs then process them together
-        let mut cur_entity_info = None;
-        let mut cur_entity_trans = Vec::with_capacity(100);
-
-        loop {
-            tokio::select! {
-                Some((cmd_id, payload)) = stream_rx.recv() => {
-                    match cmd_id {
-                        SELECT_ENTITY => {
-                            let res: SelectEntity = borsh::from_slice(&payload).expect("Failed to parse SelectEntity. Crashing");
-                            let Some(entity_info) = self.entity_idx_to_info.get(&res.entity_idx) else {
-                                eprintln!("Igloo selected invalid entity {}", res.entity_idx);
-                                continue;
-                            };
-                            cur_entity_info = Some(entity_info.clone());
-                            cur_entity_trans.clear();
-                        }
-
-                        DESELECT_ENTITY => {
-                            if cur_entity_info.is_some() {
-                                let res = self.process_entity_trans(
-                                    cur_entity_info.take().unwrap(), // always succeeds
-                                    mem::take(&mut cur_entity_trans)
-                                ).await;
-                                if let Err(e) = res {
-                                    eprintln!("Error processing entity transaction: {e}");
-                                }
-                            } else {
-                                eprintln!("Igloo deselected nothing");
-                            }
-                        }
-
-                        cmd_id => {
-                            if cur_entity_info.is_some() {
-                                cur_entity_trans.push((cmd_id, payload));
-                            } else {
-                                eprintln!("Device got unexpected command {cmd_id} during transaction.");
-                            }
-                        }
-                    }
-                },
-
-                result = self.connection.recv_msg() => {
-                    match result {
-                        Ok((msg_type, msg)) => {
-                            if let Err(e) = self.process_msg(msg_type, msg).await {
-                                eprintln!("[Device] Error processing message: {:?}", e);
-                                if matches!(e, DeviceError::DeviceRequestShutdown) {
-                                    break;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("[Device] Error receiving message: {:?}", e);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     async fn process_entity_trans(
         &mut self,
         info: (EntityType, u32),
@@ -328,6 +341,7 @@ impl Device {
 
     async fn process_msg(
         &mut self,
+        shared_writer: &Arc<Mutex<FloeWriterDefault>>,
         msg_type: MessageType,
         msg: BytesMut,
     ) -> Result<(), DeviceError> {
@@ -367,11 +381,264 @@ impl Device {
             }
 
             _ => {
-                if self.shared_writer.is_some() {
-                    self.process_state_update(msg_type, msg).await?;
-                }
-                // TODO else log?
+                self.process_state_update(shared_writer, msg_type, msg)
+                    .await?;
             }
+        }
+        Ok(())
+    }
+
+    pub async fn process_state_update(
+        &mut self,
+        shared_writer: &Arc<Mutex<FloeWriterDefault>>,
+        msg_type: MessageType,
+        msg: BytesMut,
+    ) -> Result<(), DeviceError> {
+        match msg_type {
+            MessageType::DisconnectRequest
+            | MessageType::PingRequest
+            | MessageType::PingResponse
+            | MessageType::GetTimeRequest
+            | MessageType::SubscribeLogsResponse => unreachable!(),
+            MessageType::BinarySensorStateResponse => {
+                self.apply_entity_update(
+                    shared_writer,
+                    api::BinarySensorStateResponse::decode(msg)?,
+                )
+                .await?;
+            }
+            MessageType::CoverStateResponse => {
+                self.apply_entity_update(shared_writer, api::CoverStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::FanStateResponse => {
+                self.apply_entity_update(shared_writer, api::FanStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::LightStateResponse => {
+                self.apply_entity_update(shared_writer, api::LightStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::SensorStateResponse => {
+                self.apply_entity_update(shared_writer, api::SensorStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::SwitchStateResponse => {
+                self.apply_entity_update(shared_writer, api::SwitchStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::TextSensorStateResponse => {
+                self.apply_entity_update(shared_writer, api::TextSensorStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::ClimateStateResponse => {
+                self.apply_entity_update(shared_writer, api::ClimateStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::NumberStateResponse => {
+                self.apply_entity_update(shared_writer, api::NumberStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::SelectStateResponse => {
+                self.apply_entity_update(shared_writer, api::SelectStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::SirenStateResponse => {
+                self.apply_entity_update(shared_writer, api::SirenStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::LockStateResponse => {
+                self.apply_entity_update(shared_writer, api::LockStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::MediaPlayerStateResponse => {
+                self.apply_entity_update(
+                    shared_writer,
+                    api::MediaPlayerStateResponse::decode(msg)?,
+                )
+                .await?;
+            }
+            MessageType::AlarmControlPanelStateResponse => {
+                self.apply_entity_update(
+                    shared_writer,
+                    api::AlarmControlPanelStateResponse::decode(msg)?,
+                )
+                .await?;
+            }
+            MessageType::TextStateResponse => {
+                self.apply_entity_update(shared_writer, api::TextStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::DateStateResponse => {
+                self.apply_entity_update(shared_writer, api::DateStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::TimeStateResponse => {
+                self.apply_entity_update(shared_writer, api::TimeStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::ValveStateResponse => {
+                self.apply_entity_update(shared_writer, api::ValveStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::DateTimeStateResponse => {
+                self.apply_entity_update(shared_writer, api::DateTimeStateResponse::decode(msg)?)
+                    .await?;
+            }
+            MessageType::UpdateStateResponse => {
+                self.apply_entity_update(shared_writer, api::UpdateStateResponse::decode(msg)?)
+                    .await?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub async fn apply_entity_update<T: EntityUpdate>(
+        &self,
+        shared_writer: &Arc<Mutex<FloeWriterDefault>>,
+        update: T,
+    ) -> Result<(), DeviceError> {
+        if update.should_skip() {
+            return Ok(());
+        }
+
+        let Some(entity_idx) = self.entity_key_to_idx.get(&update.key()) else {
+            // TODO log err - update for unknown entity
+            return Ok(());
+        };
+
+        let mut writer = shared_writer.lock().await;
+
+        writer
+            .start_transaction(&StartTransaction { device_id: self.id })
+            .await?;
+
+        writer
+            .select_entity(&SelectEntity {
+                entity_idx: *entity_idx,
+            })
+            .await?;
+
+        update.write_to(&mut writer).await?;
+
+        writer.end_transaction().await?;
+        writer.flush().await?;
+
+        Ok(())
+    }
+
+    pub async fn register_entities(
+        &mut self,
+        writer: &mut FloeWriterDefault,
+    ) -> Result<(), DeviceError> {
+        self.send_msg(
+            MessageType::ListEntitiesRequest,
+            &api::ListEntitiesRequest {},
+        )
+        .await?;
+        loop {
+            let (msg_type, msg) = self.connection.recv_msg().await?;
+            match msg_type {
+                MessageType::ListEntitiesServicesResponse => {
+                    continue;
+                }
+                MessageType::ListEntitiesDoneResponse => break,
+                MessageType::ListEntitiesBinarySensorResponse => {
+                    let msg = api::ListEntitiesBinarySensorResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesCoverResponse => {
+                    let msg = api::ListEntitiesCoverResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesFanResponse => {
+                    let msg = api::ListEntitiesFanResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesLightResponse => {
+                    let msg = api::ListEntitiesLightResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesSensorResponse => {
+                    let msg = api::ListEntitiesSensorResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesSwitchResponse => {
+                    let msg = api::ListEntitiesSwitchResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesTextSensorResponse => {
+                    let msg = api::ListEntitiesTextSensorResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesCameraResponse => {
+                    let msg = api::ListEntitiesCameraResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesClimateResponse => {
+                    let msg = api::ListEntitiesClimateResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesNumberResponse => {
+                    let msg = api::ListEntitiesNumberResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesSelectResponse => {
+                    let msg = api::ListEntitiesSelectResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesSirenResponse => {
+                    let msg = api::ListEntitiesSirenResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesLockResponse => {
+                    let msg = api::ListEntitiesLockResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesButtonResponse => {
+                    let msg = api::ListEntitiesButtonResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesMediaPlayerResponse => {
+                    let msg = api::ListEntitiesMediaPlayerResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesAlarmControlPanelResponse => {
+                    let msg = api::ListEntitiesAlarmControlPanelResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesTextResponse => {
+                    let msg = api::ListEntitiesTextResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesDateResponse => {
+                    let msg = api::ListEntitiesDateResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesTimeResponse => {
+                    let msg = api::ListEntitiesTimeResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesEventResponse => {
+                    let msg = api::ListEntitiesEventResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesValveResponse => {
+                    let msg = api::ListEntitiesValveResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesDateTimeResponse => {
+                    let msg = api::ListEntitiesDateTimeResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                MessageType::ListEntitiesUpdateResponse => {
+                    let msg = api::ListEntitiesUpdateResponse::decode(msg)?;
+                    msg.register(self, writer).await?;
+                }
+                _ => continue,
+            }
+            writer.deselect_entity().await?;
         }
         Ok(())
     }
@@ -391,8 +658,7 @@ impl Device {
             .await?;
 
         self.entity_key_to_idx.insert(key, self.next_entity_idx);
-        self.entity_idx_to_info
-            .insert(self.next_entity_idx, (entity_type, key));
+        self.entity_idx_to_info.push((entity_type, key));
 
         writer
             .select_entity(&SelectEntity {
@@ -401,39 +667,6 @@ impl Device {
             .await?;
 
         self.next_entity_idx += 1;
-
-        Ok(())
-    }
-
-    pub async fn apply_entity_update<T: EntityUpdate>(&self, update: T) -> Result<(), DeviceError> {
-        if update.should_skip() {
-            return Ok(());
-        }
-
-        let Some(entity_idx) = self.entity_key_to_idx.get(&update.key()) else {
-            // TODO log err - update for unknown entity
-            return Ok(());
-        };
-
-        let shared_writer = self.shared_writer.as_ref().unwrap(); // always succeeds
-        let mut writer = shared_writer.lock().await;
-
-        writer
-            .start_device_transaction(&StartDeviceTransaction {
-                device_idx: self.device_idx.unwrap(), // always succeeds
-            })
-            .await?;
-
-        writer
-            .select_entity(&SelectEntity {
-                entity_idx: *entity_idx,
-            })
-            .await?;
-
-        update.write_to(&mut writer).await?;
-
-        writer.end_transaction().await?;
-        writer.flush().await?;
 
         Ok(())
     }

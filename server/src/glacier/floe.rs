@@ -1,35 +1,36 @@
-use std::{error::Error, mem, path::Path, process::Stdio};
-
 use futures_util::StreamExt;
 use igloo_interface::{
-    END_TRANSACTION, FloeCodec, FloeReaderDefault, FloeWriter, FloeWriterDefault,
-    MAX_SUPPORTED_COMPONENT, WHATS_UP_IGLOO, WhatsUpIgloo,
+    CREATE_DEVICE, DESELECT_ENTITY, END_TRANSACTION, FloeCodec, FloeReaderDefault, FloeWriter,
+    FloeWriterDefault, MAX_SUPPORTED_COMPONENT, START_TRANSACTION, WHATS_UP_IGLOO, WhatsUpIgloo,
 };
+use smallvec::smallvec;
+use std::{error::Error, mem, path::Path, process::Stdio};
 use tokio::{
     fs,
     io::BufWriter,
     net::UnixListener,
-    process::{Child, Command},
+    process::{self, Child},
     sync::mpsc,
 };
 use tokio_util::codec::FramedRead;
 
-use crate::glacier::{CommandLine, Transaction};
+use crate::glacier::{
+    Command, Commands,
+    tree::{FloeID, FloeRef},
+};
 
-struct FloeManager {
-    name: String,
-    idx: u16,
-    trans_tx: mpsc::Sender<(u16, Transaction)>,
-    reader: FloeReaderDefault,
+pub struct FloeManager {
+    pub fid: FloeID,
+    pub fref: FloeRef,
+    pub cmds_tx: mpsc::Sender<(FloeRef, Commands)>,
+    pub reader: FloeReaderDefault,
 }
 
 // TODO remove unwraps and panics
-pub async fn spawn(
+pub async fn init(
     name: String,
-    idx: u16,
-    trans_tx: mpsc::Sender<(u16, Transaction)>,
-) -> Result<(FloeWriterDefault, u16), Box<dyn Error>> {
-    println!("Spawning Floe '{name}'");
+) -> Result<(FloeReaderDefault, FloeWriterDefault, u16), Box<dyn Error>> {
+    println!("Initializing Floe '{name}'");
 
     let cwd = format!("./floes/{name}");
 
@@ -40,7 +41,7 @@ pub async fn spawn(
     let _ = fs::remove_file(&socket_path).await;
     let listener = UnixListener::bind(&socket_path)?;
 
-    let mut process = Command::new(Path::new("./floe"))
+    let mut process = process::Command::new(Path::new("./floe"))
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -75,42 +76,45 @@ pub async fn spawn(
         }
     };
 
-    tokio::spawn(async move {
-        let man = FloeManager {
-            name,
-            idx,
-            trans_tx,
-            reader,
-        };
-        man.run().await;
-    });
-
-    Ok((writer, max_supported_component))
+    Ok((reader, writer, max_supported_component))
 }
 
 impl FloeManager {
     /// just forward transactions up to to Glacier
-    async fn run(mut self) {
-        let mut cur_trans = Transaction::new();
+    pub async fn run(mut self) {
+        println!("Floe '{:?}' running as #{:?}", self.fid, self.fref);
+
+        let mut cur_trans = Commands::new();
 
         while let Some(res) = self.reader.next().await {
             let (cmd_id, payload) = match res {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("Error reading frame from Floe '{}': {e}", self.name);
+                    eprintln!("Error reading frame from Floe '{:?}': {e}", self.fid);
                     continue;
                 }
             };
 
-            cur_trans.push(CommandLine { cmd_id, payload });
-
-            if cmd_id == END_TRANSACTION {
+            if cmd_id == CREATE_DEVICE {
                 let res = self
-                    .trans_tx
-                    .try_send((self.idx, mem::take(&mut cur_trans)));
+                    .cmds_tx
+                    .try_send((self.fref, smallvec![Command { cmd_id, payload }]));
                 if let Err(e) = res {
                     eprintln!("Failed to send transaction to Glacier: {e}");
                 }
+            } else if (START_TRANSACTION..=DESELECT_ENTITY).contains(&cmd_id) || cmd_id >= 64 {
+                cur_trans.push(Command { cmd_id, payload });
+
+                if cmd_id == END_TRANSACTION {
+                    let res = self
+                        .cmds_tx
+                        .try_send((self.fref, mem::take(&mut cur_trans)));
+                    if let Err(e) = res {
+                        eprintln!("Failed to send transaction to Glacier: {e}");
+                    }
+                }
+            } else {
+                eprintln!("Floe '{:?}' send unexpected command {cmd_id}", self.fid);
             }
         }
     }

@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 
 use crate::glacier::query::QueryFilter;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Entity {
     /// stores the actual components
     components: SmallVec<[Component; 8]>,
@@ -78,6 +78,13 @@ pub trait HasComponent {
                 let (lhs, rhs) = parts.as_ref();
                 self.matches_filter(lhs) || self.matches_filter(rhs)
             }
+        }
+    }
+
+    fn matches_filter_opt(&self, filter_opt: &Option<QueryFilter>) -> bool {
+        match filter_opt {
+            Some(filter) => self.matches_filter(filter),
+            None => true,
         }
     }
 }

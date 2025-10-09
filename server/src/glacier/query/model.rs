@@ -1,6 +1,7 @@
 use igloo_interface::{Component, ComponentType};
-use rustc_hash::FxHashSet;
 use tokio::sync::oneshot;
+
+use crate::glacier::tree::{DeviceID, FloeID, FloeRef, ZoneID};
 
 /// Request a Query from the Query Engine
 #[derive(Debug)]
@@ -16,28 +17,26 @@ pub enum QueryKind {
     GetOne(oneshot::Sender<Option<Component>>, ComponentType),
     GetAll(oneshot::Sender<Vec<Component>>, ComponentType),
     GetAvg(oneshot::Sender<Option<Component>>, ComponentType),
-    // WatchGet(mpsc::Sender<()>, ComponentType),
+    // WatchOne(mpsc::Sender<()>, ComponentType),
+    // WatchAll(mpsc::Sender<()>, ComponentType),
     // WatchAvg(mpsc::Sender<()>, ComponentType),
     Snapshot(oneshot::Sender<Snapshot>),
 }
 
 pub enum WatchTarget {
     All,
-    /// Floe idx, Device idx
-    Devices(FxHashSet<(u16, u16)>),
-    /// Floe idx, Device idx, Entity idx
-    Entity(u16, u16, u16),
+    Zone(ZoneID),
+    Device(DeviceID),
+    Entity(DeviceID, usize),
 }
 
 #[derive(Debug, Clone)]
 pub enum QueryTarget {
     All,
-    /// Zone ID
-    Zone(String),
-    /// Floe ID, Device ID
-    Device(String, String),
-    /// Floe ID, Device ID, Entity Name
-    Entity(String, String, String),
+    Zone(ZoneID),
+    Device(DeviceID),
+    /// Device ID, Entity Name
+    Entity(DeviceID, String),
 }
 
 #[derive(Debug, Clone)]
@@ -85,28 +84,23 @@ pub struct Snapshot {
 
 #[derive(Debug)]
 pub struct ZoneSnapshot {
-    pub id: String,
-    pub idx: u16,
+    pub id: ZoneID,
     pub name: String,
-    pub disabled: bool,
-    // TODO devices
+    pub devices: Vec<DeviceID>,
 }
 
 #[derive(Debug)]
 pub struct FloeSnapshot {
-    pub id: String,
-    pub idx: u16,
+    pub id: FloeID,
+    pub fref: FloeRef,
     pub max_supported_component: u16,
 }
 
 #[derive(Debug)]
 pub struct DeviceSnapshot {
-    pub id: String,
-    pub idx: Option<u16>,
+    pub id: DeviceID,
     pub name: String,
-    pub floe_id: String,
-    /// None if not registered right now
-    pub floe_idx: Option<u16>,
+    pub owner: FloeID,
     pub entities: Vec<EntitySnapshot>,
 }
 

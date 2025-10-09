@@ -17,6 +17,7 @@ pub const DEFAULT_COMMAND_SIZE: usize = 64;
 pub type FloeWriterDefault = FloeWriter<BufWriter<OwnedWriteHalf>>;
 pub type FloeReaderDefault = FramedRead<OwnedReadHalf, FloeCodec>;
 
+#[derive(Debug)]
 pub struct FloeWriter<W: AsyncWriteExt + Unpin>(pub W);
 
 pub async fn floe_init() -> Result<(FloeWriterDefault, FloeReaderDefault), std::io::Error> {

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use igloo_interface::{Component, ComponentType};
+use igloo_interface::{Component, ComponentType, SelectEntity, StartTransaction};
 use tokio::sync::oneshot;
 
 use crate::glacier::{entity::HasComponent, query::*, tree::DeviceTree};
@@ -23,20 +23,6 @@ pub async fn handle_query(tree: &mut DeviceTree, query: Query) -> Result<(), Box
     }
 }
 
-async fn handle_set_query(
-    tree: &mut DeviceTree,
-    comps: Vec<Component>,
-    filter: Option<QueryFilter>,
-    target: QueryTarget,
-) -> Result<(), Box<dyn Error>> {
-    match target {
-        QueryTarget::All => todo!(),
-        QueryTarget::Zone(zone_id) => todo!(),
-        QueryTarget::Device(floe_id, device_id) => todo!(),
-        QueryTarget::Entity(floe_id, device_id, entity_id) => todo!(),
-    }
-}
-
 async fn handle_get_one_query(
     tree: &mut DeviceTree,
     tx: oneshot::Sender<Option<Component>>,
@@ -44,19 +30,79 @@ async fn handle_get_one_query(
     filter: Option<QueryFilter>,
     target: QueryTarget,
 ) -> Result<(), Box<dyn Error>> {
-    let entities = iter_entities(tree, target, filter)?;
+    let filter = match filter {
+        Some(f) => QueryFilter::And(Box::new((f, QueryFilter::With(comp_type)))),
+        None => QueryFilter::With(comp_type),
+    };
 
-    for (device, entity) in entities {
-        if device.presense.has(comp_type)
-            && let Some(comp) = entity.get(comp_type).cloned()
-        {
-            return tx
-                .send(Some(comp))
-                .map_err(|_| "Failed to send query result. Channel closed".into());
+    let res = match target {
+        QueryTarget::All => {
+            let mut res = None;
+            'outer: for device in tree.iter_devices() {
+                if !device.presense.matches_filter(&filter) {
+                    continue;
+                }
+
+                for entity in &device.entities {
+                    if !entity.matches_filter(&filter) {
+                        continue;
+                    }
+
+                    res = entity.get(comp_type);
+                    break 'outer;
+                }
+            }
+            res
         }
-    }
+        QueryTarget::Zone(zid) => {
+            let mut res = None;
+            'outer: for device in tree.iter_devices_in_zone(zid) {
+                if !device.presense.matches_filter(&filter) {
+                    continue;
+                }
 
-    tx.send(None)
+                for entity in &device.entities {
+                    if !entity.matches_filter(&filter) {
+                        continue;
+                    }
+
+                    res = entity.get(comp_type);
+                    break 'outer;
+                }
+            }
+            res
+        }
+        QueryTarget::Device(did) => {
+            let device = tree.device(did)?;
+            let mut res = None;
+            if device.presense.matches_filter(&filter) {
+                for entity in &device.entities {
+                    if !entity.matches_filter(&filter) {
+                        continue;
+                    }
+
+                    res = entity.get(comp_type);
+                    break;
+                }
+            }
+            res
+        }
+        QueryTarget::Entity(did, eid) => {
+            let device = tree.device(did)?;
+            let Some(entity_idx) = device.entity_idx_lut.get(&eid) else {
+                return Err("invalid entity ID".into());
+            };
+            let entity = &device.entities[*entity_idx];
+
+            if entity.matches_filter(&filter) {
+                entity.get(comp_type)
+            } else {
+                None
+            }
+        }
+    };
+
+    tx.send(res.cloned())
         .map_err(|_| "Failed to send query result. Channel closed".into())
 }
 
@@ -67,23 +113,183 @@ async fn handle_get_all_query(
     filter: Option<QueryFilter>,
     target: QueryTarget,
 ) -> Result<(), Box<dyn Error>> {
-    let entities = iter_entities(tree, target, filter)?;
+    let mut res: Vec<Component> = Vec::with_capacity(10);
 
-    let components: Vec<Component> = entities
-        .filter(|(device, _)| device.presense.has(comp_type))
-        .filter_map(|(_, entity)| entity.get(comp_type).cloned())
-        .collect();
+    let filter = match filter {
+        Some(f) => QueryFilter::And(Box::new((f, QueryFilter::With(comp_type)))),
+        None => QueryFilter::With(comp_type),
+    };
 
-    tx.send(components)
+    match target {
+        QueryTarget::All => {
+            for device in tree.iter_devices() {
+                if !device.presense.matches_filter(&filter) {
+                    continue;
+                }
+
+                for entity in &device.entities {
+                    if !entity.matches_filter(&filter) {
+                        continue;
+                    }
+
+                    res.push(entity.get(comp_type).unwrap().clone());
+                }
+            }
+        }
+        QueryTarget::Zone(zid) => {
+            for device in tree.iter_devices_in_zone(zid) {
+                if !device.presense.matches_filter(&filter) {
+                    continue;
+                }
+
+                for entity in &device.entities {
+                    if !entity.matches_filter(&filter) {
+                        continue;
+                    }
+
+                    res.push(entity.get(comp_type).unwrap().clone());
+                }
+            }
+        }
+        QueryTarget::Device(did) => {
+            let device = tree.device(did)?;
+            if device.presense.matches_filter(&filter) {
+                for entity in &device.entities {
+                    if !entity.matches_filter(&filter) {
+                        continue;
+                    }
+
+                    res.push(entity.get(comp_type).unwrap().clone());
+                }
+            }
+        }
+        QueryTarget::Entity(did, eid) => {
+            let device = tree.device(did)?;
+            let Some(entity_idx) = device.entity_idx_lut.get(&eid) else {
+                return Err("invalid entity ID".into());
+            };
+            let entity = &device.entities[*entity_idx];
+
+            if entity.matches_filter(&filter) {
+                res.push(entity.get(comp_type).unwrap().clone());
+            }
+        }
+    }
+
+    tx.send(res)
         .map_err(|_| "Failed to send query result. Channel closed".into())
 }
 
-async fn handle_get_avg_query(
+async fn handle_set_query(
     tree: &mut DeviceTree,
-    tx: oneshot::Sender<Option<Component>>,
-    comp_type: ComponentType,
+    comps: Vec<Component>,
     filter: Option<QueryFilter>,
     target: QueryTarget,
+) -> Result<(), Box<dyn Error>> {
+    let mut applicable = Vec::with_capacity(10);
+
+    match target {
+        QueryTarget::All => {
+            for (did, device) in tree.iter_devices_with_ids() {
+                if device.owner_ref().is_none() || !device.presense.matches_filter_opt(&filter) {
+                    continue;
+                }
+
+                let mut applicable_entities = Vec::with_capacity(5);
+                for (eidx, entity) in device.entities.iter().enumerate() {
+                    if entity.matches_filter_opt(&filter) {
+                        applicable_entities.push(eidx);
+                    }
+                }
+                if applicable_entities.len() > 0 {
+                    applicable.push((did, applicable_entities));
+                }
+            }
+        }
+        QueryTarget::Zone(zid) => {
+            for (did, device) in tree.iter_devices_in_zone_with_ids(zid) {
+                if device.owner_ref().is_none() || !device.presense.matches_filter_opt(&filter) {
+                    continue;
+                }
+
+                let mut applicable_entities = Vec::with_capacity(5);
+                for (eidx, entity) in device.entities.iter().enumerate() {
+                    if entity.matches_filter_opt(&filter) {
+                        applicable_entities.push(eidx);
+                    }
+                }
+                if applicable_entities.len() > 0 {
+                    applicable.push((did, applicable_entities));
+                }
+            }
+        }
+        QueryTarget::Device(did) => {
+            let device = tree.device(did)?;
+            if device.owner_ref().is_some() {
+                let mut applicable_entities = Vec::with_capacity(5);
+                if device.presense.matches_filter_opt(&filter) {
+                    for (eidx, entity) in device.entities.iter().enumerate() {
+                        if entity.matches_filter_opt(&filter) {
+                            applicable_entities.push(eidx);
+                        }
+                    }
+                }
+                if applicable_entities.len() > 0 {
+                    applicable.push((did, applicable_entities));
+                }
+            }
+        }
+        QueryTarget::Entity(did, eid) => {
+            let device = tree.device(did)?;
+            if device.owner_ref().is_some() {
+                let Some(eidx) = device.entity_idx_lut.get(&eid) else {
+                    return Err("invalid entity ID".into());
+                };
+                let entity = &device.entities[*eidx];
+
+                if entity.matches_filter_opt(&filter) {
+                    applicable.push((did, vec![*eidx]));
+                }
+            }
+        }
+    }
+
+    for (did, eidxs) in applicable {
+        let device = tree.device(did).unwrap();
+        let floe = tree.floe_mut(device.owner_ref().unwrap());
+
+        floe.writer
+            .start_transaction(&StartTransaction {
+                device_id: did.take(),
+            })
+            .await?;
+
+        for eidx in eidxs {
+            floe.writer
+                .select_entity(&SelectEntity {
+                    entity_idx: eidx as u32,
+                })
+                .await?;
+
+            for comp in &comps {
+                floe.writer.write_component(comp).await?;
+            }
+
+            floe.writer.deselect_entity().await?;
+        }
+
+        floe.writer.end_transaction().await?;
+    }
+
+    Ok(())
+}
+
+async fn handle_get_avg_query(
+    _tree: &mut DeviceTree,
+    _tx: oneshot::Sender<Option<Component>>,
+    _comp_type: ComponentType,
+    _filter: Option<QueryFilter>,
+    _target: QueryTarget,
 ) -> Result<(), Box<dyn Error>> {
     todo!()
 }
@@ -98,56 +304,39 @@ async fn handle_snapshot_query(
 
     let mut snap = Snapshot::default();
 
-    for ((floe_id, device_id), device_name) in &tree.device_names {
-        let mut device_snap = DeviceSnapshot {
-            id: device_id.clone(),
-            name: device_name.clone(),
-            floe_id: floe_id.clone(),
-            idx: None,
-            floe_idx: None,
-            entities: vec![],
-        };
+    for (id, device) in tree.iter_devices_with_ids() {
+        let mut esnaps = Vec::with_capacity(device.entities.len());
 
-        device_snap.floe_idx = tree.floe_idx_lut.get(floe_id).cloned();
-
-        if let Some(floe_idx) = device_snap.floe_idx {
-            device_snap.idx = tree.device_idx_lut[floe_idx as usize]
-                .get(device_id)
-                .cloned();
-
-            if let Some(device_idx) = device_snap.idx {
-                let device = &tree.devices[floe_idx as usize][device_idx as usize];
-
-                for (entity_name, entity_idx) in &device.entity_idx_lut {
-                    let entity = &device.entities[*entity_idx];
-
-                    device_snap.entities.push(EntitySnapshot {
-                        name: entity_name.clone(),
-                        components: entity.get_comps().to_vec(),
-                    });
-                }
-            }
+        for (eid, eidx) in &device.entity_idx_lut {
+            let entity = &device.entities[*eidx];
+            esnaps.push(EntitySnapshot {
+                name: eid.to_string(),
+                components: entity.get_comps().to_vec(),
+            });
         }
 
-        snap.devices.push(device_snap);
+        snap.devices.push(DeviceSnapshot {
+            id,
+            name: device.name().to_string(),
+            owner: device.owner().clone(),
+            entities: esnaps,
+        });
     }
 
-    for (floe_id, floe_idx) in &tree.floe_idx_lut {
-        let floe = &tree.floes[*floe_idx as usize];
+    for (fid, fref) in tree.floe_ref_lut() {
+        let floe = tree.floe(*fref);
         snap.floes.push(FloeSnapshot {
-            id: floe_id.clone(),
-            idx: *floe_idx,
+            id: fid.clone(),
+            fref: *fref,
             max_supported_component: floe.max_supported_component,
         });
     }
 
-    for (zone_id, zone_idx) in &tree.zone_idx_lut {
-        let zone = &tree.zones[*zone_idx as usize];
+    for (zid, zone) in tree.iter_zones_with_ids() {
         snap.zones.push(ZoneSnapshot {
-            id: zone_id.clone(),
-            idx: *zone_idx,
-            name: zone.name.clone(),
-            disabled: zone.disabled,
+            id: zid,
+            name: zone.name().to_string(),
+            devices: zone.devices().to_vec(),
         });
     }
 

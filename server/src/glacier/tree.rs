@@ -1,337 +1,539 @@
-use std::error::Error;
+use std::{error::Error, fmt::Display};
 
 use igloo_interface::{ComponentType, FloeWriterDefault, MAX_SUPPORTED_COMPONENT};
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use ini::Ini;
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use tokio::fs;
 
-use crate::glacier::{entity::HasComponent, file};
+use crate::glacier::entity::HasComponent;
 
 use super::entity::Entity;
 
 pub const ZONES_FILE: &str = "zones.ini";
 pub const DEVICES_FILE: &str = "devices.ini";
 
-/*
-TODO we need to add rigerous testing to enforce the following rules:
+const MAX_EMPTY_DEVICE_SLOTS: usize = 10;
+const MAX_EMPTY_ZONE_SLOTS: usize = 10;
 
-@ floe added
- - must be added to `floes`, `floe_idx_lut`
+/// persistent
+#[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
+pub struct FloeID(pub String);
 
-@ device registered
- - must be added to `devices`, `device_idx_lut`, `device_names` (if new)
- - must update all applicable [Zone].idxs
+/// ephemeral
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct FloeRef(usize);
 
-@ zone added
- - must be added to `zones`, `zone_idx_lut`
+/// persistent
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct DeviceID(u64);
 
-@ device added to zone, removed from zone
- - Zone.idxs must updated
-*/
+/// persistent
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ZoneID(u64);
 
-/// ID is persistent
-/// idx is ephemeral
 #[derive(Debug, Default)]
 pub struct DeviceTree {
-    /// Zone idx -> zone
-    zones: Vec<Zone>,
-    /// Zone ID -> idx
-    zone_idx_lut: FxHashMap<String, u16>,
-
-    /// Floe idx -> floe
-    floes: Vec<Floe>,
-    /// Floe ID -> floe idx
-    floe_idx_lut: FxHashMap<String, u16>,
-
-    /// Floe ID + device ID -> device name
-    /// removed once Floe is registered
-    name_queue: FxHashMap<String, FxHashMap<String, String>>,
+    /// Zone idx -> Zone
+    zones: Vec<Option<Zone>>,
+    /// Floe Ref -> Floe
+    floes: Vec<Option<Floe>>,
+    /// Floe ID -> Floe Ref
+    floe_ref_lut: FxHashMap<FloeID, FloeRef>,
+    /// Device idx -> Device
+    devices: Vec<Option<Device>>,
+    zone_generation: u32,
+    device_generation: u32,
 }
 
 #[derive(Debug)]
 pub struct Floe {
-    id: String,
+    id: FloeID,
     pub writer: FloeWriterDefault,
-    max_supported_component: u16,
-    /// device idx -> device
-    devices: Vec<Device>,
-    /// device ID -> device idx
-    device_idx_lut: FxHashMap<String, u16>,
-    /// device ID -> device name
-    /// removed once Device is registered
-    name_queue: FxHashMap<String, String>,
+    pub max_supported_component: u16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Zone {
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) disabled: bool,
-    /// floe id + device ids
-    pub(super) devices: FxHashMap<String, FxHashSet<String>>,
-    /// floe idx + device idx
-    pub(super) idxs: SmallVec<[(u16, u16); 20]>,
-}
-
-#[derive(Debug, Default)]
-pub struct Device {
-    id: String,
+    generation: u32,
     name: String,
-    presense: Presense,
-    /// entity idx -> entity
-    entities: Entities,
-    /// entity name -> idx
-    entity_idx_lut: FxHashMap<String, usize>,
+    devices: SmallVec<[DeviceID; 20]>,
 }
 
-pub type Entities = SmallVec<[Entity; 16]>;
+#[derive(Debug, Default, Clone)]
+pub struct Device {
+    generation: u32,
+    name: String,
+    owner: FloeID,
+    owner_ref: Option<FloeRef>,
 
-#[derive(Debug, Default)]
+    pub presense: Presense,
+    /// entity idx -> entity
+    pub entities: SmallVec<[Entity; 16]>,
+    /// entity ID -> entity idx
+    pub entity_idx_lut: FxHashMap<String, usize>,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct Presense([u32; MAX_SUPPORTED_COMPONENT.div_ceil(32) as usize]);
 
 impl DeviceTree {
-    pub async fn load() -> Result<Self, Box<dyn Error>> {
-        let mut tree = DeviceTree::default();
-
-        let content = fs::read_to_string(DEVICES_FILE).await?;
-        tree.name_queue = file::parse_devices_file(content)?;
-
-        let content = fs::read_to_string(ZONES_FILE).await?;
-        (tree.zones, tree.zone_idx_lut) = file::parse_zones_file(content)?;
-
-        tree.validate()?;
-
-        Ok(tree)
+    pub fn iter_zones_with_ids(&self) -> impl Iterator<Item = (ZoneID, &Zone)> {
+        self.zones.iter().enumerate().filter_map(|(idx, z)| {
+            z.as_ref().map(|zone| {
+                let did = ZoneID::from_parts(idx as u32, zone.generation);
+                (did, zone)
+            })
+        })
     }
 
-    fn validate(&self) -> Result<(), Box<dyn Error>> {
-        // validate zones point to validate devices
-        for zone in &self.zones {
-            for (floe_id, device_id) in &zone.devices {
-                if !self
-                    .device_names
-                    .contains_key(&(floe_id.to_string(), device_id.to_string()))
-                {
-                    return Err(format!(
-                        "Zone '{}' points to invalid device '{floe_id}.{device_id}'",
-                        zone.name
-                    )
-                    .into());
-                }
-            }
-        }
-
-        Ok(())
+    pub fn iter_devices_with_ids(&self) -> impl Iterator<Item = (DeviceID, &Device)> {
+        self.devices.iter().enumerate().filter_map(|(idx, d)| {
+            d.as_ref().map(|device| {
+                let did = DeviceID::from_parts(idx as u32, device.generation);
+                (did, device)
+            })
+        })
     }
 
-    pub async fn register_device(
-        &mut self,
-        floe_idx: u16,
-        device_id: String,
-        mut device: Device,
-    ) -> Result<(), Box<dyn Error>> {
-        let floe = &mut self.floes[floe_idx as usize];
-
-        if floe.device_idx_lut.contains_key(&device_id) {
-            // TODO maybe we should allow this instead of erroring? idk
-            return Err(format!("Device {device_id} is already registered!").into());
-        }
-
-        let device_idx = floe.devices.len() as u16;
-
-        match floe.name_queue.remove(&device_id) {
-            Some(existing_name) => {
-                // replace with persistent name
-                device.name = existing_name;
-
-                // update zone cache (list of floe+device idxs)
-                // only update here since we know zones can only
-                // contain existing devices
-                for zone in &mut self.zones {
-                    let Some(floe_devices) = zone.devices.get_mut(&floe.id) else {
-                        continue;
-                    };
-
-                    if floe_devices.contains(&device_id) {
-                        zone.idxs.push((floe_idx, device_idx));
-                    }
-                }
-            }
-            None => {
-                // new device -> save Floe provided name to file
-                file::add_device(DEVICES_FILE, &floe.id, &device_id, &device.name).await?;
-            }
-        }
-
-        floe.device_idx_lut.insert(device_id, device_idx);
-        floe.devices.push(device);
-
-        Ok(())
+    pub fn iter_devices(&self) -> impl Iterator<Item = &Device> {
+        self.devices.iter().filter_map(|d| d.as_ref())
     }
 
-    pub async fn rename_device(
-        &mut self,
-        floe_id: String,
-        device_id: String,
-        new_name: String,
-    ) -> Result<(), Box<dyn Error>> {
-        // rename device in file, error if device doesn't exist
-        file::rename_device(DEVICES_FILE, &floe_id, &device_id, &new_name).await?;
-
-        match self.floe_idx_lut.get(&floe_id) {
-            Some(floe_idx) => {
-                let floe = &mut self.floes[*floe_idx as usize];
-
-                match floe.device_idx_lut.get(&device_id) {
-                    Some(device_idx) => {
-                        // floe + device registered -> rename here
-                        floe.devices[*device_idx as usize].name = new_name;
-                    }
-                    None => {
-                        // floe is registered, device isn't, rename in floe's queue
-                        floe.name_queue.insert(device_id, new_name);
-                    }
-                }
-            }
-            None => {
-                // floe isn't registered, rename in global queue
-                let name_queue = self.name_queue.get_mut(&floe_id)
-                    .ok_or("Unexpected error. Floe isn't registered, exists in file, but not in global name queue")?;
-
-                name_queue.insert(device_id, new_name);
-            }
-        }
-
-        Ok(())
+    pub fn iter_devices_in_zone(&self, zid: ZoneID) -> impl Iterator<Item = &Device> + '_ {
+        let zone = self.zones[zid.idx() as usize].as_ref().unwrap();
+        let device_ids = zone.devices.clone();
+        device_ids
+            .into_iter()
+            .map(move |did| self.devices[did.idx() as usize].as_ref().unwrap())
     }
 
-    pub fn add_floe(
-        &mut self,
-        id: String,
-        writer: FloeWriterDefault,
-        max_supported_component: u16,
-    ) -> Result<(), Box<dyn Error>> {
-        if self.floe_idx_lut.contains_key(&id) {
-            return Err(format!("Floe {} already exists!", id).into());
-        }
-
-        self.floe_idx_lut
-            .insert(id.clone(), self.floes.len() as u16);
-
-        let name_queue = self.name_queue.remove(&id).unwrap_or_default();
-
-        self.floes.push(Floe {
-            id,
-            writer,
-            max_supported_component,
-            devices: Vec::with_capacity(20),
-            device_idx_lut: FxHashMap::with_capacity_and_hasher(10, FxBuildHasher::default()),
-            name_queue,
-        });
-
-        Ok(())
+    pub fn iter_devices_in_zone_with_ids(
+        &self,
+        zid: ZoneID,
+    ) -> impl Iterator<Item = (DeviceID, &Device)> + '_ {
+        let zone = self.zones[zid.idx() as usize].as_ref().unwrap();
+        let device_ids = zone.devices.clone();
+        device_ids.into_iter().map(move |did| {
+            let device = self.devices[did.idx() as usize].as_ref().unwrap();
+            (did, device)
+        })
     }
 
-    pub async fn add_zone(&mut self, zone_id: String, name: String) -> Result<(), Box<dyn Error>> {
-        if self.zone_idx_lut.contains_key(&zone_id) {
-            return Err(format!("Zone {zone_id} already exists!").into());
+    pub fn device(&self, did: DeviceID) -> Result<&Device, Box<dyn Error>> {
+        if !self.is_device_id_valid(&did) {
+            return Err("Device ID invalid".into());
         }
+        Ok(self.devices[did.idx() as usize].as_ref().unwrap())
+    }
 
-        let zone = Zone {
+    pub fn device_mut(&mut self, did: DeviceID) -> Result<&mut Device, Box<dyn Error>> {
+        if !self.is_device_id_valid(&did) {
+            return Err("Device ID invalid".into());
+        }
+        Ok(self.devices[did.idx() as usize].as_mut().unwrap())
+    }
+
+    pub fn floe_mut(&mut self, fref: FloeRef) -> &mut Floe {
+        self.floes[fref.0 as usize].as_mut().unwrap()
+    }
+
+    pub fn floe(&self, fref: FloeRef) -> &Floe {
+        self.floes[fref.0 as usize].as_ref().unwrap()
+    }
+
+    pub fn floe_ref_lut(&self) -> &FxHashMap<FloeID, FloeRef> {
+        &self.floe_ref_lut
+    }
+
+    pub async fn create_zone(&mut self, name: String) -> Result<ZoneID, Box<dyn Error>> {
+        let num_free_slots = self.devices.iter().filter(|d| d.is_none()).count();
+
+        let mut zone = Zone {
+            generation: self.zone_generation,
             name,
-            disabled: false,
-            devices: FxHashMap::default(),
-            idxs: SmallVec::new(),
+            devices: SmallVec::default(),
         };
 
-        file::add_zone(ZONES_FILE, &zone_id, &zone).await?;
+        let idx = if num_free_slots > MAX_EMPTY_ZONE_SLOTS {
+            self.zone_generation += 1;
+            zone.generation += 1;
+            let id = self.zones.iter().position(|d| d.is_none()).unwrap();
+            self.zones[id] = Some(zone);
+            id
+        } else {
+            let idx = self.zones.len();
+            self.zones.push(Some(zone));
+            idx
+        };
 
-        self.zone_idx_lut.insert(zone_id, self.zones.len() as u16);
-        self.zones.push(zone);
+        self.save_zones().await?;
 
-        Ok(())
+        Ok(ZoneID::from_parts(idx as u32, self.zone_generation))
     }
 
-    pub async fn set_zone_disabled(
-        &mut self,
-        zone_id: String,
-        disabled: bool,
-    ) -> Result<(), Box<dyn Error>> {
-        let Some(zone_idx) = self.zone_idx_lut.get(&zone_id) else {
-            return Err(format!("Zone {zone_id} doesnt't exists!").into());
-        };
+    pub async fn delete_zone(&mut self, zid: ZoneID) -> Result<(), Box<dyn Error>> {
+        match &self.zones[zid.idx() as usize] {
+            Some(zone) => {
+                if zone.generation != zid.generation() {
+                    return Err("Stale reference".into());
+                }
+            }
+            None => return Err("Device already deleted".into()),
+        }
 
-        let zone = &mut self.zones[*zone_idx as usize];
-        zone.disabled = disabled;
-        file::modify_zone(ZONES_FILE, &zone_id, zone).await?;
+        self.zones[zid.idx() as usize] = None;
+
+        self.save_zones().await?;
 
         Ok(())
     }
 
     pub async fn rename_zone(
         &mut self,
-        zone_id: String,
+        zid: ZoneID,
         new_name: String,
     ) -> Result<(), Box<dyn Error>> {
-        let Some(zone_idx) = self.zone_idx_lut.get(&zone_id) else {
-            return Err(format!("Zone {zone_id} doesnt't exists!").into());
+        if !self.is_zone_id_valid(&zid) {
+            return Err("Zone ID invalid".into());
+        }
+
+        let zone = self.zones[zid.idx() as usize].as_mut().unwrap();
+        zone.name = new_name;
+
+        self.save_zones().await?;
+
+        Ok(())
+    }
+
+    pub fn detach_floe(&mut self, fref: FloeRef) {
+        self.floes[fref.0] = None;
+
+        let floe = self.floes[fref.0 as usize].as_ref().unwrap();
+        self.floe_ref_lut.remove(&floe.id);
+
+        // detach all its devices
+        for device in &mut self.devices {
+            let Some(device) = device else {
+                continue;
+            };
+
+            if device.owner_ref.as_ref() == Some(&fref) {
+                device.owner_ref = None;
+            }
+        }
+    }
+
+    pub fn attach_floe(
+        &mut self,
+        fid: FloeID,
+        writer: FloeWriterDefault,
+        max_supported_component: u16,
+    ) -> Result<FloeRef, String> {
+        if self.floe_ref_lut.contains_key(&fid) {
+            return Err("Floe already attached".into());
+        }
+
+        let floe = Floe {
+            id: fid.clone(),
+            writer,
+            max_supported_component,
         };
 
-        let zone = &mut self.zones[*zone_idx as usize];
-        zone.name = new_name;
-        file::modify_zone(ZONES_FILE, &zone_id, zone).await?;
+        let fref = if let Some(slot) = self.floes.iter().position(|f| f.is_none()) {
+            // take empty slot
+            // we can safely do this since [detach_floe] removes its refs
+            self.floes[slot] = Some(floe);
+            FloeRef(slot)
+        } else {
+            let idx = self.floes.len();
+            self.floes.push(Some(floe));
+            FloeRef(idx)
+        };
+
+        // attach all devices it owns
+        for device in &mut self.devices {
+            let Some(device) = device else {
+                continue;
+            };
+
+            if device.owner == fid {
+                device.owner_ref = Some(fref)
+            }
+        }
+
+        self.floe_ref_lut.insert(fid, fref);
+
+        Ok(fref)
+    }
+
+    /// ONLY A FLOE SHOULD DO THIS
+    /// Otherwise its always going to try and update + attach deleted devices
+    pub async fn delete_device(&mut self, did: DeviceID) -> Result<(), Box<dyn Error>> {
+        match &self.devices[did.idx() as usize] {
+            Some(device) => {
+                if device.generation != did.generation() {
+                    return Err("Stale reference".into());
+                }
+            }
+            None => return Err("Device already deleted".into()),
+        }
+
+        self.devices[did.idx() as usize] = None;
+
+        self.save_devices().await?;
 
         Ok(())
     }
 
-    pub async fn add_device_to_zone(
+    /// Create a brand new device (doesn't attach)
+    pub async fn create_device(
         &mut self,
-        zone_idx: u16,
-        floe_idx: u16,
-        device_idx: u16,
+        name: String,
+        owner_ref: FloeRef,
+    ) -> Result<DeviceID, Box<dyn Error>> {
+        let num_free_slots = self.devices.iter().filter(|d| d.is_none()).count();
+
+        let floe = self.floes[owner_ref.0 as usize].as_ref().unwrap();
+
+        let mut device = Device {
+            generation: self.device_generation,
+            name,
+            owner: floe.id.clone(),
+            owner_ref: Some(owner_ref),
+            presense: Presense::default(),
+            entities: SmallVec::default(),
+            entity_idx_lut: FxHashMap::default(),
+        };
+
+        let idx = if num_free_slots > MAX_EMPTY_DEVICE_SLOTS {
+            self.device_generation += 1;
+            device.generation += 1;
+            let idx = self.devices.iter().position(|d| d.is_none()).unwrap();
+            self.devices[idx] = Some(device);
+            idx
+        } else {
+            let idx = self.devices.len();
+            self.devices.push(Some(device));
+            idx
+        };
+
+        self.save_devices().await?;
+
+        Ok(DeviceID::from_parts(idx as u32, self.device_generation))
+    }
+
+    pub async fn rename_device(
+        &mut self,
+        did: DeviceID,
+        new_name: String,
     ) -> Result<(), Box<dyn Error>> {
-        let zone = &mut self.zones[zone_idx as usize];
-
-        let floe = &mut self.floes[floe_idx as usize];
-        let device = &mut floe.devices[device_idx as usize];
-
-        match zone.devices.get_mut(&floe.id) {
-            // zone already has devs with this Floe
-            Some(floe_devs) => {
-                floe_devs.insert(device.id.clone());
-            }
-            // first zone has had a dev with this Floe
-            None => {
-                let mut floe_devs = FxHashSet::default();
-                floe_devs.insert(device.id.clone());
-                zone.devices.insert(floe.id.clone(), floe_devs);
-            }
+        if !self.is_device_id_valid(&did) {
+            return Err("Device ID invalid".into());
         }
 
-        zone.idxs.push((floe_idx, device_idx));
+        let device = self.devices[did.idx() as usize].as_mut().unwrap();
+        device.name = new_name;
 
-        file::modify_zone(ZONES_FILE, &zone.id, zone).await?;
+        self.save_devices().await?;
 
         Ok(())
     }
 
-    pub async fn remove_device_from_zone(
-        &mut self,
-        zone_idx: u16,
-        floe_idx: u16,
-        device_idx: u16,
-    ) -> Result<(), Box<dyn Error>> {
-        let zone = &mut self.zones[zone_idx as usize];
-        let floe = &mut self.floes[floe_idx as usize];
-        let device = &mut floes.devices[device_idx as usize];
+    pub fn is_device_attached(&self, did: &DeviceID) -> Result<bool, String> {
+        match &self.devices[did.idx() as usize] {
+            Some(device) => {
+                if device.generation != did.generation() {
+                    return Err("Stale reference".into());
+                }
+                Ok(device.owner_ref.is_some())
+            }
+            None => Err("Device deleted".into()),
+        }
+    }
 
-        if let Some(floe_devs) = zone.devices.get_mut(&floe.id) {
-            floe_devs.remove(device);
+    pub fn is_device_id_valid(&self, did: &DeviceID) -> bool {
+        match &self.devices[did.idx() as usize] {
+            // make sure its not stale
+            Some(device) => device.generation == did.generation(),
+            None => false, // deleted
+        }
+    }
+
+    pub fn is_zone_id_valid(&self, zid: &ZoneID) -> bool {
+        match &self.zones[zid.idx() as usize] {
+            // make sure its not stale
+            Some(zone) => zone.generation == zid.generation(),
+            None => false, // deleted
+        }
+    }
+
+    async fn save_zones(&self) -> Result<(), Box<dyn Error>> {
+        let mut ini = Ini::new();
+
+        for (id, zone) in self.zones.iter().enumerate() {
+            let Some(zone) = zone else {
+                continue;
+            };
+
+            ini.with_section(Some(id.to_string()))
+                .set("name", &zone.name)
+                .set(
+                    "devices",
+                    zone.devices
+                        .iter()
+                        .map(|d| format!("{}:{}", d.idx(), d.generation()))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+                .set("generation", zone.generation.to_string());
         }
 
-        zone.idxs.retain(|i| *i != (floe_idx, device_idx));
+        let mut buf = Vec::new();
+        ini.write_to(&mut buf)?;
+        fs::write(ZONES_FILE, buf).await?;
 
-        file::modify_zone(ZONES_FILE, &zone.id, zone).await?;
+        Ok(())
+    }
+
+    pub async fn load() -> Result<Self, Box<dyn Error>> {
+        if !fs::try_exists(ZONES_FILE).await? || !fs::try_exists(DEVICES_FILE).await? {
+            let me = Self::default();
+            me.save_zones().await?;
+            me.save_devices().await?;
+            return Ok(me);
+        }
+
+        let zones_content = fs::read_to_string(ZONES_FILE).await?;
+        let zones_ini = Ini::load_from_str(&zones_content)?;
+
+        let max_zone_idx = zones_ini
+            .sections()
+            .filter_map(|s| s?.parse::<usize>().ok())
+            .max()
+            .unwrap_or(0);
+
+        let mut zones = vec![None; max_zone_idx + 1];
+
+        for section in zones_ini.sections() {
+            let Some(idx_str) = section else { continue };
+            let idx: usize = idx_str.parse()?;
+
+            let section_data = zones_ini.section(Some(idx_str)).unwrap();
+
+            let name = section_data.get("name").ok_or("Missing name")?.to_string();
+            let generation: u32 = section_data
+                .get("generation")
+                .ok_or("Missing generation")?
+                .parse()?;
+            let devices_str = section_data.get("devices").unwrap_or("");
+
+            let devices: SmallVec<[DeviceID; 20]> = if devices_str.is_empty() {
+                SmallVec::new()
+            } else {
+                devices_str
+                    .split(',')
+                    .map(|s| {
+                        let mut parts = s.split(':');
+                        let idx = parts
+                            .next()
+                            .ok_or("Missing device ID idx part")?
+                            .parse::<u32>()?;
+                        let generation = parts
+                            .next()
+                            .ok_or("Missing device ID generation part")?
+                            .parse::<u32>()?;
+                        Ok(DeviceID::from_parts(idx, generation))
+                    })
+                    .collect::<Result<_, Box<dyn Error>>>()?
+            };
+
+            zones[idx] = Some(Zone {
+                generation,
+                name,
+                devices,
+            });
+        }
+
+        let devices_content = fs::read_to_string(DEVICES_FILE).await?;
+        let devices_ini = Ini::load_from_str(&devices_content)?;
+
+        let max_device_idx = devices_ini
+            .sections()
+            .filter_map(|s| s?.parse::<usize>().ok())
+            .max()
+            .unwrap_or(0);
+
+        let mut devices = vec![None; max_device_idx + 1];
+
+        for section in devices_ini.sections() {
+            let Some(idx_str) = section else { continue };
+            let idx: usize = idx_str.parse()?;
+
+            let section_data = devices_ini.section(Some(idx_str)).unwrap();
+
+            let name = section_data.get("name").ok_or("Missing name")?.to_string();
+            let generation: u32 = section_data
+                .get("generation")
+                .ok_or("Missing generation")?
+                .parse()?;
+            let owner = FloeID(
+                section_data
+                    .get("owner")
+                    .ok_or("Missing owner")?
+                    .to_string(),
+            );
+
+            devices[idx] = Some(Device {
+                generation,
+                name,
+                owner,
+                owner_ref: None,
+                presense: Presense::default(),
+                entities: SmallVec::default(),
+                entity_idx_lut: FxHashMap::default(),
+            });
+        }
+
+        let zone_generation = zones
+            .iter()
+            .filter_map(|z| z.as_ref().map(|z| z.generation))
+            .max()
+            .unwrap_or(0);
+
+        let device_generation = devices
+            .iter()
+            .filter_map(|d| d.as_ref().map(|d| d.generation))
+            .max()
+            .unwrap_or(0);
+
+        Ok(DeviceTree {
+            zones,
+            devices,
+            zone_generation,
+            device_generation,
+            floes: Vec::new(),
+            floe_ref_lut: FxHashMap::default(),
+        })
+    }
+
+    async fn save_devices(&self) -> Result<(), Box<dyn Error>> {
+        let mut ini = Ini::new();
+
+        for (id, device) in self.devices.iter().enumerate() {
+            let Some(device) = device else {
+                continue;
+            };
+
+            ini.with_section(Some(id.to_string()))
+                .set("name", &device.name)
+                .set("owner", &device.owner.0)
+                .set("generation", device.generation.to_string());
+        }
+
+        let mut buf = Vec::new();
+        ini.write_to(&mut buf)?;
+        fs::write(DEVICES_FILE, buf).await?;
 
         Ok(())
     }
@@ -354,5 +556,73 @@ impl HasComponent for Presense {
         let index = type_id >> 5;
         let bit = type_id & 31;
         (self.0[index] & (1u32 << bit)) != 0
+    }
+}
+
+impl Device {
+    pub fn owner(&self) -> &FloeID {
+        &self.owner
+    }
+
+    pub fn owner_ref(&self) -> Option<FloeRef> {
+        self.owner_ref
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+}
+
+impl Zone {
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn devices(&self) -> &SmallVec<[DeviceID; 20]> {
+        &self.devices
+    }
+}
+
+impl ZoneID {
+    pub fn from_parts(idx: u32, generation: u32) -> Self {
+        let packed = (idx as u64) | ((generation as u64) << 32);
+        ZoneID(packed)
+    }
+
+    pub fn idx(&self) -> u32 {
+        self.0 as u32
+    }
+
+    pub fn generation(&self) -> u32 {
+        (self.0 >> 32) as u32
+    }
+}
+
+impl DeviceID {
+    pub fn from_parts(idx: u32, generation: u32) -> Self {
+        let packed = (idx as u64) | ((generation as u64) << 32);
+        DeviceID(packed)
+    }
+
+    pub fn from_comb(c: u64) -> Self {
+        DeviceID(c)
+    }
+
+    pub fn idx(&self) -> u32 {
+        self.0 as u32
+    }
+
+    pub fn generation(&self) -> u32 {
+        (self.0 >> 32) as u32
+    }
+
+    pub fn take(self) -> u64 {
+        self.0
+    }
+}
+
+impl Display for DeviceID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.idx(), self.generation())
     }
 }
