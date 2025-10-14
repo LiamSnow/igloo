@@ -105,14 +105,6 @@ pub async fn add_device_class(
     Ok(())
 }
 
-pub async fn add_number_mode(
-    writer: &mut FloeWriterDefault,
-    number_mode: api::NumberMode,
-) -> Result<(), std::io::Error> {
-    writer.number_mode(&number_mode.as_igloo()).await?;
-    Ok(())
-}
-
 pub async fn add_climate_modes(
     writer: &mut FloeWriterDefault,
     modes: impl Iterator<Item = api::ClimateMode>,

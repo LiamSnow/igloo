@@ -1,6 +1,5 @@
 use super::{
-    EntityRegister, add_device_class, add_entity_category, add_f32_bounds, add_icon,
-    add_number_mode, add_unit,
+    EntityRegister, add_device_class, add_entity_category, add_f32_bounds, add_icon, add_unit,
 };
 use crate::{
     api,
@@ -9,7 +8,7 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, NumberMode, WRITE_FLOAT, DESELECT_ENTITY, END_TRANSACTION};
+use igloo_interface::{DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_FLOAT};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesNumberResponse {
@@ -27,7 +26,7 @@ impl EntityRegister for crate::api::ListEntitiesNumberResponse {
             )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
-        add_number_mode(writer, self.mode()).await?;
+        // add_number_mode(writer, self.mode()).await?;
         add_icon(writer, &self.icon).await?;
         add_device_class(writer, self.device_class).await?;
         add_f32_bounds(writer, self.min_value, self.max_value, Some(self.step)).await?;
@@ -51,25 +50,22 @@ impl EntityUpdate for api::NumberStateResponse {
     }
 }
 
-impl api::NumberMode {
-    pub fn as_igloo(&self) -> NumberMode {
-        match self {
-            api::NumberMode::Auto => NumberMode::Auto,
-            api::NumberMode::Box => NumberMode::Box,
-            api::NumberMode::Slider => NumberMode::Slider,
-        }
-    }
-}
+// impl api::NumberMode {
+//     pub fn as_igloo(&self) -> NumberMode {
+//         match self {
+//             api::NumberMode::Auto => NumberMode::Auto,
+//             api::NumberMode::Box => NumberMode::Box,
+//             api::NumberMode::Slider => NumberMode::Slider,
+//         }
+//     }
+// }
 
 pub async fn process(
     device: &mut Device,
     key: u32,
     commands: Vec<(u16, Vec<u8>)>,
 ) -> Result<(), DeviceError> {
-    let mut req = api::NumberCommandRequest {
-        key,
-        state: 0.0,
-    };
+    let mut req = api::NumberCommandRequest { key, state: 0.0 };
 
     for (cmd_id, payload) in commands {
         match cmd_id {

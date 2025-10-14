@@ -79,6 +79,8 @@ pub async fn process(
 ) -> Result<(), DeviceError> {
     let mut req = api::LightCommandRequest {
         key,
+        has_transition_length: true,
+        transition_length: 0,
         ..Default::default()
     };
 
@@ -94,10 +96,13 @@ pub async fn process(
 
             WRITE_DIMMER => {
                 let val: f32 = borsh::from_slice(&payload)?;
-                req.has_color_brightness = true;
-                req.color_brightness = val;
+                // req.has_color_brightness = true;
+                // req.color_brightness = val;
                 req.has_brightness = true;
                 req.brightness = val;
+
+                req.has_state = true;
+                req.state = val > 0.;
             }
 
             WRITE_SWITCH => {
