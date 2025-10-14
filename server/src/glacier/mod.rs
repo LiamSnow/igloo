@@ -9,7 +9,6 @@ use smallvec::SmallVec;
 use tokio::{fs, sync::mpsc};
 
 use crate::glacier::{
-    entity::Entity,
     floe::FloeManager,
     query::{Query, handle_query},
     tree::{DeviceID, DeviceTree, FloeID, FloeRef},
@@ -18,7 +17,7 @@ use crate::glacier::{
 mod entity;
 mod floe;
 pub mod query;
-mod tree;
+pub mod tree;
 
 pub const FLOES_DIR: &str = "./floes";
 
@@ -96,13 +95,14 @@ async fn handle_cmds(
         CREATE_DEVICE => {
             let params: CreateDevice = borsh::from_slice(&first.payload)?;
             let new_id = tree.create_device(params.name.clone(), fref).await?;
-            tree.floe_mut(fref)
-                .writer
+            let floe = tree.floe_mut(fref);
+            floe.writer
                 .device_created(&DeviceCreated {
                     name: params.name,
                     id: new_id.take(),
                 })
                 .await?;
+            floe.writer.flush().await?;
         }
         _ => {
             eprintln!("Floe #{fref:?} sent invalid command set (no start). Skipping..");
@@ -120,18 +120,22 @@ async fn handle_trans(
 ) -> Result<(), Box<dyn Error>> {
     let device = tree.device_mut(did).unwrap(); // FIXME unwrap
 
-    let mut selected_entity: Option<&mut Entity> = None;
+    let mut selected_entity: Option<usize> = None;
 
     for line in trans {
         if line.cmd_id > WRITE_INT {
-            match &mut selected_entity {
-                Some(entity) => {
+            match selected_entity {
+                Some(eidx) => {
                     let val = read_component(line.cmd_id, line.payload).unwrap();
+
                     // set the entity, if we added
                     // something new, register it in presense
-                    if let Some(comp_typ) = entity.set(val) {
+                    if let Some(comp_typ) = device.entities[eidx].set(val.clone()) {
                         device.presense.set(comp_typ);
                     }
+
+                    device.exec_queries(eidx, val).await;
+
                     continue;
                 }
                 None => {
@@ -155,23 +159,19 @@ async fn handle_trans(
                     );
                 }
 
-                device
-                    .entity_idx_lut
-                    .insert(params.entity_name, device.entities.len());
-                device.entities.push(Entity::default());
-
+                device.register_entity(params.entity_name);
                 // TODO should this select entity?
             }
 
             SELECT_ENTITY => {
                 let params: SelectEntity = borsh::from_slice(&line.payload).unwrap();
-                let entity_idx = params.entity_idx as usize;
-                if entity_idx > device.entities.len() - 1 {
+                let eidx = params.entity_idx as usize;
+                if eidx > device.entities.len() - 1 {
                     panic!(
-                        "Floe #{fref:?} malformed during a transaction with device ID={did}. Tried to select entity idx={entity_idx} which is not registered.",
+                        "Floe #{fref:?} malformed during a transaction with device ID={did}. Tried to select entity idx={eidx} which is not registered.",
                     );
                 }
-                selected_entity = Some(device.entities.get_mut(entity_idx).unwrap());
+                selected_entity = Some(eidx);
             }
 
             DESELECT_ENTITY => {

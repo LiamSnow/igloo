@@ -68,6 +68,7 @@ pub trait HasComponent {
 
     fn matches_filter(&self, filter: &QueryFilter) -> bool {
         match filter {
+            QueryFilter::None => true,
             QueryFilter::With(typ) => self.has(*typ),
             QueryFilter::Without(typ) => !self.has(*typ),
             QueryFilter::And(parts) => {
@@ -78,13 +79,6 @@ pub trait HasComponent {
                 let (lhs, rhs) = parts.as_ref();
                 self.matches_filter(lhs) || self.matches_filter(rhs)
             }
-        }
-    }
-
-    fn matches_filter_opt(&self, filter_opt: &Option<QueryFilter>) -> bool {
-        match filter_opt {
-            Some(filter) => self.matches_filter(filter),
-            None => true,
         }
     }
 }

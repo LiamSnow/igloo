@@ -109,7 +109,7 @@ fn gen_comp_type(comps: &[Component]) -> TokenStream {
         .collect();
 
     quote! {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
         #[repr(u16)]
         pub enum ComponentType {
             #(#variants),*

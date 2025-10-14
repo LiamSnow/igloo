@@ -59,6 +59,12 @@ derive_string_bound_types = [29, 30, 31] # makes TextMaxLength, TextMinLength, T
 kind = "single"
 field = "String"
 
+[[components]]
+name = "Trigger"
+id = 62
+kind = "marker"
+desc = "No payload event trigger"
+
 # Date/Time types
 [[components]]
 name = "Date"
@@ -97,6 +103,21 @@ derive_list_type = 39
 kind = "single"
 field = "i64"
 desc = "A signed duration, represented as seconds"
+
+[[components]]
+name = "Weekday"
+id = 54
+kind = "enum"
+derive_list_type = 84
+variants = [
+    { id = 0, name = "Sunday", aliases = ["sunday", "sun"] },
+    { id = 1, name = "Monday", aliases = ["monday", "mon", "m"] },
+    { id = 2, name = "Tuesday", aliases = ["tuesday", "tue", "tues", "t"] },
+    { id = 3, name = "Wednesday", aliases = ["wednesday", "wed", "w"] },
+    { id = 4, name = "Thursday", aliases = ["thursday", "thu", "r"] },
+    { id = 5, name = "Friday", aliases = ["friday", "fri", "f"] },
+    { id = 6, name = "Saturday", aliases = ["saturday", "sat"] },
+]
 
 # Light
 [[components]]
@@ -189,15 +210,6 @@ related = [
 ]
 
 [[components]]
-name = "TextMode"
-id = 54
-kind = "enum"
-variants = [
-    { id = 0, name = "Text" },
-    { id = 1, name = "Password" }
-]
-
-[[components]]
 name = "Siren"
 id = 55
 kind = "marker"
@@ -209,6 +221,8 @@ kind = "marker"
 desc = "Marks this entity as a Sensor, which usually means its immutable."
 
 # Metadata 
+# TODO a bunch of these are super specific to ESPHome
+# and might not make sense in Igloo
 [[components]]
 name = "Icon"
 id = 57
@@ -420,19 +434,9 @@ variants = [
 ]
 
 [[components]]
-name = "NumberMode"
-id = 62
-kind = "enum"
-variants = [
-    { id = 0, name = "Auto" },
-    { id = 1, name = "Box" },
-    { id = 2, name = "Slider" }
-]
-
-[[components]]
 name = "FanOscillation"
 id = 63
-derive_supported_type = 64
+derive_supported_type = 64 # makes SupportedFanOscillations
 kind = "enum"
 variants = [
     { id = 0, name = "Off", aliases = ["off"] },
@@ -445,7 +449,7 @@ variants = [
 [[components]]
 name = "FanDirection"
 id = 65
-derive_supported_type = 66 # makes SupportedFanDirections
+derive_supported_type = 66
 kind = "enum"
 variants = [
     { id = 0, name = "Forward", aliases = ["forward"] },

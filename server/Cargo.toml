@@ -19,11 +19,15 @@ tokio-util = { version = "0.7.16", features = ["codec"] }
 futures-util = { version = "0.3.31", features = ["sink"] }
 borsh = { version = "1.5.7", features = ["derive"] }
 rust-ini = "0.21.3"
+tower-http = { version = "0.6.6", features = ["fs"] }
+axum-extra = { version = "0.10.3", features = ["typed-header"] }
+maud = { version = "0.27.0", features = ["axum"] }
+derive_more = { version = "2.0.1", features = ["display"] }
 
 
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-strip = true
-panic = "abort"
+# [profile.release]
+# opt-level = 3
+# lto = "fat"
+# codegen-units = 1
+# strip = true
+# panic = "abort"

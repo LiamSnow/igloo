@@ -9,14 +9,16 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let comp_enum = gen_comp_enum(comps);
     let primitives_avgable = gen_primitives_avgable();
     let structs_avgable = gen_structs_avgable(comps);
+    let avg_comp = gen_avg_comp(comps);
     let read_comp = gen_read_comp(comps);
     let write_comp = gen_write_comp(comps);
+    let comp_inner = gen_comp_inner(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use std::ops::{Add, Sub};
-        use crate::avg::Averageable;
+        use crate::avg::{Averageable, Average};
 
         #comp_enum
 
@@ -24,9 +26,13 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
 
         #structs_avgable
 
+        #avg_comp
+
         #read_comp
 
         #write_comp
+
+        #comp_inner
     };
 
     // reconstruct, format, and save
@@ -37,6 +43,35 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("server.rs");
     fs::write(&out_path, formatted).expect("Failed to write server.rs");
+}
+
+fn gen_comp_inner(comps: &[Component]) -> TokenStream {
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            if comp.is_marker() {
+                quote! {}
+            } else {
+                quote! {
+                    Component::#name(payload) => {
+                        Some(format!("{payload:?}"))
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl Component {
+            pub fn inner_string(&self) -> Option<String> {
+                match self {
+                    #(#arms)*
+                    _ => None
+                }
+            }
+        }
+    }
 }
 
 fn gen_write_comp(comps: &[Component]) -> TokenStream {
@@ -158,6 +193,172 @@ fn gen_comp_enum(comps: &[Component]) -> TokenStream {
         }
     }
 }
+
+fn gen_avg_comp(comps: &[Component]) -> TokenStream {
+    let variants: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                #name(Average<#name>)
+            }
+        })
+        .collect();
+
+    let new_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentType::#name => Some(ComponentAverage::#name(Average::new()))
+            }
+        })
+        .collect();
+
+    let add_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentAverage::#name(avg) => {
+                    let Component::#name(v) = comp else {
+                        panic!("Type mismatch in ComponentAverage::add: expected {}, got {:?}", stringify!(#name), comp);
+                    };
+                    avg.add(v);
+                }
+            }
+        })
+        .collect();
+
+    let remove_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentAverage::#name(avg) => {
+                    let Component::#name(v) = comp else {
+                        panic!("Type mismatch in ComponentAverage::remove: expected {}, got {:?}", stringify!(#name), comp);
+                    };
+                    avg.remove(v);
+                }
+            }
+        })
+        .collect();
+
+    let update_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentAverage::#name(avg) => {
+                    let Component::#name(old_v) = old else {
+                        panic!("Type mismatch in ComponentAverage::update old: expected {}, got {:?}", stringify!(#name), old);
+                    };
+                    let Component::#name(new_v) = new else {
+                        panic!("Type mismatch in ComponentAverage::update new: expected {}, got {:?}", stringify!(#name), new);
+                    };
+                    avg.update(old_v, new_v);
+                }
+            }
+        })
+        .collect();
+
+    let current_average_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentAverage::#name(avg) => avg.current_average().map(Component::#name)
+            }
+        })
+        .collect();
+
+    let len_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentAverage::#name(avg) => avg.len()
+            }
+        })
+        .collect();
+
+    let is_empty_arms: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_avgable(comp))
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                ComponentAverage::#name(avg) => avg.is_empty()
+            }
+        })
+        .collect();
+
+    quote! {
+        #[derive(Clone, Debug)]
+        pub enum ComponentAverage {
+            #(#variants,)*
+        }
+
+        impl ComponentAverage {
+            /// None if comp type is not averageable
+            pub fn new(comp_type: ComponentType) -> Option<Self> {
+                match comp_type {
+                    #(#new_arms,)*
+                    _ => None,
+                }
+            }
+
+            /// panics if the comp type != averages type
+            pub fn add(&mut self, comp: Component) {
+                match self {
+                    #(#add_arms,)*
+                }
+            }
+
+            /// panics if the comp type != averages type
+            pub fn remove(&mut self, comp: Component) {
+                match self {
+                    #(#remove_arms,)*
+                }
+            }
+
+            /// panics if the comp type != averages type
+            pub fn update(&mut self, old: Component, new: Component) {
+                match self {
+                    #(#update_arms,)*
+                }
+            }
+
+            /// None if no components have been added
+            pub fn current_average(&self) -> Option<Component> {
+                match self {
+                    #(#current_average_arms,)*
+                }
+            }
+
+            pub fn len(&self) -> usize {
+                match self {
+                    #(#len_arms,)*
+                }
+            }
+
+            pub fn is_empty(&self) -> bool {
+                match self {
+                    #(#is_empty_arms,)*
+                }
+            }
+        }
+    }
+}
+
 fn gen_structs_avgable(comps: &[Component]) -> TokenStream {
     let impls: Vec<_> = comps
         .iter()
@@ -175,21 +376,36 @@ fn gen_structs_avgable(comps: &[Component]) -> TokenStream {
     }
 }
 
+fn is_avgable(comp: &Component) -> bool {
+    match &comp.kind {
+        ComponentKind::Single { field, .. } => AVGABLE_PRIMS.contains(&field.as_str()),
+        ComponentKind::Struct { fields } => is_struct_avgable(fields),
+        _ => false,
+    }
+}
+
 /// If all fields in this struct are averageable (numbers, booleans)
-/// Then we will create a struct to sum up all of this struct
-/// And implement averageable for it
-fn gen_struct_avgable(comp: &Component, fields: &[Field]) -> TokenStream {
+fn is_struct_avgable(fields: &[Field]) -> bool {
     let mut sum_types = Vec::new();
     for field in fields {
         if let Some(sum_type_str) = get_sum_type(&field.r#type) {
             sum_types.push((field, sum_type_str));
         } else {
-            return quote! {}; // not avgable
+            return false;
         }
     }
+    !sum_types.is_empty()
+}
 
-    if sum_types.is_empty() {
-        return quote! {};
+fn gen_struct_avgable(comp: &Component, fields: &[Field]) -> TokenStream {
+    if !is_struct_avgable(fields) {
+        return quote![];
+    }
+
+    let mut sum_types = Vec::new();
+    for field in fields {
+        let sum_type_str = get_sum_type(&field.r#type).unwrap();
+        sum_types.push((field, sum_type_str));
     }
 
     let name = ident(&comp.name);
@@ -263,12 +479,12 @@ fn gen_struct_avgable(comp: &Component, fields: &[Field]) -> TokenStream {
     }
 }
 
-fn gen_primitives_avgable() -> TokenStream {
-    let typs = [
-        "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "bool",
-    ];
+const AVGABLE_PRIMS: [&str; 13] = [
+    "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "bool",
+];
 
-    let impls: Vec<_> = typs
+fn gen_primitives_avgable() -> TokenStream {
+    let impls: Vec<_> = AVGABLE_PRIMS
         .iter()
         .map(|typ| gen_primitive_averageable(typ))
         .collect();

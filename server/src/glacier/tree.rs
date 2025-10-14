@@ -1,20 +1,19 @@
-use std::{error::Error, fmt::Display};
-
-use igloo_interface::{ComponentType, FloeWriterDefault, MAX_SUPPORTED_COMPONENT};
+use igloo_interface::{Component, ComponentType, FloeWriterDefault, MAX_SUPPORTED_COMPONENT};
 use ini::Ini;
 use rustc_hash::FxHashMap;
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
+use std::{error::Error, fmt::Display, time::Duration};
 use tokio::fs;
 
-use crate::glacier::entity::HasComponent;
+use crate::glacier::{entity::HasComponent, query::WatchQuery};
 
 use super::entity::Entity;
 
-pub const ZONES_FILE: &str = "zones.ini";
+pub const GROUPS_FILE: &str = "groups.ini";
 pub const DEVICES_FILE: &str = "devices.ini";
 
 const MAX_EMPTY_DEVICE_SLOTS: usize = 10;
-const MAX_EMPTY_ZONE_SLOTS: usize = 10;
+const MAX_EMPTY_GROUP_SLOTS: usize = 10;
 
 /// persistent
 #[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
@@ -25,24 +24,25 @@ pub struct FloeID(pub String);
 pub struct FloeRef(usize);
 
 /// persistent
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct DeviceID(u64);
 
 /// persistent
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct ZoneID(u64);
+pub struct GroupID(u64);
 
 #[derive(Debug, Default)]
 pub struct DeviceTree {
-    /// Zone idx -> Zone
-    zones: Vec<Option<Zone>>,
+    /// Group idx -> Group
+    groups: Vec<Option<Group>>,
     /// Floe Ref -> Floe
     floes: Vec<Option<Floe>>,
     /// Floe ID -> Floe Ref
     floe_ref_lut: FxHashMap<FloeID, FloeRef>,
     /// Device idx -> Device
     devices: Vec<Option<Device>>,
-    zone_generation: u32,
+
+    group_generation: u32,
     device_generation: u32,
 }
 
@@ -54,7 +54,7 @@ pub struct Floe {
 }
 
 #[derive(Debug, Clone)]
-pub struct Zone {
+pub struct Group {
     generation: u32,
     name: String,
     devices: SmallVec<[DeviceID; 20]>,
@@ -62,32 +62,201 @@ pub struct Zone {
 
 #[derive(Debug, Default, Clone)]
 pub struct Device {
+    idx: u32,
     generation: u32,
     name: String,
     owner: FloeID,
     owner_ref: Option<FloeRef>,
 
+    // TODO FIXME whenever device is added/removed from group, NEED to update these
+    /// queries for any entity
+    queries: FxHashMap<ComponentType, SmallVec<[WatchQuery; 2]>>,
+    /// queries for one entity
+    entity_queries: FxHashMap<(usize, ComponentType), SmallVec<[WatchQuery; 2]>>,
+    /// queries waiting for entity to be registered
+    pending_entity_queries: FxHashMap<String, Vec<(ComponentType, WatchQuery)>>,
+
     pub presense: Presense,
     /// entity idx -> entity
     pub entities: SmallVec<[Entity; 16]>,
     /// entity ID -> entity idx
-    pub entity_idx_lut: FxHashMap<String, usize>,
+    entity_idx_lut: FxHashMap<String, usize>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Presense([u32; MAX_SUPPORTED_COMPONENT.div_ceil(32) as usize]);
 
+impl Device {
+    pub fn attach_query(&mut self, comp_type: ComponentType, query: WatchQuery) {
+        match self.queries.get_mut(&comp_type) {
+            Some(v) => v.push(query.clone()),
+            None => {
+                self.queries.insert(comp_type, smallvec![query.clone()]);
+            }
+        }
+    }
+
+    pub fn attach_entity_query(
+        &mut self,
+        eidx: usize,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) {
+        match self.entity_queries.get_mut(&(eidx, comp_type)) {
+            Some(v) => v.push(query.clone()),
+            None => {
+                self.entity_queries
+                    .insert((eidx, comp_type), smallvec![query.clone()]);
+            }
+        }
+    }
+
+    pub fn attach_pending_entity_query(
+        &mut self,
+        eid: String,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) {
+        match self.pending_entity_queries.get_mut(&eid) {
+            Some(v) => v.push((comp_type, query)),
+            None => {
+                self.pending_entity_queries
+                    .insert(eid, vec![(comp_type, query)]);
+            }
+        }
+    }
+
+    fn unpend_entity_queries(&mut self, eid: &str, eidx: usize) {
+        let Some(pending) = self.pending_entity_queries.remove(eid) else {
+            return;
+        };
+        for (comp_type, query) in pending {
+            self.attach_entity_query(eidx, comp_type, query);
+        }
+    }
+
+    pub fn register_entity(&mut self, eid: String) {
+        let eidx = self.entities.len();
+        self.unpend_entity_queries(&eid, eidx);
+        self.entity_idx_lut.insert(eid, eidx);
+        self.entities.push(Entity::default());
+    }
+
+    pub async fn exec_queries(&mut self, eidx: usize, comp: Component) {
+        let comp_type = comp.get_type();
+        let did = DeviceID::from_parts(self.idx, self.generation);
+        if let Some(queries) = self.queries.get(&comp_type) {
+            for query in queries {
+                if self.entities[eidx].matches_filter(&query.filter)
+                    && let Err(e) = query
+                        .tx
+                        .send_timeout(
+                            (query.prefix, did, eidx, comp.clone()),
+                            Duration::from_millis(10),
+                        )
+                        .await
+                {
+                    eprintln!("Error sending watch query update: {e}");
+                }
+            }
+        }
+        if let Some(queries) = self.entity_queries.get(&(eidx, comp_type)) {
+            for query in queries {
+                if self.entities[eidx].matches_filter(&query.filter)
+                    && let Err(e) = query
+                        .tx
+                        .send_timeout(
+                            (query.prefix, did, eidx, comp.clone()),
+                            Duration::from_millis(10),
+                        )
+                        .await
+                {
+                    eprintln!("Error sending watch query update: {e}");
+                }
+            }
+        }
+    }
+
+    pub fn entity_idx_lut(&self) -> &FxHashMap<String, usize> {
+        &self.entity_idx_lut
+    }
+
+    pub fn get_entity_idx(&self, eid: &str) -> Option<&usize> {
+        self.entity_idx_lut.get(eid)
+    }
+}
+
 impl DeviceTree {
-    pub fn iter_zones_with_ids(&self) -> impl Iterator<Item = (ZoneID, &Zone)> {
-        self.zones.iter().enumerate().filter_map(|(idx, z)| {
-            z.as_ref().map(|zone| {
-                let did = ZoneID::from_parts(idx as u32, zone.generation);
-                (did, zone)
+    pub fn attach_query_to_all(
+        &mut self,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) -> Result<(), Box<dyn Error>> {
+        for device in &mut self.devices {
+            let Some(device) = device else { continue };
+            device.attach_query(comp_type, query.clone());
+        }
+        Ok(())
+    }
+
+    pub fn attach_query_to_group(
+        &mut self,
+        gid: GroupID,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) -> Result<(), Box<dyn Error>> {
+        let group = self.group(gid)?;
+        for did in group.devices.clone() {
+            self.attach_query(did, comp_type, query.clone())?;
+        }
+        Ok(())
+    }
+
+    pub fn attach_query(
+        &mut self,
+        did: DeviceID,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) -> Result<(), Box<dyn Error>> {
+        let device = self.device_mut(did)?;
+        device.attach_query(comp_type, query);
+        Ok(())
+    }
+
+    pub fn attach_entity_query(
+        &mut self,
+        did: DeviceID,
+        eidx: usize,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) -> Result<(), Box<dyn Error>> {
+        let device = self.device_mut(did)?;
+        device.attach_entity_query(eidx, comp_type, query);
+        Ok(())
+    }
+
+    pub fn attach_pending_entity_query(
+        &mut self,
+        did: DeviceID,
+        eid: String,
+        comp_type: ComponentType,
+        query: WatchQuery,
+    ) -> Result<(), Box<dyn Error>> {
+        let device = self.device_mut(did)?;
+        device.attach_pending_entity_query(eid, comp_type, query);
+        Ok(())
+    }
+
+    pub fn iter_groups(&self) -> impl Iterator<Item = (GroupID, &Group)> {
+        self.groups.iter().enumerate().filter_map(|(idx, g)| {
+            g.as_ref().map(|group| {
+                let did = GroupID::from_parts(idx as u32, group.generation);
+                (did, group)
             })
         })
     }
 
-    pub fn iter_devices_with_ids(&self) -> impl Iterator<Item = (DeviceID, &Device)> {
+    pub fn iter_devices(&self) -> impl Iterator<Item = (DeviceID, &Device)> {
         self.devices.iter().enumerate().filter_map(|(idx, d)| {
             d.as_ref().map(|device| {
                 let did = DeviceID::from_parts(idx as u32, device.generation);
@@ -96,28 +265,23 @@ impl DeviceTree {
         })
     }
 
-    pub fn iter_devices(&self) -> impl Iterator<Item = &Device> {
-        self.devices.iter().filter_map(|d| d.as_ref())
-    }
-
-    pub fn iter_devices_in_zone(&self, zid: ZoneID) -> impl Iterator<Item = &Device> + '_ {
-        let zone = self.zones[zid.idx() as usize].as_ref().unwrap();
-        let device_ids = zone.devices.clone();
-        device_ids
-            .into_iter()
-            .map(move |did| self.devices[did.idx() as usize].as_ref().unwrap())
-    }
-
-    pub fn iter_devices_in_zone_with_ids(
+    pub fn iter_devices_in_group(
         &self,
-        zid: ZoneID,
+        gid: GroupID,
     ) -> impl Iterator<Item = (DeviceID, &Device)> + '_ {
-        let zone = self.zones[zid.idx() as usize].as_ref().unwrap();
-        let device_ids = zone.devices.clone();
+        let group = self.groups[gid.idx() as usize].as_ref().unwrap();
+        let device_ids = group.devices.clone();
         device_ids.into_iter().map(move |did| {
             let device = self.devices[did.idx() as usize].as_ref().unwrap();
             (did, device)
         })
+    }
+
+    pub fn group(&self, gid: GroupID) -> Result<&Group, Box<dyn Error>> {
+        if !self.is_group_id_valid(&gid) {
+            return Err("Group ID invalid".into());
+        }
+        Ok(self.groups[gid.idx() as usize].as_ref().unwrap())
     }
 
     pub fn device(&self, did: DeviceID) -> Result<&Device, Box<dyn Error>> {
@@ -135,73 +299,73 @@ impl DeviceTree {
     }
 
     pub fn floe_mut(&mut self, fref: FloeRef) -> &mut Floe {
-        self.floes[fref.0 as usize].as_mut().unwrap()
+        self.floes[fref.0].as_mut().unwrap()
     }
 
     pub fn floe(&self, fref: FloeRef) -> &Floe {
-        self.floes[fref.0 as usize].as_ref().unwrap()
+        self.floes[fref.0].as_ref().unwrap()
     }
 
     pub fn floe_ref_lut(&self) -> &FxHashMap<FloeID, FloeRef> {
         &self.floe_ref_lut
     }
 
-    pub async fn create_zone(&mut self, name: String) -> Result<ZoneID, Box<dyn Error>> {
+    pub async fn create_group(&mut self, name: String) -> Result<GroupID, Box<dyn Error>> {
         let num_free_slots = self.devices.iter().filter(|d| d.is_none()).count();
 
-        let mut zone = Zone {
-            generation: self.zone_generation,
+        let mut group = Group {
+            generation: self.group_generation,
             name,
             devices: SmallVec::default(),
         };
 
-        let idx = if num_free_slots > MAX_EMPTY_ZONE_SLOTS {
-            self.zone_generation += 1;
-            zone.generation += 1;
-            let id = self.zones.iter().position(|d| d.is_none()).unwrap();
-            self.zones[id] = Some(zone);
+        let idx = if num_free_slots > MAX_EMPTY_GROUP_SLOTS {
+            self.group_generation += 1;
+            group.generation += 1;
+            let id = self.groups.iter().position(|d| d.is_none()).unwrap();
+            self.groups[id] = Some(group);
             id
         } else {
-            let idx = self.zones.len();
-            self.zones.push(Some(zone));
+            let idx = self.groups.len();
+            self.groups.push(Some(group));
             idx
         };
 
-        self.save_zones().await?;
+        self.save_groups().await?;
 
-        Ok(ZoneID::from_parts(idx as u32, self.zone_generation))
+        Ok(GroupID::from_parts(idx as u32, self.group_generation))
     }
 
-    pub async fn delete_zone(&mut self, zid: ZoneID) -> Result<(), Box<dyn Error>> {
-        match &self.zones[zid.idx() as usize] {
-            Some(zone) => {
-                if zone.generation != zid.generation() {
+    pub async fn delete_group(&mut self, gid: GroupID) -> Result<(), Box<dyn Error>> {
+        match &self.groups[gid.idx() as usize] {
+            Some(group) => {
+                if group.generation != gid.generation() {
                     return Err("Stale reference".into());
                 }
             }
             None => return Err("Device already deleted".into()),
         }
 
-        self.zones[zid.idx() as usize] = None;
+        self.groups[gid.idx() as usize] = None;
 
-        self.save_zones().await?;
+        self.save_groups().await?;
 
         Ok(())
     }
 
-    pub async fn rename_zone(
+    pub async fn rename_group(
         &mut self,
-        zid: ZoneID,
+        gid: GroupID,
         new_name: String,
     ) -> Result<(), Box<dyn Error>> {
-        if !self.is_zone_id_valid(&zid) {
-            return Err("Zone ID invalid".into());
+        if !self.is_group_id_valid(&gid) {
+            return Err("Group ID invalid".into());
         }
 
-        let zone = self.zones[zid.idx() as usize].as_mut().unwrap();
-        zone.name = new_name;
+        let group = self.groups[gid.idx() as usize].as_mut().unwrap();
+        group.name = new_name;
 
-        self.save_zones().await?;
+        self.save_groups().await?;
 
         Ok(())
     }
@@ -209,7 +373,7 @@ impl DeviceTree {
     pub fn detach_floe(&mut self, fref: FloeRef) {
         self.floes[fref.0] = None;
 
-        let floe = self.floes[fref.0 as usize].as_ref().unwrap();
+        let floe = self.floes[fref.0].as_ref().unwrap();
         self.floe_ref_lut.remove(&floe.id);
 
         // detach all its devices
@@ -294,13 +458,17 @@ impl DeviceTree {
     ) -> Result<DeviceID, Box<dyn Error>> {
         let num_free_slots = self.devices.iter().filter(|d| d.is_none()).count();
 
-        let floe = self.floes[owner_ref.0 as usize].as_ref().unwrap();
+        let floe = self.floes[owner_ref.0].as_ref().unwrap();
 
         let mut device = Device {
+            idx: 0,
             generation: self.device_generation,
             name,
             owner: floe.id.clone(),
             owner_ref: Some(owner_ref),
+            queries: FxHashMap::default(),
+            entity_queries: FxHashMap::default(),
+            pending_entity_queries: FxHashMap::default(),
             presense: Presense::default(),
             entities: SmallVec::default(),
             entity_idx_lut: FxHashMap::default(),
@@ -310,10 +478,12 @@ impl DeviceTree {
             self.device_generation += 1;
             device.generation += 1;
             let idx = self.devices.iter().position(|d| d.is_none()).unwrap();
+            device.idx = idx as u32;
             self.devices[idx] = Some(device);
             idx
         } else {
             let idx = self.devices.len();
+            device.idx = idx as u32;
             self.devices.push(Some(device));
             idx
         };
@@ -360,66 +530,67 @@ impl DeviceTree {
         }
     }
 
-    pub fn is_zone_id_valid(&self, zid: &ZoneID) -> bool {
-        match &self.zones[zid.idx() as usize] {
+    pub fn is_group_id_valid(&self, gid: &GroupID) -> bool {
+        match &self.groups[gid.idx() as usize] {
             // make sure its not stale
-            Some(zone) => zone.generation == zid.generation(),
+            Some(group) => group.generation == gid.generation(),
             None => false, // deleted
         }
     }
 
-    async fn save_zones(&self) -> Result<(), Box<dyn Error>> {
+    async fn save_groups(&self) -> Result<(), Box<dyn Error>> {
         let mut ini = Ini::new();
 
-        for (id, zone) in self.zones.iter().enumerate() {
-            let Some(zone) = zone else {
+        for (id, group) in self.groups.iter().enumerate() {
+            let Some(group) = group else {
                 continue;
             };
 
             ini.with_section(Some(id.to_string()))
-                .set("name", &zone.name)
+                .set("name", &group.name)
                 .set(
                     "devices",
-                    zone.devices
+                    group
+                        .devices
                         .iter()
                         .map(|d| format!("{}:{}", d.idx(), d.generation()))
                         .collect::<Vec<_>>()
                         .join(","),
                 )
-                .set("generation", zone.generation.to_string());
+                .set("generation", group.generation.to_string());
         }
 
         let mut buf = Vec::new();
         ini.write_to(&mut buf)?;
-        fs::write(ZONES_FILE, buf).await?;
+        fs::write(GROUPS_FILE, buf).await?;
 
         Ok(())
     }
 
     pub async fn load() -> Result<Self, Box<dyn Error>> {
-        if !fs::try_exists(ZONES_FILE).await? || !fs::try_exists(DEVICES_FILE).await? {
+        if !fs::try_exists(GROUPS_FILE).await? || !fs::try_exists(DEVICES_FILE).await? {
             let me = Self::default();
-            me.save_zones().await?;
+            me.save_groups().await?;
             me.save_devices().await?;
             return Ok(me);
         }
 
-        let zones_content = fs::read_to_string(ZONES_FILE).await?;
-        let zones_ini = Ini::load_from_str(&zones_content)?;
+        let groups_content = fs::read_to_string(GROUPS_FILE).await?;
+        let groups_ini = Ini::load_from_str(&groups_content)?;
 
-        let max_zone_idx = zones_ini
+        let max_group_idx = groups_ini
             .sections()
             .filter_map(|s| s?.parse::<usize>().ok())
             .max()
             .unwrap_or(0);
 
-        let mut zones = vec![None; max_zone_idx + 1];
+        let mut groups = vec![None; max_group_idx + 1];
 
-        for section in zones_ini.sections() {
+        for section in groups_ini.sections() {
             let Some(idx_str) = section else { continue };
             let idx: usize = idx_str.parse()?;
 
-            let section_data = zones_ini.section(Some(idx_str)).unwrap();
+            let section_data = groups_ini.section(Some(idx_str)).unwrap();
 
             let name = section_data.get("name").ok_or("Missing name")?.to_string();
             let generation: u32 = section_data
@@ -448,7 +619,7 @@ impl DeviceTree {
                     .collect::<Result<_, Box<dyn Error>>>()?
             };
 
-            zones[idx] = Some(Zone {
+            groups[idx] = Some(Group {
                 generation,
                 name,
                 devices,
@@ -485,19 +656,23 @@ impl DeviceTree {
             );
 
             devices[idx] = Some(Device {
+                idx: idx as u32,
                 generation,
                 name,
                 owner,
                 owner_ref: None,
+                queries: FxHashMap::default(),
+                entity_queries: FxHashMap::default(),
+                pending_entity_queries: FxHashMap::default(),
                 presense: Presense::default(),
                 entities: SmallVec::default(),
                 entity_idx_lut: FxHashMap::default(),
             });
         }
 
-        let zone_generation = zones
+        let group_generation = groups
             .iter()
-            .filter_map(|z| z.as_ref().map(|z| z.generation))
+            .filter_map(|g| g.as_ref().map(|g| g.generation))
             .max()
             .unwrap_or(0);
 
@@ -508,9 +683,9 @@ impl DeviceTree {
             .unwrap_or(0);
 
         Ok(DeviceTree {
-            zones,
+            groups,
             devices,
-            zone_generation,
+            group_generation,
             device_generation,
             floes: Vec::new(),
             floe_ref_lut: FxHashMap::default(),
@@ -573,7 +748,7 @@ impl Device {
     }
 }
 
-impl Zone {
+impl Group {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -583,10 +758,10 @@ impl Zone {
     }
 }
 
-impl ZoneID {
+impl GroupID {
     pub fn from_parts(idx: u32, generation: u32) -> Self {
         let packed = (idx as u64) | ((generation as u64) << 32);
-        ZoneID(packed)
+        GroupID(packed)
     }
 
     pub fn idx(&self) -> u32 {

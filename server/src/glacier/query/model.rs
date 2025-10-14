@@ -1,39 +1,49 @@
 use igloo_interface::{Component, ComponentType};
-use tokio::sync::oneshot;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+use tokio::sync::{mpsc, oneshot};
 
-use crate::glacier::tree::{DeviceID, FloeID, FloeRef, ZoneID};
+use crate::glacier::tree::{DeviceID, FloeID, FloeRef, GroupID};
 
 /// Request a Query from the Query Engine
 #[derive(Debug)]
 pub struct Query {
-    pub filter: Option<QueryFilter>,
+    pub filter: QueryFilter,
     pub target: QueryTarget,
     pub kind: QueryKind,
 }
 
 #[derive(Debug)]
 pub enum QueryKind {
-    Set(Vec<Component>),
-    GetOne(oneshot::Sender<Option<Component>>, ComponentType),
-    GetAll(oneshot::Sender<Vec<Component>>, ComponentType),
+    Set(SmallVec<[Component; 2]>),
+
+    GetOne(oneshot::Sender<Option<OneQueryResult>>, ComponentType),
+    GetAll(oneshot::Sender<GetAllQueryResult>, ComponentType),
     GetAvg(oneshot::Sender<Option<Component>>, ComponentType),
-    // WatchOne(mpsc::Sender<()>, ComponentType),
-    // WatchAll(mpsc::Sender<()>, ComponentType),
+
+    /// prefix/ID, recver, ct
+    WatchAll(u16, mpsc::Sender<PrefixedOneQueryResult>, ComponentType),
+    // WatchOne
     // WatchAvg(mpsc::Sender<()>, ComponentType),
     Snapshot(oneshot::Sender<Snapshot>),
 }
 
-pub enum WatchTarget {
-    All,
-    Zone(ZoneID),
-    Device(DeviceID),
-    Entity(DeviceID, usize),
+pub type PrefixedOneQueryResult = (u16, DeviceID, usize, Component);
+pub type OneQueryResult = (DeviceID, usize, Component);
+pub type GetAllQueryResult = FxHashMap<DeviceID, FxHashMap<usize, Component>>;
+
+#[derive(Debug, Clone)]
+pub struct WatchQuery {
+    pub prefix: u16,
+    pub filter: QueryFilter,
+    pub tx: mpsc::Sender<PrefixedOneQueryResult>,
+    pub gid: Option<GroupID>,
 }
 
 #[derive(Debug, Clone)]
 pub enum QueryTarget {
     All,
-    Zone(ZoneID),
+    Group(GroupID),
     Device(DeviceID),
     /// Device ID, Entity Name
     Entity(DeviceID, String),
@@ -41,6 +51,8 @@ pub enum QueryTarget {
 
 #[derive(Debug, Clone)]
 pub enum QueryFilter {
+    /// no filter
+    None,
     /// exclude entities that don't also have this component
     With(ComponentType),
     /// exclude entities that have this component
@@ -78,13 +90,13 @@ pub enum Operator {
 #[derive(Debug, Default)]
 pub struct Snapshot {
     pub floes: Vec<FloeSnapshot>,
-    pub zones: Vec<ZoneSnapshot>,
+    pub groups: Vec<GroupSnapshot>,
     pub devices: Vec<DeviceSnapshot>,
 }
 
 #[derive(Debug)]
-pub struct ZoneSnapshot {
-    pub id: ZoneID,
+pub struct GroupSnapshot {
+    pub id: GroupID,
     pub name: String,
     pub devices: Vec<DeviceID>,
 }
