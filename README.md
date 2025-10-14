@@ -23,7 +23,6 @@ They can do the following:
 ## ECS
 TODO fix this
 
-Igloo runs on an ECS system similar to Bevy:
  - **Device**: Usually represents a single hardware device.
    - It is entirely managed by the provider (providers usually have multiple devices)
    - It has a name (ex. "Ceiling Light"), permissions, and a collection of Entities (each named)
@@ -34,20 +33,15 @@ Then we can organize our home with **Zones** (ex. Kitchen) which are simply grou
 Devices may be in multiple Zones.
 
 
-## Architecture
-All Rust 🦀
- - **Frontend**: Leptos + Bevy (for Penguin)
- - **Backend**: Axum
-
-
 ## Server File Structure
 ```bash
-igloo       # binary
-auth.toml
-state.toml
-penguin.toml
+igloo-server
+users.ron
+sessions.ini
+devices.ini
+groups.ini
 penguin/
-  SCRIPT.toml
+  SCRIPT.ron
   ...
 dashboards/
   DASHBOARD.ron
@@ -55,6 +49,6 @@ dashboards/
 floes/
   FLOE/
     BINARY
-    Floe.toml
+    Floe.ron
   ...
 ```
