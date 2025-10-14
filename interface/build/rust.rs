@@ -16,6 +16,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use borsh::{BorshSerialize, BorshDeserialize};
+        #[cfg(feature = "floe")]
         use tokio::io::AsyncWriteExt;
 
         pub const MAX_SUPPORTED_COMPONENT: u16 = #max_id;
@@ -68,6 +69,7 @@ fn gen_helper_funcs(cmds: &[Command], comps: &[Component]) -> TokenStream {
         })
         .collect();
     quote! {
+        #[cfg(feature = "floe")]
         impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
             #(#cmds)*
             #(#comps)*
@@ -109,8 +111,9 @@ fn gen_comp_type(comps: &[Component]) -> TokenStream {
         .collect();
 
     quote! {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, BorshSerialize, BorshDeserialize)]
         #[repr(u16)]
+        #[borsh(use_discriminant=false)]
         pub enum ComponentType {
             #(#variants),*
         }

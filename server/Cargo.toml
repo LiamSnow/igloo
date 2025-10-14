@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-igloo-interface = { path = "../interface/", features = ["igloo-server"] }
+igloo-interface = { path = "../interface/", features = ["server", "floe"] }
 axum = { version = "0.8.4", features = ["ws"] }
 bcrypt = "0.17.1"
 jiff = "0.2.15"
@@ -21,7 +21,6 @@ borsh = { version = "1.5.7", features = ["derive"] }
 rust-ini = "0.21.3"
 tower-http = { version = "0.6.6", features = ["fs"] }
 axum-extra = { version = "0.10.3", features = ["typed-header"] }
-maud = { version = "0.27.0", features = ["axum"] }
 derive_more = { version = "2.0.1", features = ["display"] }
 
 

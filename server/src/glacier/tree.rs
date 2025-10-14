@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use igloo_interface::{Component, ComponentType, FloeWriterDefault, MAX_SUPPORTED_COMPONENT};
 use ini::Ini;
 use rustc_hash::FxHashMap;
@@ -24,11 +25,11 @@ pub struct FloeID(pub String);
 pub struct FloeRef(usize);
 
 /// persistent
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, BorshSerialize, BorshDeserialize)]
 pub struct DeviceID(u64);
 
 /// persistent
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, BorshSerialize, BorshDeserialize)]
 pub struct GroupID(u64);
 
 #[derive(Debug, Default)]

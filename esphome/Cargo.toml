@@ -11,7 +11,7 @@ prost = "0.13.4"
 snow = "0.9.6"
 thiserror = "2.0.11"
 tokio = { version = "1.47.1", features = ["bytes", "full"] }
-igloo-interface = { path = "../interface/" }
+igloo-interface = { path = "../interface/", features = ["floe"] }
 strum = "0.27.2"
 strum_macros = "0.27.2"
 borsh = "1.5.7"

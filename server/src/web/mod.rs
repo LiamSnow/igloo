@@ -5,33 +5,31 @@ use axum::{
         ws::{Message, WebSocket},
     },
     response::IntoResponse,
-    routing::{any, get},
+    routing::any,
 };
 use axum_extra::{TypedHeader, headers::Cookie};
-use futures_util::{SinkExt, StreamExt};
+use borsh::{BorshDeserialize, BorshSerialize};
+use futures_util::StreamExt;
 use igloo_interface::{Component, ComponentType};
-use maud::Markup;
 use rustc_hash::FxHashMap;
-use smallvec::smallvec;
-use std::{collections::HashMap, error::Error, sync::OnceLock};
+use std::error::Error;
 use tokio::{net::TcpListener, sync::mpsc};
 
 use crate::{
     GlobalState,
     dash::model::{Dashboard, Element},
     glacier::{
-        query::{Query, QueryFilter, QueryKind, QueryTarget},
-        tree::{DeviceID, GroupID},
+        query::{Query, QueryFilter, QueryKind, QueryTarget, SetQuery},
+        tree::DeviceID,
     },
-    web::page::wrap_page,
 };
 
-mod page;
-
-static DASH: OnceLock<Markup> = OnceLock::new();
-
-async fn d() -> Markup {
-    DASH.get().unwrap().clone()
+#[derive(Clone, BorshSerialize, BorshDeserialize)]
+pub enum Imsg {
+    Dash(Box<Dashboard>),
+    Update(u32, Component),
+    Set(SetQuery),
+    GetDash(u16),
 }
 
 pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
@@ -57,14 +55,9 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
         },
     };
 
-    let dash_id = 69;
-    let (markup, watchers, setters) = dash.render(&dash_id).unwrap();
+    let dash_id = 0;
 
-    let mut s = state.dash_setters.lock().await;
-    s.insert(dash_id, setters);
-    drop(s);
-
-    DASH.get_or_init(|| wrap_page(markup));
+    let watchers = dash.get_watchers(dash_id).unwrap();
 
     let (tx, mut rx) = mpsc::channel(10);
     for (elid, (filter, target, comp_type)) in watchers {
@@ -82,27 +75,26 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
     let gs = state.clone();
     tokio::spawn(async move {
         while let Some((elid, _, _, value)) = rx.recv().await {
+            // TODO we need some system of collecting all of these,
+            // then shipping out all values to new viewers
             println!("elid={elid}, value={value:#?}");
 
-            let Some(inner) = value.inner_string() else {
-                eprintln!("{value:#?} cannot be watched");
-                continue;
-            };
-
-            let mut ws_txs = gs.ws_txs.lock().await;
-            for ws_tx in ws_txs.iter_mut() {
-                let res = ws_tx
-                    .send(Message::Text(format!("{dash_id},{elid},{inner}",).into()))
-                    .await;
-                if let Err(e) = res {
-                    eprintln!("ws send err: {e}");
-                }
+            let msg = Imsg::Update(elid, value);
+            let v = borsh::to_vec(&msg).unwrap();
+            let dash_id = (elid >> 16) as u16;
+            let res = gs.cast.send((dash_id, Message::Binary(v.into())));
+            if let Err(e) = res {
+                eprintln!("failed to broadcast: {e}");
             }
         }
     });
 
+    let mut dashs = state.dashs.lock().await;
+    dashs.insert(dash_id, dash);
+    drop(dashs);
+
     let app = Router::new()
-        .route("/", get(d))
+        // .route("/", get(d))
         .route("/ws", any(ws_handler))
         .with_state(state);
 
@@ -123,72 +115,45 @@ async fn ws_handler(
 async fn handle_socket(
     _cookies: Option<TypedHeader<Cookie>>,
     state: GlobalState,
-    socket: WebSocket,
+    mut socket: WebSocket,
 ) {
-    let (ws_tx, mut ws_rx) = socket.split();
+    let mut cast_rx = state.cast.subscribe();
+    loop {
+        tokio::select! {
+            Ok((dash_id, msg)) = cast_rx.recv() => {
+                // TODO check current dash ID before sending
+                socket.send(msg).await.unwrap();
+            }
 
-    let mut ws_txs = state.ws_txs.lock().await;
-    ws_txs.push(ws_tx);
-    drop(ws_txs);
+            Some(Ok(msg)) = socket.next() => {
+                match msg {
+                    Message::Binary(bytes) => {
+                        let msg: Imsg = borsh::from_slice(&bytes).unwrap();
+                        match msg {
+                            Imsg::Set(set_query) => {
+                                state.query_tx.send(set_query.to_query()).await.unwrap()
+                            },
+                            Imsg::GetDash(dash_id) => {
+                                let dashs = state.dashs.lock().await;
+                                let dash = dashs.get(&dash_id).unwrap();
+                                let msg = Imsg::Dash(Box::new(dash.clone()));
+                                let v = borsh::to_vec(&msg).unwrap();
+                                drop(dashs);
+                                println!("sending: {v:?}");
+                                socket.send(Message::Binary(v.into())).await.unwrap();
+                            },
+                            _ => {
+                                eprintln!("Unexpected msg");
+                            }
+                        }
 
-    while let Some(Ok(msg)) = ws_rx.next().await {
-        match msg {
-            Message::Text(msg) => {
-                let parts: Vec<_> = msg.split(',').collect();
-                if parts.len() != 3 {
-                    eprintln!("invalid msg: {msg}");
-                    continue;
+                    }
+                    Message::Close(_) => {
+                        return;
+                    }
+                    _ => {}
                 }
-
-                let Ok(dash_id) = parts[0].parse() else {
-                    eprintln!("failed to parse dash_id");
-                    continue;
-                };
-                let Ok(elid) = parts[1].parse() else {
-                    eprintln!("failed to parse elid");
-                    continue;
-                };
-                let value = parts[2];
-
-                let gmap = state.dash_setters.lock().await;
-                let Some(dmap) = gmap.get(&dash_id) else {
-                    eprintln!("invalid dash id: {dash_id}");
-                    continue;
-                };
-
-                let Some(p) = dmap.get(&elid) else {
-                    eprintln!("invalid elid: {elid}");
-                    continue;
-                };
-
-                let (filter, target, comp_type) = p.clone();
-
-                drop(gmap);
-
-                state
-                    .query_tx
-                    .send(Query {
-                        filter,
-                        target,
-                        kind: QueryKind::Set(smallvec![]),
-                    })
-                    .await
-                    .unwrap();
-
-                // state
-                //     .query_tx
-                //     .send(Query {
-                //         filter: QueryFilter::With(ComponentType::Light),
-                //         target: QueryTarget::Group(GroupID::from_parts(1, 0)),
-                //         kind: QueryKind::Set(smallvec![Component::Dimmer(bri)]),
-                //     })
-                //     .await
-                //     .unwrap();
             }
-            Message::Close(_) => {
-                break;
-            }
-            _ => {}
         }
     }
 }

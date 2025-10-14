@@ -113,7 +113,7 @@ async fn handle_get_one_query(
 
 async fn handle_watch_all_query(
     tree: &mut DeviceTree,
-    prefix: u16,
+    prefix: u32,
     tx: mpsc::Sender<PrefixedOneQueryResult>,
     comp_type: ComponentType,
     filter: QueryFilter,

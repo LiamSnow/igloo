@@ -6,13 +6,14 @@ build = "build/main.rs"
 
 [features]
 default = []
-igloo-server = []
+server = []
+floe = ["bytes", "tokio", "tokio-util"]
 
 [dependencies]
 borsh = { version = "1.5.7", features = ["derive"] }
-bytes = "1.10.1"
-tokio = { version = "1.47.1", features = ["io-util", "net"] }
-tokio-util = { version = "0.7.16", features = ["codec"] }
+bytes = { version = "1.10.1", optional = true }
+tokio = { version = "1.47.1", features = ["io-util", "net"], optional = true }
+tokio-util = { version = "0.7.16", features = ["codec"], optional = true }
 
 [build-dependencies]
 toml = "0.9.7"

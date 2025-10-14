@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use igloo_interface::{Component, ComponentType};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
@@ -22,25 +23,43 @@ pub enum QueryKind {
     GetAvg(oneshot::Sender<Option<Component>>, ComponentType),
 
     /// prefix/ID, recver, ct
-    WatchAll(u16, mpsc::Sender<PrefixedOneQueryResult>, ComponentType),
+    WatchAll(u32, mpsc::Sender<PrefixedOneQueryResult>, ComponentType),
     // WatchOne
     // WatchAvg(mpsc::Sender<()>, ComponentType),
     Snapshot(oneshot::Sender<Snapshot>),
 }
 
-pub type PrefixedOneQueryResult = (u16, DeviceID, usize, Component);
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
+pub struct SetQuery {
+    pub filter: QueryFilter,
+    pub target: QueryTarget,
+    pub values: Vec<Component>,
+}
+
+// TODO FIXME move
+impl SetQuery {
+    pub fn to_query(self) -> Query {
+        Query {
+            filter: self.filter,
+            target: self.target,
+            kind: QueryKind::Set(self.values.into()),
+        }
+    }
+}
+
+pub type PrefixedOneQueryResult = (u32, DeviceID, usize, Component);
 pub type OneQueryResult = (DeviceID, usize, Component);
 pub type GetAllQueryResult = FxHashMap<DeviceID, FxHashMap<usize, Component>>;
 
 #[derive(Debug, Clone)]
 pub struct WatchQuery {
-    pub prefix: u16,
+    pub prefix: u32,
     pub filter: QueryFilter,
     pub tx: mpsc::Sender<PrefixedOneQueryResult>,
     pub gid: Option<GroupID>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum QueryTarget {
     All,
     Group(GroupID),
@@ -49,7 +68,7 @@ pub enum QueryTarget {
     Entity(DeviceID, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum QueryFilter {
     /// no filter
     None,

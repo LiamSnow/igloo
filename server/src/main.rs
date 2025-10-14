@@ -1,18 +1,10 @@
 use std::sync::Arc;
 
-use axum::extract::ws::{Message, WebSocket};
-use futures_util::{SinkExt, stream::SplitSink};
-use igloo_interface::ComponentType;
+use axum::extract::ws::Message;
 use rustc_hash::FxHashMap;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, broadcast, mpsc};
 
-use crate::{
-    dash::renderer::CompDashQuery,
-    glacier::{
-        query::{Query, QueryFilter, QueryKind, QueryTarget},
-        tree::GroupID,
-    },
-};
+use crate::{dash::model::Dashboard, glacier::query::Query};
 
 // TODO glacier should register Floe #0 As internal
 // We should be able to get:
@@ -31,8 +23,8 @@ mod web;
 #[derive(Clone)]
 pub struct GlobalState {
     query_tx: mpsc::Sender<Query>,
-    ws_txs: Arc<Mutex<Vec<SplitSink<WebSocket, Message>>>>,
-    dash_setters: Arc<Mutex<FxHashMap<u16, FxHashMap<u16, CompDashQuery>>>>,
+    cast: broadcast::Sender<(u16, Message)>,
+    dashs: Arc<Mutex<FxHashMap<u16, Dashboard>>>,
 }
 
 #[tokio::main]
@@ -43,8 +35,8 @@ async fn main() {
 
     let gs = GlobalState {
         query_tx,
-        ws_txs: Arc::new(Mutex::new(Vec::with_capacity(10))),
-        dash_setters: Arc::new(Mutex::new(FxHashMap::default())),
+        cast: broadcast::channel(100).0,
+        dashs: Arc::new(Mutex::new(FxHashMap::default())),
     };
 
     let gsc = gs.clone();

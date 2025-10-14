@@ -3,7 +3,62 @@ use derive_more::Display;
 use igloo_interface::{Component, ComponentType};
 use rustc_hash::FxHashMap;
 
-use crate::glacier::query::{QueryFilter, QueryTarget};
+// TODO FIXME move all of this to igloo interface
+
+#[derive(Clone, BorshSerialize, BorshDeserialize)]
+pub enum Imsg {
+    Dash(Box<Dashboard>),
+    Update(u32, Component),
+    Set(SetQuery),
+    GetDash(u16),
+}
+
+// ---------------------
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
+pub struct SetQuery {
+    pub filter: QueryFilter,
+    pub target: QueryTarget,
+    pub values: Vec<Component>,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub enum QueryTarget {
+    All,
+    Group(GroupID),
+    Device(DeviceID),
+    /// Device ID, Entity Name
+    Entity(DeviceID, String),
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub enum QueryFilter {
+    /// no filter
+    None,
+    /// exclude entities that don't also have this component
+    With(ComponentType),
+    /// exclude entities that have this component
+    Without(ComponentType),
+    /// both queries must be true
+    And(Box<(QueryFilter, QueryFilter)>),
+    /// either query must be true
+    Or(Box<(QueryFilter, QueryFilter)>),
+    // Condition(ComponentType, Operator, Component),
+    // for refering to parts of components, ex. color.r
+    // NestedCondition(Vec<PathSegment>, Operator, Component),
+    // TODO think it would be cool to have filters for entity names
+    // IE `RGBCT_Bulb*`
+}
+
+/// persistent
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, BorshSerialize, BorshDeserialize)]
+pub struct DeviceID(u64);
+
+/// persistent
+#[derive(Debug, PartialEq, Eq, Clone, Copy, BorshSerialize, BorshDeserialize)]
+pub struct GroupID(u64);
+
+// --------- DASH ---------------------- \\
 
 // TODO we need to experiment with different systems
 // for sizing, margins, and padding. For now we will
@@ -24,7 +79,7 @@ pub struct Dashboard {
 /// Custom element, defined in Ron
 /// To aid users easily making composable
 /// Dashboards
-#[derive(Clone, BorshSerialize, BorshDeserialize)]
+#[derive(BorshSerialize, BorshDeserialize)]
 pub struct CustomElement {
     pub(super) name: String,
 

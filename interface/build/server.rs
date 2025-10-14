@@ -13,6 +13,7 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let read_comp = gen_read_comp(comps);
     let write_comp = gen_write_comp(comps);
     let comp_inner = gen_comp_inner(comps);
+    let comp_from_string = gen_comp_from_string(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
@@ -33,6 +34,8 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         #write_comp
 
         #comp_inner
+
+        #comp_from_string
     };
 
     // reconstruct, format, and save
@@ -43,6 +46,91 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("server.rs");
     fs::write(&out_path, formatted).expect("Failed to write server.rs");
+}
+
+fn gen_comp_from_string(comps: &[Component]) -> TokenStream {
+    let parse_error = quote! {
+        #[derive(Debug, Clone)]
+        pub enum ParseError {
+            InvalidValue,
+            UnsupportedType,
+        }
+    };
+
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let comp_name = ident(&comp.name);
+
+            match &comp.kind {
+                ComponentKind::Single { field, .. } if !field.contains("Vec<") => {
+                    gen_single_arm(&comp.name, field)
+                }
+                ComponentKind::Enum { variants } => gen_enum_arm(&comp.name, variants),
+                _ => {
+                    quote! {
+                        ComponentType::#comp_name => Err(ParseError::UnsupportedType)
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        #parse_error
+
+        impl Component {
+            pub fn from_string(comp_type: ComponentType, s: &str) -> Result<Component, ParseError> {
+                match comp_type {
+                    #(#arms,)*
+                }
+            }
+        }
+    }
+}
+
+fn gen_single_arm(comp_name: &str, field: &str) -> TokenStream {
+    let comp_ident = ident(comp_name);
+    if field == "String" {
+        quote! {
+            ComponentType::#comp_ident => Ok(Component::#comp_ident(s.to_string()))
+        }
+    } else {
+        let field_type: TokenStream = field.parse().unwrap();
+        quote! {
+            ComponentType::#comp_ident => {
+                s.parse::<#field_type>()
+                    .map(Component::#comp_ident)
+                    .map_err(|_| ParseError::InvalidValue)
+            }
+        }
+    }
+}
+
+fn gen_enum_arm(comp_name: &str, variants: &[Variant]) -> TokenStream {
+    let comp_ident = ident(comp_name);
+
+    let variant_arms: Vec<_> = variants
+        .iter()
+        .map(|v| {
+            let variant_ident = ident(&v.name);
+            let id = v.id;
+            quote! {
+                #id => Ok(Component::#comp_ident(#comp_ident::#variant_ident))
+            }
+        })
+        .collect();
+
+    quote! {
+        ComponentType::#comp_ident => {
+            let discriminant = s.parse::<u8>()
+                .map_err(|_| ParseError::InvalidValue)?;
+            match discriminant {
+                #(#variant_arms,)*
+                _ => Err(ParseError::InvalidValue)
+            }
+        }
+    }
 }
 
 fn gen_comp_inner(comps: &[Component]) -> TokenStream {
@@ -98,6 +186,7 @@ fn gen_write_comp(comps: &[Component]) -> TokenStream {
         .collect();
 
     quote! {
+        #[cfg(feature = "floe")]
         impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
             pub async fn write_component(&mut self, comp: &Component) -> Result<(), std::io::Error> {
                 match comp {
@@ -172,8 +261,9 @@ fn gen_comp_enum(comps: &[Component]) -> TokenStream {
     });
 
     quote! {
-        #[derive(Debug, Clone, PartialEq)]
+        #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
         #[repr(u16)]
+        #[borsh(use_discriminant=false)]
         pub enum Component {
             #(#enum_variants),*
         }

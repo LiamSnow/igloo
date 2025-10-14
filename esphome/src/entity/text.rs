@@ -1,3 +1,4 @@
+use super::{EntityRegister, add_entity_category, add_icon};
 use crate::{
     api,
     device::{Device, DeviceError},
@@ -5,8 +6,7 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, TextMode, WRITE_TEXT, DESELECT_ENTITY, END_TRANSACTION};
-use super::{add_entity_category, add_icon, EntityRegister};
+use igloo_interface::{DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_TEXT};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesTextResponse {
@@ -20,7 +20,7 @@ impl EntityRegister for crate::api::ListEntitiesTextResponse {
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
-        writer.text_mode(&self.mode().as_igloo()).await?;
+        // writer.text_mode(&self.mode().as_igloo()).await?;
         writer.text_min_length(&self.min_length).await?;
         writer.text_max_length(&self.max_length).await?;
         writer.text_pattern(&self.pattern).await?;
@@ -28,14 +28,14 @@ impl EntityRegister for crate::api::ListEntitiesTextResponse {
     }
 }
 
-impl api::TextMode {
-    pub fn as_igloo(&self) -> TextMode {
-        match self {
-            api::TextMode::Text => TextMode::Text,
-            api::TextMode::Password => TextMode::Password,
-        }
-    }
-}
+// impl api::TextMode {
+//     pub fn as_igloo(&self) -> TextMode {
+//         match self {
+//             api::TextMode::Text => TextMode::Text,
+//             api::TextMode::Password => TextMode::Password,
+//         }
+//     }
+// }
 
 #[async_trait]
 impl EntityUpdate for api::TextStateResponse {
@@ -79,7 +79,5 @@ pub async fn process(
         }
     }
 
-    device
-        .send_msg(MessageType::TextCommandRequest, &req)
-        .await
+    device.send_msg(MessageType::TextCommandRequest, &req).await
 }
