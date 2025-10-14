@@ -38,7 +38,7 @@
             color: white;
         }
     </style>
-</head>
+<link rel="modulepreload" href="/igloo-frontend-ca5e401929629fa4.js" crossorigin="anonymous" integrity="sha384-Ou8eykjTF0kt51Xyrsv1Gt2T4ztrltyNHty3mTO1dpJa/8XhdluaFO1iPhx1FjJ6"><link rel="preload" href="/igloo-frontend-ca5e401929629fa4_bg.wasm" crossorigin="anonymous" integrity="sha384-k4h0ENgxdoy6xps5/KHdl6dN5mAqLt48KGdZ4bSp4fV81FaYf/MXlKkske8MzQA8" as="fetch" type="application/wasm"></head>
 <body>
     <noscript>
         <h1>Please enable JavaScript!</h1>
@@ -68,5 +68,16 @@
 
     
 
-</body>
+
+<script type="module">
+import init, * as bindings from '/igloo-frontend-ca5e401929629fa4.js';
+const wasm = await init({ module_or_path: '/igloo-frontend-ca5e401929629fa4_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script></body>
 </html>
