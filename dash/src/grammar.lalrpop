@@ -1,0 +1,505 @@
+use either::Either;
+use crate::parser::ast::*;
+use crate::parser::tokens::{Token, LexicalError};
+use std::borrow::Cow;
+use litrs::{FloatLit, IntegerLit};
+
+grammar<'source>(source: &'source str);
+
+pub Main: Vec<GlobalStatement<'source>> = {
+    GlobalStatement* => <>
+}
+
+GlobalStatement: GlobalStatement<'source> = {
+    "#include" <String> "\n" => GlobalStatement::Include(<>),
+    FnDef,
+	ElementDefn,
+}
+
+FnDef: GlobalStatement<'source> = {
+    "fn" <name:Ident> <params:FnDefParams> <res:("->" <Type>)?> "body:" <body:CodeBlock> => {
+        GlobalStatement::FnDef(name, params, res, body)
+    }
+}
+
+CodeBlock: Vec<Statement<'source>> = {
+    "{" <mut body:CodeStatement*> <ret:NonCurlyExpr?> "}" => {
+        if let Some(implied_return) = ret {
+            body.push(Statement::Return(Some(implied_return)));
+        }
+        body
+    }
+}
+
+ElementDefn: GlobalStatement<'source> = {
+    "element" <name:Ident> <params:FnDefParams> "{" <body:CodeStatement*> <res:Element> "}" => {
+        GlobalStatement::ElementDefn(name, params, body, res)
+    }
+}
+
+FnDefParams: Vec<(&'source str, Type<'source>)> = {
+    "(" <mut params:(<FnDefParam> ",")*> <last:FnDefParam?> ")" => {
+        if let Some(last) = last {
+            params.push(last);
+        }
+        params
+    }
+}
+
+FnDefParam: (&'source str, Type<'source>) = {
+    <name:Ident> ":" <typ:Type> => (name, typ)
+}
+
+CodeStatement: Statement<'source> = {
+	Bind,
+	Const,
+    Var,
+
+    If<CodeBlock> => Statement::If(<>.0, <>.1, <>.2),
+    Loop<CodeStatement>,
+
+    "break" ";" => Statement::Break,
+    "continue" ";" => Statement::Continue,
+    "return" <AnyExpr> ";" => Statement::Return(Some(<>)),
+    "return" ";" => Statement::Return(None),
+}
+
+ElementStatement: Statement<'source> = {
+    Element => Statement::Element(<>),
+
+	"#" <VarAccess> "\n" => Statement::Inject(Expr::Var(<>)),
+	"#" "(" <AnyExpr> ")" "\n" => Statement::Inject(<>),
+
+    If<ElementBlock> => Statement::If(<>.0, <>.1, <>.2),
+    Loop<ElementStatement>,
+
+    "break" "\n" => Statement::Break,
+    "continue" "\n" => Statement::Continue,
+}
+
+Element: Element<'source> = {
+    <name:Ident> <body:ElementBlock> => {
+        Element { name, params: vec![], body }
+    },
+    <name:Ident> "(" <mut params:(<Ident> ":" <AnyExpr> ",")*> <lastp:(<Ident> ":" <AnyExpr>)?> ")" <body:ElementBlock> => {
+        if let Some(lastp) = lastp {
+            params.push(lastp);
+        }
+        Element{ name, params, body }
+    },
+    <name:Ident> "(" <mut params:(<Ident> ":" <AnyExpr> ",")*> <lastp:(<Ident> ":" <AnyExpr>)?> ")" => {
+        if let Some(lastp) = lastp {
+            params.push(lastp);
+        }
+        Element{ name, params, body: vec![] }
+    }
+}
+
+ElementBlock: Vec<Statement<'source>> = {
+    "{" <mut body:(<ElementStatement> ",")+> <end:ElementStatement> ","? "}" => {
+        body.push(end);
+        body
+    }
+}
+
+Bind: Statement<'source> = {
+    <name:Ident> ":" <typ:Type> "<-" <expr:AnyExpr> ";" => Statement::Bind(name, Some(typ), expr),
+    <name:Ident> "<-" <expr:AnyExpr> ";" => Statement::Bind(name, None, expr),
+}
+
+Const: Statement<'source> = {
+    "const" <name:Ident> ":" <typ:Type> "=" <expr:AnyExpr> ";" => Statement::Const(name, Some(typ), expr),
+    "const" <name:Ident> "="  <expr:AnyExpr> ";" => Statement::Const(name, None, expr),
+}
+
+Var: Statement<'source> = {
+    "var" <name:Ident> ":" <typ:Type> ";" => Statement::DeclVar(name, Some(typ)),
+    "var" <name:Ident> ";" => Statement::DeclVar(name, None),
+    "var" <name:Ident> ":" <typ:Type> "=" <expr:AnyExpr> ";" => Statement::DeclAsgnVar(name, Some(typ), expr),
+    "var" <name:Ident> "="  <expr:AnyExpr> ";" => Statement::DeclAsgnVar(name, None, expr),
+    <var:VarAccess> "=" <expr:AnyExpr> ";" => Statement::AsgnVar(var, expr),
+    <var:VarAccess> <op:ModOp> <expr:AnyExpr> ";" => Statement::ModVar(var, op, expr),
+}
+
+AnyExpr: Expr<'source> = {
+    #[precedence(level="0")]
+    If<CodeBlock> => Expr::If(<>.0, <>.1, <>.2),
+    Lambda,
+    Element => Expr::Element(<>),
+    #[precedence(level="1")] #[assoc(side="left")]
+    NonCurlyExpr,
+}
+
+NonCurlyExpr: Expr<'source> = {
+    #[precedence(level="0")]
+    Primitive => Expr::Primitive(<>),
+    List,
+    VarAccess => Expr::Var(<>),
+    <name:VarAccess> "(" <mut params:(<Ident> ":" <AnyExpr> ",")*> <last:(<Ident> ":" <AnyExpr>)?> ")" => {
+        if let Some(last) = last {
+            params.push(last);
+        }
+        Expr::Call(name, params)
+    },
+    "(" <AnyExpr> ")",
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    <NonCurlyExpr> "!" => Expr::Unwrap(Box::new(<>)),
+
+    #[precedence(level="2")] #[assoc(side="right")]
+    "!" <NonCurlyExpr> => Expr::LogicalNot(Box::new(<>)),
+    "-" <NonCurlyExpr> => Expr::Neg(Box::new(<>)),
+
+    #[precedence(level="3")] #[assoc(side="right")]
+    <l:NonCurlyExpr> "**" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Pow, Box::new(r)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "*" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Mul, Box::new(r)),
+    <l:NonCurlyExpr> "/" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Div, Box::new(r)),
+    <l:NonCurlyExpr> "%" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Mod, Box::new(r)),
+
+    #[precedence(level="5")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "+" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Add, Box::new(r)),
+    <l:NonCurlyExpr> "-" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Sub, Box::new(r)),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <l:NonCurlyExpr> <op:ShiftOp> <r:NonCurlyExpr> => Expr::Op(Box::new(l), op, Box::new(r)),
+
+    #[precedence(level="7")] #[assoc(side="left")]
+    <l:NonCurlyExpr> <op:CompOp> <r:NonCurlyExpr> => Expr::Op(Box::new(l), op, Box::new(r)),
+
+    #[precedence(level="8")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "&" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::And, Box::new(r)),
+
+    #[precedence(level="9")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "^" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Xor, Box::new(r)),
+
+    #[precedence(level="10")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "|" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::Or, Box::new(r)),
+
+    #[precedence(level="11")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "&&" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::AndAnd, Box::new(r)),
+
+    #[precedence(level="12")] #[assoc(side="left")]
+    <l:NonCurlyExpr> "||" <r:NonCurlyExpr> => Expr::Op(Box::new(l), Opcode::OrOr, Box::new(r)),
+
+    #[precedence(level="13")] #[assoc(side="right")]
+    <l:NonCurlyExpr> "?" <r:NonCurlyExpr> => Expr::Default(Box::new(l), Box::new(r)),
+
+    #[precedence(level="14")] #[assoc(side="left")]
+    <e:NonCurlyExpr> "as" <t:Type> => Expr::Cast(Box::new(e), t),
+}
+
+List: Expr<'source> = {
+    "[" "]" => Expr::List(vec![]),
+
+    "[" <e:AnyExpr> "," "]" => Expr::List(vec![e]),
+
+    "[" <mut body:(<AnyExpr> ",")+> <end:AnyExpr> ","? "]" => {
+        body.push(end);
+        Expr::List(body)
+    }
+}
+
+ShiftOp: Opcode = {
+    "<<" => Opcode::Shl,
+    ">>" => Opcode::Shr,
+}
+
+CompOp: Opcode = {
+    "==" => Opcode::EqEq,
+    "!=" => Opcode::Neq,
+    "<" => Opcode::Lt,
+    "<=" => Opcode::Le,
+    ">" => Opcode::Gt,
+    ">=" => Opcode::Ge,
+}
+
+ModOp: Opcode = {
+    "+=" => Opcode::Add,
+    "-=" => Opcode::Sub,
+    "*=" => Opcode::Mul,
+    "/=" => Opcode::Div,
+    "%=" => Opcode::Mod,
+    "**=" => Opcode::Pow,
+    "^=" => Opcode::Pow,
+    "&=" => Opcode::Pow,
+    "|=" => Opcode::Or,
+    "<<=" => Opcode::Shl,
+    ">>=" => Opcode::Shr,
+}
+
+Primitive: Primitive<'source> = {
+    Int => Primitive::Int(<>),
+    Float => Primitive::Float(<>),
+    Bool => Primitive::Bool(<>),
+    Char => Primitive::Char(<>),
+    Byte => Primitive::Byte(<>),
+    String => Primitive::String(<>),
+    ByteString => Primitive::ByteString(<>),
+}
+
+Type: Type<'source> = {
+    #[precedence(level="0")]
+    Ident => Type::User(<>),
+    ListType,
+    FnType,
+    "bool" => Type::Bool,
+    "string" => Type::String,
+    "char" => Type::Char,
+
+    "i8" => Type::I8,
+    "i16" => Type::I16,
+    "i32" => Type::I32,
+    "i64" => Type::I64,
+    "i128" => Type::I128,
+    "isize" => Type::ISize,
+    "u8" => Type::U8,
+    "u16" => Type::U16,
+    "u32" => Type::U32,
+    "u64" => Type::U64,
+    "u128" => Type::U128,
+    "usize" => Type::USize,
+    "f32" => Type::F32,
+    "f64" => Type::F64,
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    OptionType<Type>,
+}
+
+OptionType<T>: Type<'source> = {
+    <T> "?" => Type::Option(Box::new(<>)),
+}
+
+FnType: Type<'source> = {
+    "fn" "(" <mut params:(<Ident> ":" <Type> ",")*> <last:(<Ident> ":" <Type>)?> ")" => {
+        if let Some(last) = last {
+            params.push(last);
+        }
+        Type::Fn(params, None)
+    },
+    "fn" "(" <mut params:(<Ident> ":" <Type> ",")*> <last:(<Ident> ":" <Type>)?> "->" <ret:Type> ")" => {
+        if let Some(last) = last {
+            params.push(last);
+        }
+        Type::Fn(params, Some(Box::new(ret)))
+    },
+}
+
+ListType: Type<'source> = {
+    "[" <Type> "]" => Type::List(Box::new(<>)),
+}
+
+//Call: (VarAccess<'source>, Vec<(&'source str, Expr<'source>)>) = {
+//    <name:VarAccess> "(" <mut params:(<Ident> ":" <AnyExpr> ",")*> <last:(<Ident> ":" <AnyExpr>)?> ")" => {
+//        if let Some(last) = last {
+//            params.push(last);
+//        }
+//        (name, params)
+//    }
+//}
+
+Range: Range<'source> = {
+    <s:RangePart> ".." <e:RangePart> => Range {
+        start: s,
+        inclusive: false,
+        end: e,
+    },
+    <s:RangePart> "..=" <e:RangePart> => Range {
+        start: s,
+        inclusive: true,
+        end: e,
+    },
+}
+
+RangePart: Expr<'source> = {
+    Int => Expr::Primitive(Primitive::Int(<>)),
+    VarAccess => Expr::Var(<>),
+    "(" <NonCurlyExpr> ")"
+}
+
+VarAccess: VarAccess<'source> = {
+    <var:Ident> <tail:CompoundPart*> => {
+        VarAccess { var, tail }
+    },
+}
+
+CompoundPart: CompoundPart<'source> = {
+   "[" <NonCurlyExpr> "]" => CompoundPart::Bracket(<>),
+    "." <Ident> => CompoundPart::Field(<>),
+}
+
+If<T>: (Box<Expr<'source>>, Vec<Statement<'source>>, Option<Box<Else<'source>>>) = {
+    "if" <expr:NonCurlyExpr> <body:T> => {
+        (Box::new(expr), body, None)
+    },
+
+    "if" <expr:NonCurlyExpr> <body:T> <next:Else<T>> => {
+        (Box::new(expr), body, Some(Box::new(next)))
+    }
+}
+
+Else<T>: Else<'source> = {
+    "else" "if" <expr:NonCurlyExpr> <body:T> => {
+        Else::ElseIf(expr, body, None)
+    },
+
+    "else" "if" <expr:NonCurlyExpr> <body:T> <next:Else<T>> => {
+        Else::ElseIf(expr, body, Some(Box::new(next)))
+    },
+
+    "else" <body:T> => {
+        Else::Else(body)
+    }
+}
+
+Lambda: Expr<'source> = {
+    "|" <mut params:(<Ident> ",")*> <last:Ident> ","? "|" <expr:NonCurlyExpr> => {
+        params.push(last);
+        let body = vec![Statement::Return(Some(expr))];
+        Expr::Lambda(params, body)
+    },
+    "|" <mut params:(<Ident> ",")*> <last:Ident> ","? "|" <body:CodeBlock> => {
+        params.push(last);
+        Expr::Lambda(params, body)
+    },
+}
+
+Loop<T>: Statement<'source> = {
+    "loop" "{" <body:T*> "}" => {
+        Statement::Loop(body)
+    },
+    "while" <expr:NonCurlyExpr> "{" <body:T*> "}" => {
+        Statement::While(expr, body)
+    },
+    "for" <v:Ident> "in" <rng:Range> "{" <body:T*> "}" => {
+        Statement::For(v, Either::Left(rng), body)
+    },
+    "for" <v:Ident> "in" <var:VarAccess> "{" <body:T*> "}" => {
+        Statement::For(v, Either::Right(var), body)
+    }
+}
+
+CommaOrNewLine = {
+    ",",
+    "\n",
+}
+
+SemiOrNewLine = {
+    ";",
+    "\n",
+}
+
+extern {
+    type Location = usize;
+    type Error = LexicalError;
+
+    enum Token<'source> {
+        "\n" => Token::NewLine,
+        " " => Token::Whitespace,
+
+        Ident => Token::Ident(<&'source str>),
+        Int => Token::Int(<IntegerLit<&'source str>>),
+        Float => Token::Float(<FloatLit<&'source str>>),
+        Bool => Token::Bool(<bool>),
+        Char => Token::Char(<char>),
+        Byte => Token::Byte(<u8>),
+        String => Token::String(<Cow<'source, str>>),
+        ByteString => Token::ByteString(<Cow<'source, [u8]>>),
+
+        "loop" => Token::Loop,
+        "while" => Token::While,
+        "for" => Token::For,
+        "in" => Token::In,
+        "if" => Token::If,
+        "else" => Token::Else,
+        "return" => Token::Return,
+        "break" => Token::Break,
+        "continue" => Token::Continue,
+
+        "fn" => Token::Fn,
+        "element" => Token::Element,
+        "body:" => Token::Body,
+
+        "const" => Token::Const,
+        "var" => Token::Var,
+
+        "#include" => Token::Include,
+
+        "=" => Token::Eq,
+
+        "(" => Token::OpenParen,
+        ")" => Token::CloseParen,
+        "[" => Token::OpenBracket,
+        "]" => Token::CloseBracket,
+        "{" => Token::OpenBrace,
+        "}" => Token::CloseBrace,
+
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "*" => Token::Star,
+        "/" => Token::Slash,
+        "%" => Token::Percent,
+        "**" => Token::StarStar,
+        "<<" => Token::Shl,
+        ">>" => Token::Shr,
+
+        "+=" => Token::PlusEq,
+        "-=" => Token::MinusEq,
+        "*=" => Token::StarEq,
+        "/=" => Token::SlashEq,
+        "%=" => Token::PercentEq,
+        "**=" => Token::StarStarEq,
+        "^=" => Token::CarotEq,
+        "&=" => Token::AndEq,
+        "|=" => Token::OrEq,
+        "<<=" => Token::ShlEq,
+        ">>=" => Token::ShrEq,
+
+        "==" => Token::EqEq,
+        "!=" => Token::Neq,
+        "<" => Token::Lt,
+        "<=" => Token::Le,
+        ">" => Token::Gt,
+        ">=" => Token::Ge,
+
+        "&&" => Token::AndAnd,
+        "||" => Token::OrOr,
+        "^" => Token::Caret,
+        "&" => Token::And,
+        "|" => Token::Or,
+
+        ";" => Token::Semi,
+        ":" => Token::Colon,
+        "," => Token::Comma,
+        "." => Token::Period,
+        "<-" => Token::LArrow,
+        "->" => Token::RArrow,
+        ".." => Token::DotDot,
+        "..=" => Token::DotDotEq,
+        "#" => Token::Pound,
+        "!" => Token::Bang,
+        "?" => Token::Question,
+
+        "as" => Token::As,
+
+        "bool" => Token::BoolType,
+        "string" => Token::StringType,
+        "char" => Token::CharType,
+
+        "i8" => Token::I8,
+        "i16" => Token::I16,
+        "i32" => Token::I32,
+        "i64" => Token::I64,
+        "i128" => Token::I128,
+        "isize" => Token::ISize,
+        "u8" => Token::U8,
+        "u16" => Token::U16,
+        "u32" => Token::U32,
+        "u64" => Token::U64,
+        "u128" => Token::U128,
+        "usize" => Token::USize,
+        "f32" => Token::F32,
+        "f64" => Token::F64,
+    }
+}

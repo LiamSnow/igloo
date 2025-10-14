@@ -1,0 +1,28 @@
+CustomElement (
+	name: "Example2",
+	params: [
+		("target", QueryTarget)
+	],
+	bindings: [
+		("entities", GetEntities(Param("target"), With(Light)),
+		("dimmer", GetComponents(Binding("entities"), Dimmer)),
+	], 
+	children: [
+		If (
+			condition: "dimmer > 0.0",
+			then: [
+				Text("ON")
+			],
+			else: [
+				Text("OFF")
+			]
+		),
+		ForEach (
+			var: "d"
+			of: "dimmer",
+			body: [
+				Text(Format("{}", GetName("d")))
+			]			
+		),
+	],
+)

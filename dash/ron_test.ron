@@ -1,0 +1,58 @@
+CustomElement (
+	name: "RGBCTLight",
+	params: [
+		("target", QueryTarget)
+	],
+	constants: [
+		("A", 2),
+	],
+	bindings: [
+		("entities", GetEntities(Param("target"), With(Light)),
+		("switch", GetComponents(Binding("entities"), Switch)),
+		("dimmer", GetComponents(Binding("entities"), Dimmer)),
+		("color", GetComponents(Binding("entities"), Color)),
+		("ct", GetComponents(Binding("entities"), ColorTemperature)),
+	], 
+	children: [
+		VStack (
+			HStack (
+				Toggle (
+					icon: "mid:light_group",
+					binding: "switch",
+				),
+				VStack (
+					Text(Format("{}", GetName("target"))),
+					Text(Format("{}%", GetAvg("dimmer"))),
+				)
+			),
+
+			Tabs (
+				hide_selected_tabs: true,
+				tab_position: Right,	
+
+				children: [
+					Tab (
+						Icon("mdi:brightness"),
+						Slider(
+							binding: "dimmer",
+						),
+					),
+					Tab (
+						Icon("mdi:thermometer"),
+						ColorTemperaturePicker (
+							binding: "ct",
+							variant: Slider,
+						),
+					),
+					Tab (
+						Icon("mdi:color"),
+						ColorPicker (
+							binding: "color",
+							variant: Slider,
+						),
+					),
+				]
+			)
+		)	
+	],
+)

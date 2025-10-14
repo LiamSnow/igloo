@@ -1,0 +1,100 @@
+// this is an example implementation of the
+// mushroom light card in Home Assistant
+element RGBCTLight(target: QueryTarget) {
+	const A = 2;
+
+	bind switches = target.get_all(Switch).with(Light);
+	bind dimmers = target.get_all(Dimmer).with(Light);
+	bind colors = target.get_all(Color).with(Light);
+	bind color_temps = target.get_all(ColorTemp).with(Light);
+
+    Card {
+        VStack {
+			HStack {
+				Toggle (
+					icon: "mdi:light_group",
+					value: switches.average(),
+					set: switches,
+				),
+
+				VStack {
+					Text("{}", target.name()),
+					Text("{}%", dimmer.average()),
+				}
+			}
+
+			Tabs (hide_selected_tabs: true, tab_position: Right) { 
+				Tab (icon: "mdi:brightness") { 
+					Slider {
+						value: dimmers.average(),
+						set: dimmers,
+					},
+				},
+				Tab (icon: "mdi:thermometer") { 
+					ColorTemperaturePicker { 
+						value: color_temps.average(),
+						set: color_temps,
+						variant: Slider,
+					},
+				},
+				Tab (icon: "mdi:color") { 
+					ColorPicker {
+						value: colors.average(),
+						set: colors,
+						variant: Slider,
+					}
+				}
+			}
+        }
+    }
+}
+
+// note calling this function with typed names only
+// ex. `add(a: 2, b: 5)`
+fn add(a: i32, b: i32) -> i32 {
+	a + b
+}
+
+fn other(a: i32, b: i32) {
+	for i in a..b {
+		print(f"{a},{b}");		
+	}
+
+	var i = a;
+	while a < b {
+		print(f"{a},{b}");
+	}
+
+	var i = a;
+	loop {
+		if a == b {
+			break;
+		}
+		print(f"{a},{b}");
+	}
+}
+
+
+element Example2(target: QueryTarget) {
+	entities <- target
+		.entities()
+		.with(Light)
+
+	dimmers <- entities.get_all(Dimmer)
+
+    Card {
+		if dimmer > 0.0 {
+			Text("ON")
+		} else {
+			Text("OFF")
+		}
+
+		for d of dimmer {
+			Text("{}", d.name()),
+			continue
+		}
+    }
+}
+
+
+
