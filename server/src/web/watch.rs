@@ -2,48 +2,68 @@ use std::collections::HashMap;
 
 use igloo_interface::{
     ComponentType, QueryFilter, QueryTarget,
-    dash::{Dashboard, Element},
+    dash::{DashElement, Dashboard},
 };
 
 pub struct ElementWatcher {
-    pub elid: u32,
+    pub watch_id: u32,
     pub filter: QueryFilter,
     pub target: QueryTarget,
     pub comp: ComponentType,
 }
 
 pub trait GetWatchers {
-    fn get_watchers(&self, dash_id: u16) -> Result<Vec<ElementWatcher>, String>;
+    fn attach_watchers(&mut self, dash_id: u16) -> Result<Vec<ElementWatcher>, String>;
 }
 
 impl GetWatchers for Dashboard {
-    fn get_watchers(&self, dash_id: u16) -> Result<Vec<ElementWatcher>, String> {
-        let mut elid = (dash_id as u32) << 16;
+    /// attaches `watch_id` to all needed components
+    /// and returns all watch requests
+    fn attach_watchers(&mut self, dash_id: u16) -> Result<Vec<ElementWatcher>, String> {
+        let mut watch_id = (dash_id as u32) << 16;
         let mut watchers = Vec::new();
         self.child
-            .add_watchers(&mut elid, &mut watchers, &self.targets)?;
+            .add_watchers(&mut watch_id, &mut watchers, &self.targets)?;
         Ok(watchers)
     }
 }
 
 pub trait AddWatchers {
     fn add_watchers(
-        &self,
-        elid: &mut u32,
+        &mut self,
+        watch_id: &mut u32,
         watchers: &mut Vec<ElementWatcher>,
         targets: &HashMap<String, QueryTarget>,
     ) -> Result<(), String>;
 }
 
-impl AddWatchers for Element {
+impl AddWatchers for DashElement {
     fn add_watchers(
-        &self,
-        elid: &mut u32,
+        &mut self,
+        watch_id: &mut u32,
         watchers: &mut Vec<ElementWatcher>,
         targets: &HashMap<String, QueryTarget>,
     ) -> Result<(), String> {
         match self {
-            Element::Slider(e) => {
+            DashElement::Slider(e) => {
+                let filter = e.binding.filter.clone();
+                let target = targets
+                    .get(&e.binding.target)
+                    .ok_or(format!("Missing {}", e.binding.target))?
+                    .clone();
+
+                e.watch_id = Some(*watch_id);
+
+                watchers.push(ElementWatcher {
+                    watch_id: *watch_id,
+                    filter,
+                    target: target.clone(),
+                    comp: e.binding.comp_type,
+                });
+
+                *watch_id += 1;
+            }
+            DashElement::ColorPicker(e) => {
                 let filter = e.binding.filter.clone();
                 let target = targets
                     .get(&e.binding.target)
@@ -51,46 +71,47 @@ impl AddWatchers for Element {
                     .clone();
 
                 watchers.push(ElementWatcher {
-                    elid: *elid,
+                    watch_id: *watch_id,
                     filter,
                     target: target.clone(),
-                    comp: e.binding.comp_type,
+                    comp: ComponentType::Color,
                 });
 
-                *elid += 1;
+                *watch_id += 1;
             }
-            Element::If(e) => {
-                for child in &e.then {
-                    child.add_watchers(elid, watchers, targets)?;
+            DashElement::If(e) => {
+                // TODO watch expression too
+                for child in &mut e.then {
+                    child.add_watchers(watch_id, watchers, targets)?;
                 }
-                for child in &e.r#else {
-                    child.add_watchers(elid, watchers, targets)?;
-                }
-            }
-            Element::Repeat(e) => {
-                for child in &e.each {
-                    child.add_watchers(elid, watchers, targets)?;
+                for child in &mut e.r#else {
+                    child.add_watchers(watch_id, watchers, targets)?;
                 }
             }
-            Element::HStack(e) => {
-                for child in &e.children {
-                    child.add_watchers(elid, watchers, targets)?;
+            DashElement::Repeat(e) => {
+                for child in &mut e.each {
+                    child.add_watchers(watch_id, watchers, targets)?;
                 }
             }
-            Element::VStack(e) => {
-                for child in &e.children {
-                    child.add_watchers(elid, watchers, targets)?;
+            DashElement::HStack(e) => {
+                for child in &mut e.children {
+                    child.add_watchers(watch_id, watchers, targets)?;
                 }
             }
-            Element::Tabs(e) => {
-                for (_, page) in &e.pages {
+            DashElement::VStack(e) => {
+                for child in &mut e.children {
+                    child.add_watchers(watch_id, watchers, targets)?;
+                }
+            }
+            DashElement::Tabs(e) => {
+                for page in e.pages.values_mut() {
                     for child in page {
-                        child.add_watchers(elid, watchers, targets)?;
+                        child.add_watchers(watch_id, watchers, targets)?;
                     }
                 }
             }
-            Element::Card(e) => {
-                e.child.add_watchers(elid, watchers, targets)?;
+            DashElement::Card(e) => {
+                e.child.add_watchers(watch_id, watchers, targets)?;
             }
             _ => todo!(),
         }

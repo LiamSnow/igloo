@@ -16,12 +16,12 @@ pub enum ClientMessage {
 /// Igloo -> WASM
 #[derive(Clone, BorshSerialize, BorshDeserialize, From)]
 pub enum ServerMessage {
-    Dashboard(Box<Dashboard>),
+    Dashboard(u16, Box<Dashboard>),
     ElementUpdate(ElementUpdate),
 }
 
 #[derive(Clone, BorshSerialize, BorshDeserialize)]
 pub struct ElementUpdate {
-    pub elid: u32,
+    pub watch_id: u32,
     pub value: Component,
 }

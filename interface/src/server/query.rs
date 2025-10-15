@@ -9,7 +9,7 @@ pub struct SetQuery {
     pub values: Vec<Component>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum QueryTarget {
     All,
     Group(GroupID),
@@ -18,7 +18,7 @@ pub enum QueryTarget {
     Entity(DeviceID, String),
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum QueryFilter {
     /// no filter
     None,

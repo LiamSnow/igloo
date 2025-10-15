@@ -12,7 +12,10 @@ use axum_extra::{TypedHeader, headers::Cookie};
 use futures_util::StreamExt;
 use igloo_interface::{
     Component, ComponentType, DeviceID, QueryFilter, QueryTarget,
-    dash::{DashQuery, Dashboard, SliderElement},
+    dash::{
+        ColorPickerElement, ColorPickerVariant, DashQuery, DashQueryNoType, Dashboard, HAlign,
+        SliderElement, VAlign, VStackElement,
+    },
     ws::{ClientMessage, ElementUpdate, ServerMessage},
 };
 use std::{collections::HashMap, error::Error};
@@ -31,26 +34,59 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
         QueryTarget::Device(DeviceID::from_parts(0, 0)),
     );
 
-    let dash = Dashboard {
+    let mut dash = Dashboard {
         name: "test".to_string(),
         targets,
-        child: SliderElement {
-            binding: DashQuery {
-                target: "surf".to_string(),
-                filter: QueryFilter::With(ComponentType::Light),
-                comp_type: ComponentType::Dimmer,
-            },
-            disable_validation: false,
-            min: Some(Component::Float(0.)),
-            max: Some(Component::Float(1.)),
-            step: None,
+        child: VStackElement {
+            justify: VAlign::Center,
+            align: HAlign::Center,
+            scroll: false,
+            children: vec![
+                SliderElement {
+                    watch_id: None,
+                    binding: DashQuery {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                        comp_type: ComponentType::Dimmer,
+                    },
+                    disable_validation: false,
+                    min: Some(Component::Float(0.)),
+                    max: Some(Component::Float(1.)),
+                    step: None,
+                }
+                .into(),
+                ColorPickerElement {
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::Circle,
+                }
+                .into(),
+                ColorPickerElement {
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::HueSlider,
+                }
+                .into(),
+                ColorPickerElement {
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::Hsl,
+                }
+                .into(),
+            ],
         }
         .into(),
     };
 
     let dash_id = 0;
 
-    let watchers = dash.get_watchers(dash_id).unwrap();
+    let watchers = dash.attach_watchers(dash_id).unwrap();
 
     let (watch_tx, mut watch_rx) = mpsc::channel(10);
     for watcher in watchers {
@@ -63,7 +99,7 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
                     target: watcher.target,
                     update_tx: watch_tx.clone(),
                     comp: watcher.comp,
-                    prefix: watcher.elid,
+                    prefix: watcher.watch_id,
                 }
                 .into(),
             )
@@ -72,12 +108,12 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
     }
     let gs = state.clone();
     tokio::spawn(async move {
-        while let Some((elid, _, _, value)) = watch_rx.recv().await {
+        while let Some((watch_id, _, _, value)) = watch_rx.recv().await {
             // TODO we need some system of collecting all of these,
             // then shipping out all values to new viewers
-            let msg: ServerMessage = ElementUpdate { elid, value }.into();
+            let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
             let bytes = borsh::to_vec(&msg).unwrap(); // FIXME unwrap
-            let dash_id = (elid >> 16) as u16;
+            let dash_id = (watch_id >> 16) as u16;
             let res = gs.cast.send((dash_id, Message::Binary(bytes.into())));
             if let Err(e) = res {
                 eprintln!("failed to broadcast: {e}");
@@ -172,7 +208,7 @@ async fn handle_client_msg(
 
             let dash = dashboards.get(&dash_id).ok_or("invalid dashboard ID")?;
 
-            let msg: ServerMessage = Box::new(dash.clone()).into();
+            let msg: ServerMessage = (dash_id, Box::new(dash.clone())).into();
             let bytes = borsh::to_vec(&msg)?;
 
             drop(dashboards);
