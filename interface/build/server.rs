@@ -19,7 +19,6 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use std::ops::{Add, Sub};
-        use crate::avg::{Averageable, Average};
 
         #comp_enum
 

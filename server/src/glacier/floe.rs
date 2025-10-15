@@ -1,7 +1,8 @@
 use futures_util::StreamExt;
 use igloo_interface::{
-    CREATE_DEVICE, DESELECT_ENTITY, END_TRANSACTION, FloeCodec, FloeReaderDefault, FloeWriter,
-    FloeWriterDefault, MAX_SUPPORTED_COMPONENT, START_TRANSACTION, WHATS_UP_IGLOO, WhatsUpIgloo,
+    CREATE_DEVICE, DESELECT_ENTITY, END_TRANSACTION, FloeCodec, FloeID, FloeReaderDefault, FloeRef,
+    FloeWriter, FloeWriterDefault, MAX_SUPPORTED_COMPONENT, START_TRANSACTION, WHATS_UP_IGLOO,
+    WhatsUpIgloo,
 };
 use smallvec::smallvec;
 use std::{error::Error, mem, path::Path, process::Stdio};
@@ -14,10 +15,7 @@ use tokio::{
 };
 use tokio_util::codec::FramedRead;
 
-use crate::glacier::{
-    Command, Commands,
-    tree::{FloeID, FloeRef},
-};
+use crate::glacier::{Command, Commands};
 
 pub struct FloeManager {
     pub fid: FloeID,

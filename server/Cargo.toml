@@ -21,7 +21,7 @@ borsh = { version = "1.5.7", features = ["derive"] }
 rust-ini = "0.21.3"
 tower-http = { version = "0.6.6", features = ["fs"] }
 axum-extra = { version = "0.10.3", features = ["typed-header"] }
-derive_more = { version = "2.0.1", features = ["display"] }
+derive_more = { version = "2.0.1", features = ["from"] }
 
 
 # [profile.release]

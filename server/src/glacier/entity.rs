@@ -1,7 +1,5 @@
-use igloo_interface::{Component, ComponentType, MAX_SUPPORTED_COMPONENT};
+use igloo_interface::{Component, ComponentType, MAX_SUPPORTED_COMPONENT, QueryFilter};
 use smallvec::SmallVec;
-
-use crate::glacier::query::QueryFilter;
 
 #[derive(Debug, Clone)]
 pub struct Entity {

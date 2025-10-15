@@ -4,12 +4,11 @@ include!(concat!(env!("OUT_DIR"), "/server.rs"));
 include!(concat!(env!("OUT_DIR"), "/out.rs"));
 
 #[cfg(feature = "server")]
-pub mod avg;
-
-#[cfg(test)]
-mod tests;
+pub mod server;
+#[cfg(feature = "server")]
+pub use server::*;
 
 #[cfg(feature = "floe")]
-pub mod helpers;
+pub mod floe;
 #[cfg(feature = "floe")]
-pub use helpers::*;
+pub use floe::*;

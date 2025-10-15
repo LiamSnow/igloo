@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    body::Bytes,
     extract::{
         State, WebSocketUpgrade,
         ws::{Message, WebSocket},
@@ -8,32 +9,23 @@ use axum::{
     routing::any,
 };
 use axum_extra::{TypedHeader, headers::Cookie};
-use borsh::{BorshDeserialize, BorshSerialize};
 use futures_util::StreamExt;
-use igloo_interface::{Component, ComponentType};
-use rustc_hash::FxHashMap;
-use std::error::Error;
+use igloo_interface::{
+    Component, ComponentType, DeviceID, QueryFilter, QueryTarget,
+    dash::{DashQuery, Dashboard, SliderElement},
+    ws::{ClientMessage, ElementUpdate, ServerMessage},
+};
+use std::{collections::HashMap, error::Error};
 use tokio::{net::TcpListener, sync::mpsc};
 
-use crate::{
-    GlobalState,
-    dash::model::{Dashboard, Element},
-    glacier::{
-        query::{Query, QueryFilter, QueryKind, QueryTarget, SetQuery},
-        tree::DeviceID,
-    },
-};
+use crate::{GlobalState, glacier::query::WatchAllQuery, web::watch::GetWatchers};
 
-#[derive(Clone, BorshSerialize, BorshDeserialize)]
-pub enum Imsg {
-    Dash(Box<Dashboard>),
-    Update(u32, Component),
-    Set(SetQuery),
-    GetDash(u16),
-}
+mod watch;
 
 pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
-    let mut targets = FxHashMap::default();
+    // START TESTING CODE
+
+    let mut targets = HashMap::default();
     targets.insert(
         "surf".to_string(),
         QueryTarget::Device(DeviceID::from_parts(0, 0)),
@@ -42,56 +34,62 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
     let dash = Dashboard {
         name: "test".to_string(),
         targets,
-        child: Element::Slider {
-            binding: (
-                "surf".to_string(),
-                QueryFilter::With(ComponentType::Light),
-                ComponentType::Dimmer,
-            ),
+        child: SliderElement {
+            binding: DashQuery {
+                target: "surf".to_string(),
+                filter: QueryFilter::With(ComponentType::Light),
+                comp_type: ComponentType::Dimmer,
+            },
             disable_validation: false,
             min: Some(Component::Float(0.)),
             max: Some(Component::Float(1.)),
             step: None,
-        },
+        }
+        .into(),
     };
 
     let dash_id = 0;
 
     let watchers = dash.get_watchers(dash_id).unwrap();
 
-    let (tx, mut rx) = mpsc::channel(10);
-    for (elid, (filter, target, comp_type)) in watchers {
+    let (watch_tx, mut watch_rx) = mpsc::channel(10);
+    for watcher in watchers {
         println!("registering query");
         state
             .query_tx
-            .send(Query {
-                filter,
-                target,
-                kind: QueryKind::WatchAll(elid, tx.clone(), comp_type),
-            })
+            .send(
+                WatchAllQuery {
+                    filter: watcher.filter,
+                    target: watcher.target,
+                    update_tx: watch_tx.clone(),
+                    comp: watcher.comp,
+                    prefix: watcher.elid,
+                }
+                .into(),
+            )
             .await
             .unwrap();
     }
     let gs = state.clone();
     tokio::spawn(async move {
-        while let Some((elid, _, _, value)) = rx.recv().await {
+        while let Some((elid, _, _, value)) = watch_rx.recv().await {
             // TODO we need some system of collecting all of these,
             // then shipping out all values to new viewers
-            println!("elid={elid}, value={value:#?}");
-
-            let msg = Imsg::Update(elid, value);
-            let v = borsh::to_vec(&msg).unwrap();
+            let msg: ServerMessage = ElementUpdate { elid, value }.into();
+            let bytes = borsh::to_vec(&msg).unwrap(); // FIXME unwrap
             let dash_id = (elid >> 16) as u16;
-            let res = gs.cast.send((dash_id, Message::Binary(v.into())));
+            let res = gs.cast.send((dash_id, Message::Binary(bytes.into())));
             if let Err(e) = res {
                 eprintln!("failed to broadcast: {e}");
             }
         }
     });
 
-    let mut dashs = state.dashs.lock().await;
+    let mut dashs = state.dashboards.write().await;
     dashs.insert(dash_id, dash);
     drop(dashs);
+
+    // END TESTING CODE
 
     let app = Router::new()
         // .route("/", get(d))
@@ -118,35 +116,31 @@ async fn handle_socket(
     mut socket: WebSocket,
 ) {
     let mut cast_rx = state.cast.subscribe();
+    let mut cur_dash = u16::MAX;
     loop {
         tokio::select! {
             Ok((dash_id, msg)) = cast_rx.recv() => {
-                // TODO check current dash ID before sending
+                if dash_id != cur_dash {
+                    println!("Client is on wrong dashboard, skipping.."); // FIXME remove
+                    continue;
+                }
+
                 socket.send(msg).await.unwrap();
             }
 
             Some(Ok(msg)) = socket.next() => {
                 match msg {
                     Message::Binary(bytes) => {
-                        let msg: Imsg = borsh::from_slice(&bytes).unwrap();
-                        match msg {
-                            Imsg::Set(set_query) => {
-                                state.query_tx.send(set_query.to_query()).await.unwrap()
-                            },
-                            Imsg::GetDash(dash_id) => {
-                                let dashs = state.dashs.lock().await;
-                                let dash = dashs.get(&dash_id).unwrap();
-                                let msg = Imsg::Dash(Box::new(dash.clone()));
-                                let v = borsh::to_vec(&msg).unwrap();
-                                drop(dashs);
-                                println!("sending: {v:?}");
-                                socket.send(Message::Binary(v.into())).await.unwrap();
-                            },
-                            _ => {
-                                eprintln!("Unexpected msg");
-                            }
-                        }
+                        let res = handle_client_msg(
+                            &state,
+                            &mut socket,
+                            &mut cur_dash,
+                            bytes
+                        ).await;
 
+                        if let Err(e) = res {
+                            eprintln!("Error handling client message: {e}");
+                        }
                     }
                     Message::Close(_) => {
                         return;
@@ -156,4 +150,36 @@ async fn handle_socket(
             }
         }
     }
+}
+
+async fn handle_client_msg(
+    state: &GlobalState,
+    socket: &mut WebSocket,
+    cur_dash: &mut u16,
+    bytes: Bytes,
+) -> Result<(), Box<dyn Error>> {
+    let msg: ClientMessage = borsh::from_slice(&bytes)?;
+
+    match msg {
+        ClientMessage::ExecSetQuery(q) => state.query_tx.send(q.into()).await.unwrap(),
+        ClientMessage::SetDashboard(dash_id) => {
+            *cur_dash = dash_id;
+            if dash_id == u16::MAX {
+                return Ok(());
+            }
+
+            let dashboards = state.dashboards.read().await;
+
+            let dash = dashboards.get(&dash_id).ok_or("invalid dashboard ID")?;
+
+            let msg: ServerMessage = Box::new(dash.clone()).into();
+            let bytes = borsh::to_vec(&msg)?;
+
+            drop(dashboards);
+
+            socket.send(Message::Binary(bytes.into())).await?;
+        }
+    }
+
+    Ok(())
 }

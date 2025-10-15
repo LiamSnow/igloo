@@ -30,6 +30,8 @@ borsh = { version = "1.5.7", features = ["derive"] }
 derive_more = { version = "2.0.1", features = ["display"] }
 igloo-interface = { path = "../interface/", features = ["server"] }
 maud = "0.27.0"
+console_log = "1.0.0"
+log = "0.4.28"
 
 
 [profile.dev]
@@ -37,4 +39,5 @@ opt-level = 1
 
 [profile.release]
 opt-level = "z"
-lto = true
+lto = "fat"
+strip = true

@@ -1,17 +1,17 @@
 use std::{error::Error, path::Path};
 
 use igloo_interface::{
-    CREATE_DEVICE, CreateDevice, DESELECT_ENTITY, DeviceCreated, END_TRANSACTION, REGISTER_ENTITY,
-    RegisterEntity, SELECT_ENTITY, START_TRANSACTION, SelectEntity, StartTransaction, WRITE_INT,
-    read_component,
+    CREATE_DEVICE, CreateDevice, DESELECT_ENTITY, DeviceCreated, DeviceID, END_TRANSACTION, FloeID,
+    FloeRef, REGISTER_ENTITY, RegisterEntity, SELECT_ENTITY, START_TRANSACTION, SelectEntity,
+    StartTransaction, WRITE_INT, read_component,
 };
 use smallvec::SmallVec;
 use tokio::{fs, sync::mpsc};
 
 use crate::glacier::{
     floe::FloeManager,
-    query::{Query, handle_query},
-    tree::{DeviceID, DeviceTree, FloeID, FloeRef},
+    query::{Executable, Query},
+    tree::DeviceTree,
 };
 
 mod entity;
@@ -71,7 +71,7 @@ async fn run(
             }
 
             Some(query) = query_rx.recv() => {
-                if let Err(e) = handle_query(&mut tree, query).await {
+                if let Err(e) = query.execute(&mut tree).await {
                     eprintln!("Error handling query: {e}");
                 }
             }

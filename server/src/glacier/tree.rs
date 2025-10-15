@@ -1,9 +1,11 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use igloo_interface::{Component, ComponentType, FloeWriterDefault, MAX_SUPPORTED_COMPONENT};
+use igloo_interface::{
+    Component, ComponentType, DeviceID, FloeID, FloeRef, FloeWriterDefault, GroupID,
+    MAX_SUPPORTED_COMPONENT,
+};
 use ini::Ini;
 use rustc_hash::FxHashMap;
 use smallvec::{SmallVec, smallvec};
-use std::{error::Error, fmt::Display, time::Duration};
+use std::{error::Error, time::Duration};
 use tokio::fs;
 
 use crate::glacier::{entity::HasComponent, query::WatchQuery};
@@ -15,22 +17,6 @@ pub const DEVICES_FILE: &str = "devices.ini";
 
 const MAX_EMPTY_DEVICE_SLOTS: usize = 10;
 const MAX_EMPTY_GROUP_SLOTS: usize = 10;
-
-/// persistent
-#[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
-pub struct FloeID(pub String);
-
-/// ephemeral
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct FloeRef(usize);
-
-/// persistent
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, BorshSerialize, BorshDeserialize)]
-pub struct DeviceID(u64);
-
-/// persistent
-#[derive(Debug, PartialEq, Eq, Clone, Copy, BorshSerialize, BorshDeserialize)]
-pub struct GroupID(u64);
 
 #[derive(Debug, Default)]
 pub struct DeviceTree {
@@ -756,49 +742,5 @@ impl Group {
 
     pub fn devices(&self) -> &SmallVec<[DeviceID; 20]> {
         &self.devices
-    }
-}
-
-impl GroupID {
-    pub fn from_parts(idx: u32, generation: u32) -> Self {
-        let packed = (idx as u64) | ((generation as u64) << 32);
-        GroupID(packed)
-    }
-
-    pub fn idx(&self) -> u32 {
-        self.0 as u32
-    }
-
-    pub fn generation(&self) -> u32 {
-        (self.0 >> 32) as u32
-    }
-}
-
-impl DeviceID {
-    pub fn from_parts(idx: u32, generation: u32) -> Self {
-        let packed = (idx as u64) | ((generation as u64) << 32);
-        DeviceID(packed)
-    }
-
-    pub fn from_comb(c: u64) -> Self {
-        DeviceID(c)
-    }
-
-    pub fn idx(&self) -> u32 {
-        self.0 as u32
-    }
-
-    pub fn generation(&self) -> u32 {
-        (self.0 >> 32) as u32
-    }
-
-    pub fn take(self) -> u64 {
-        self.0
-    }
-}
-
-impl Display for DeviceID {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.idx(), self.generation())
     }
 }
