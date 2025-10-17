@@ -1,0 +1,239 @@
+/*TODO plz split up*/
+
+.slider-box {
+  margin-top: 5px;
+}
+
+.slider-box>input {
+  width: 100%;
+  padding: 0 !important;
+  height: 38px;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 8px !important;
+  border: none !important;
+  overflow: clip;
+  cursor: grabbing;
+}
+
+.slider-box>input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4px;
+  height: 38px;
+  border-radius: 8px;
+  background: white;
+  border: 2px solid #ccc;
+  cursor: grabbing;
+}
+
+.slider-box>input::-moz-range-thumb {
+  width: 4px;
+  height: 38px;
+  border-radius: 8px;
+  background: white;
+  border: 2px solid #ccc;
+  cursor: grabbing;
+}
+
+.slider-box>input:disabled {
+  opacity: 0.5;
+}
+
+.slider.dimmer {
+  background: hsl(40, 100%, 20%);
+}
+
+.slider.dimmer::-webkit-slider-runnable-track {
+  box-shadow: -100vw 0 0 100vw hsl(40, 100%, 50%);
+}
+
+.slider.dimmer::-moz-range-progress {
+  background: hsl(40, 100%, 50%);
+  height: 38px;
+}
+
+.slider.color-temperature {
+  background: linear-gradient(to right,
+      hsl(240, 100%, 93%),
+      rgb(255, 177, 110));
+  direction: rtl;
+}
+
+.color-picker.hue-slider {
+  background: linear-gradient(to right,
+      hsl(0, 100%, 50%),
+      hsl(60, 100%, 50%),
+      hsl(120, 100%, 50%),
+      hsl(180, 100%, 50%),
+      hsl(240, 100%, 50%),
+      hsl(300, 100%, 50%),
+      hsl(360, 100%, 50%));
+}
+
+.color-picker.red-slider {
+  background: linear-gradient(to right,
+      rgb(0, 0, 0),
+      rgb(255, 0, 0));
+}
+
+.color-picker.green-slider {
+  background: linear-gradient(to right,
+      rgb(0, 0, 0),
+      rgb(0, 255, 0));
+}
+
+.color-picker.blue-slider {
+  background: linear-gradient(to right,
+      rgb(0, 0, 0),
+      rgb(0, 0, 255));
+}
+
+.color-wheel-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.color-wheel {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  cursor: crosshair;
+
+  background: conic-gradient(from 90deg,
+      hsl(0, 100%, 50%),
+      hsl(60, 100%, 50%),
+      hsl(120, 100%, 50%),
+      hsl(180, 100%, 50%),
+      hsl(240, 100%, 50%),
+      hsl(300, 100%, 50%),
+      hsl(360, 100%, 50%));
+}
+
+.color-wheel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,
+      white 0%,
+      transparent 70%);
+}
+
+.color-wheel-indicator {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.color-wheel {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.color-square {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  cursor: crosshair;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.color-square::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to right, white, transparent);
+}
+
+.color-square::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, transparent, black);
+}
+
+.color-square-indicator {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+}
+
+.switch-box {
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  border-radius: 34px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: inline-block;
+}
+
+.switch.medium {
+  width: 58px;
+  height: 34px;
+}
+
+.switch-off {
+  background-color: #e5e5ea;
+}
+
+.switch-on {
+  background-color: #34c759;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background-color: white;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.switch.medium .switch-thumb {
+  width: 30px;
+  height: 30px;
+}
+
+.switch-thumb.switch-on {
+  transform: translateX(24px);
+}
+
+.switch.medium:active .switch-thumb {
+  width: 34px;
+}
+
+.switch:hover {
+  opacity: 0.9;
+}

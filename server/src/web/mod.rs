@@ -11,10 +11,10 @@ use axum::{
 use axum_extra::{TypedHeader, headers::Cookie};
 use futures_util::StreamExt;
 use igloo_interface::{
-    Component, ComponentType, DeviceID, QueryFilter, QueryTarget,
+    ComponentType, DeviceID, QueryFilter, QueryTarget,
     dash::{
         ColorPickerElement, ColorPickerVariant, DashQuery, DashQueryNoType, Dashboard, HAlign,
-        SliderElement, VAlign, VStackElement,
+        Size, SliderElement, SwitchElement, VAlign, VStackElement,
     },
     ws::{ClientMessage, ElementUpdate, ServerMessage},
 };
@@ -49,21 +49,32 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
                         filter: QueryFilter::With(ComponentType::Light),
                         comp_type: ComponentType::Dimmer,
                     },
-                    disable_validation: false,
-                    min: Some(Component::Float(0.)),
-                    max: Some(Component::Float(1.)),
+                    auto_validate: false,
+                    min: Some(0.),
+                    max: Some(1.),
                     step: None,
                 }
                 .into(),
                 ColorPickerElement {
+                    watch_id: None,
                     binding: DashQueryNoType {
                         target: "surf".to_string(),
                         filter: QueryFilter::With(ComponentType::Light),
                     },
-                    variant: ColorPickerVariant::Circle,
+                    variant: ColorPickerVariant::ColorWheel,
                 }
                 .into(),
                 ColorPickerElement {
+                    watch_id: None,
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::Square,
+                }
+                .into(),
+                ColorPickerElement {
+                    watch_id: None,
                     binding: DashQueryNoType {
                         target: "surf".to_string(),
                         filter: QueryFilter::With(ComponentType::Light),
@@ -72,11 +83,62 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
                 }
                 .into(),
                 ColorPickerElement {
+                    watch_id: None,
                     binding: DashQueryNoType {
                         target: "surf".to_string(),
                         filter: QueryFilter::With(ComponentType::Light),
                     },
-                    variant: ColorPickerVariant::Hsl,
+                    variant: ColorPickerVariant::SaturationSlider,
+                }
+                .into(),
+                ColorPickerElement {
+                    watch_id: None,
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::RedSlider,
+                }
+                .into(),
+                ColorPickerElement {
+                    watch_id: None,
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::GreenSlider,
+                }
+                .into(),
+                ColorPickerElement {
+                    watch_id: None,
+                    binding: DashQueryNoType {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                    },
+                    variant: ColorPickerVariant::BlueSlider,
+                }
+                .into(),
+                SliderElement {
+                    watch_id: None,
+                    binding: DashQuery {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                        comp_type: ComponentType::ColorTemperature,
+                    },
+                    auto_validate: false,
+                    min: Some(2000.),
+                    max: Some(7000.),
+                    step: Some(1.),
+                }
+                .into(),
+                SwitchElement {
+                    watch_id: None,
+                    binding: DashQuery {
+                        target: "surf".to_string(),
+                        filter: QueryFilter::With(ComponentType::Light),
+                        comp_type: ComponentType::Switch,
+                    },
+                    size: Size::Medium,
                 }
                 .into(),
             ],

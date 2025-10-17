@@ -12,7 +12,6 @@ pub fn Header() -> Element {
     let route = use_route::<Route>();
 
     use_hook(|| {
-        // connect WS on mount
         set_current_dash_id(&route);
         ws::connect_websocket();
     });

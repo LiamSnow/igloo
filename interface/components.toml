@@ -171,6 +171,7 @@ id = 45
 kind = "single"
 field = "u16"
 derive_bound_types = [46, 47, 48]
+desc = "Kelvin"
 
 
 # Other

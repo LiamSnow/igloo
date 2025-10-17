@@ -2,6 +2,7 @@ use dioxus::{prelude::*, router::RouterConfig};
 
 mod dash;
 mod header;
+mod mouse;
 mod penguin;
 mod settings;
 mod ws;
@@ -38,6 +39,10 @@ fn main() {
 
 #[component]
 fn App() -> Element {
+    use_hook(|| {
+        mouse::init();
+    });
+
     // note connection logic is in Header to access cur route
     rsx! {
         document::Link { rel: "icon", href: FAVICON }

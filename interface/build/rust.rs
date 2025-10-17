@@ -9,6 +9,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
     let cmd_ids = gen_cmd_ids(cmds, comps);
     let comp_type = gen_comp_type(comps);
     let helper_funcs = gen_helper_funcs(cmds, comps);
+    let str_funcs = gen_str_funcs(comps);
     let comps = gen_comps(comps);
     let cmds = gen_cmd_payloads(cmds);
 
@@ -33,6 +34,8 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         #cmds
 
         #helper_funcs
+
+        #str_funcs
     };
 
     // reconstruct, format, and save
@@ -43,6 +46,46 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("out.rs");
     fs::write(&out_path, formatted).expect("Failed to write out.rs");
+}
+
+fn gen_str_funcs(comps: &[Component]) -> TokenStream {
+    let snakes: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            let snake = upper_camel_to_snake(&comp.name);
+            quote! {
+                ComponentType::#name => #snake
+            }
+        })
+        .collect();
+
+    let kebabs: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            let kebab = upper_camel_to_kebab(&comp.name);
+            quote! {
+                ComponentType::#name => #kebab
+            }
+        })
+        .collect();
+
+    quote! {
+        impl ComponentType {
+            pub fn snake_name(&self) -> &'static str {
+                match self {
+                    #(#snakes,)*
+                }
+            }
+
+            pub fn kebab_name(&self) -> &'static str {
+                match self {
+                    #(#kebabs,)*
+                }
+            }
+        }
+    }
 }
 
 fn gen_helper_funcs(cmds: &[Command], comps: &[Component]) -> TokenStream {
@@ -446,6 +489,17 @@ pub fn upper_camel_to_snake(s: &str) -> String {
     for (i, c) in s.chars().enumerate() {
         if i > 0 && c.is_uppercase() {
             res.push('_');
+        }
+        res.push(c.to_ascii_lowercase());
+    }
+    res
+}
+
+pub fn upper_camel_to_kebab(s: &str) -> String {
+    let mut res = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            res.push('-');
         }
         res.push(c.to_ascii_lowercase());
     }

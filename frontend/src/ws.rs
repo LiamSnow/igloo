@@ -10,11 +10,11 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys, ErrorEvent, MessageEvent, WebSocket};
 
-pub static WS_CONNECTED: GlobalSignal<bool> = Signal::global(|| false);
-pub static CURRENT_DASHBOARD: GlobalSignal<Option<Dashboard>> = Signal::global(|| None);
-pub static CURRENT_DASHBOARD_ID: GlobalSignal<u16> = Signal::global(|| u16::MAX);
-pub static ELEMENT_VALUES: GlobalSignal<HashMap<u32, Component>> = Signal::global(HashMap::new);
-static WS_INSTANCE: GlobalSignal<Option<WebSocket>> = Signal::global(|| None);
+pub static WS_CONNECTED: GlobalSignal<bool> = Global::new(|| false);
+pub static CURRENT_DASHBOARD: GlobalSignal<Option<Dashboard>> = Global::new(|| None);
+pub static CURRENT_DASHBOARD_ID: GlobalSignal<u16> = Global::new(|| u16::MAX);
+pub static ELEMENT_VALUES: GlobalSignal<HashMap<u32, Component>> = Global::new(HashMap::new);
+static WS_INSTANCE: GlobalSignal<Option<WebSocket>> = Global::new(|| None);
 
 const WS_URL: &str = "ws://localhost:3000/ws";
 const MAX_BACKOFF_MS: i32 = 30000;
@@ -56,7 +56,7 @@ pub fn connect_websocket() {
                     *CURRENT_DASHBOARD.write() = Some(*dash);
                 }
                 ServerMessage::ElementUpdate(u) => {
-                    log::info!("Received update for watch_id {}", u.watch_id);
+                    // log::info!("Received update for watch_id {}", u.watch_id);
                     ELEMENT_VALUES.write().insert(u.watch_id, u.value);
                 }
             },
