@@ -1,23 +1,37 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::From;
 
-use crate::{Component, SetQuery, dash::Dashboard};
+use crate::{Component, SetQuery, Snapshot, dash::Dashboard};
 
 /// WASM -> Igloo
 #[derive(Clone, BorshSerialize, BorshDeserialize, From)]
 pub enum ClientMessage {
     ExecSetQuery(SetQuery),
-    /// Tells Igloo what Dashboard page you're on
-    /// Responds with ::Dashboard and subsequent ::ElementUpdate's
-    /// Note: u16::MAX is used for non-dashboard type pages
-    SetDashboard(u16),
+    Init,
+    GetPageData(ClientPage),
+}
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, From)]
+pub enum ClientPage {
+    Dashboard(Option<String>),
+    Tree,
+    Settings,
+    Penguin,
 }
 
 /// Igloo -> WASM
 #[derive(Clone, BorshSerialize, BorshDeserialize, From)]
 pub enum ServerMessage {
-    Dashboard(u16, Box<Dashboard>),
+    Dashboards(Vec<DashboardMeta>),
+    Dashboard(Option<String>, Box<Dashboard>),
+    Snapshot(Box<Snapshot>),
     ElementUpdate(ElementUpdate),
+}
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, From)]
+pub struct DashboardMeta {
+    pub id: String,
+    pub display_name: String,
 }
 
 #[derive(Clone, BorshSerialize, BorshDeserialize)]

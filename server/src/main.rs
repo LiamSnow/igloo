@@ -24,7 +24,7 @@ mod web;
 pub struct GlobalState {
     query_tx: mpsc::Sender<Query>,
     cast: broadcast::Sender<(u16, Message)>,
-    dashboards: Arc<RwLock<FxHashMap<u16, Dashboard>>>,
+    dashboards: Arc<RwLock<FxHashMap<String, Dashboard>>>,
 }
 
 #[tokio::main]

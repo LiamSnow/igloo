@@ -1,28 +1,17 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::ws::{send_msg, ELEMENT_VALUES};
+use crate::ws::{send_msg, CURRENT_DASHBOARD, ELEMENT_VALUES};
 use dioxus::prelude::*;
 use igloo_interface::{
     dash::{ColorPickerElement, ColorPickerVariant},
     Color, Component, QueryFilter, QueryTarget, SetQuery,
 };
 
-#[derive(PartialEq, Props, Clone)]
-pub(crate) struct ColorPickerProps {
-    pub element: ColorPickerElement,
-    pub targets: Arc<HashMap<String, QueryTarget>>,
-}
-
 #[component]
-pub(crate) fn ColorPicker(props: ColorPickerProps) -> Element {
-    let watch_id = props.element.watch_id.unwrap();
-    let filter = props.element.binding.filter.clone();
-    let target = props
-        .targets
-        .get(&props.element.binding.target)
-        .unwrap()
-        .clone();
+pub(crate) fn ColorPicker(el: ColorPickerElement) -> Element {
+    let watch_id = el.watch_id.unwrap();
+    let filter = el.binding.filter.clone();
+    let dash = CURRENT_DASHBOARD.read();
+    let targets = &dash.as_ref().unwrap().targets;
+    let target = targets.get(&el.binding.target).unwrap().clone();
 
     let color = use_memo(move || {
         let vals = ELEMENT_VALUES.read();
@@ -32,7 +21,7 @@ pub(crate) fn ColorPicker(props: ColorPickerProps) -> Element {
         })
     });
 
-    match props.element.variant {
+    match el.variant {
         ColorPickerVariant::RedSlider => {
             rsx! {
                 RedSlider { color, filter, target }

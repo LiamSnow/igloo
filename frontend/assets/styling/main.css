@@ -16,9 +16,9 @@ body {
 }
 
 #main {
-  min-height: 100%;
+  min-height: 100vh;
 }
 
 main {
-  padding: 10px 20px 0 20px;
+  min-height: calc(100vh - 42px);
 }

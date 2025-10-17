@@ -13,14 +13,14 @@ pub struct ElementWatcher {
 }
 
 pub trait GetWatchers {
-    fn attach_watchers(&mut self, dash_id: u16) -> Result<Vec<ElementWatcher>, String>;
+    fn attach_watchers(&mut self, dash_idx: u16) -> Result<Vec<ElementWatcher>, String>;
 }
 
 impl GetWatchers for Dashboard {
     /// attaches `watch_id` to all needed components
     /// and returns all watch requests
-    fn attach_watchers(&mut self, dash_id: u16) -> Result<Vec<ElementWatcher>, String> {
-        let mut watch_id = (dash_id as u32) << 16;
+    fn attach_watchers(&mut self, dash_idx: u16) -> Result<Vec<ElementWatcher>, String> {
+        let mut watch_id = (dash_idx as u32) << 16;
         let mut watchers = Vec::new();
         self.child
             .add_watchers(&mut watch_id, &mut watchers, &self.targets)?;

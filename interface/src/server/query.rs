@@ -54,28 +54,28 @@ pub enum Operator {
     Contains,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct Snapshot {
     pub floes: Vec<FloeSnapshot>,
     pub groups: Vec<GroupSnapshot>,
     pub devices: Vec<DeviceSnapshot>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct GroupSnapshot {
     pub id: GroupID,
     pub name: String,
     pub devices: Vec<DeviceID>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct FloeSnapshot {
     pub id: FloeID,
     pub fref: FloeRef,
     pub max_supported_component: u16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct DeviceSnapshot {
     pub id: DeviceID,
     pub name: String,
@@ -83,7 +83,7 @@ pub struct DeviceSnapshot {
     pub entities: Vec<EntitySnapshot>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct EntitySnapshot {
     pub name: String,
     pub components: Vec<Component>,

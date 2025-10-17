@@ -1,28 +1,17 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::ws::{send_msg, ELEMENT_VALUES};
+use crate::ws::{send_msg, CURRENT_DASHBOARD, ELEMENT_VALUES};
 use dioxus::prelude::*;
-use igloo_interface::{dash::SliderElement, Component, QueryTarget, SetQuery};
-
-#[derive(PartialEq, Props, Clone)]
-pub(crate) struct SliderProps {
-    pub element: SliderElement,
-    pub targets: Arc<HashMap<String, QueryTarget>>,
-}
+use igloo_interface::{dash::SliderElement, Component, SetQuery};
 
 #[component]
-pub(crate) fn Slider(props: SliderProps) -> Element {
-    let watch_id = props.element.watch_id.unwrap();
-    let filter = props.element.binding.filter.clone();
-    let comp_type = props.element.binding.comp_type;
-    let target = props
-        .targets
-        .get(&props.element.binding.target)
-        .unwrap()
-        .clone();
+pub(crate) fn Slider(el: SliderElement) -> Element {
+    let watch_id = el.watch_id.unwrap();
+    let filter = el.binding.filter.clone();
+    let comp_type = el.binding.comp_type;
+    let dash = CURRENT_DASHBOARD.read();
+    let targets = &dash.as_ref().unwrap().targets;
+    let target = targets.get(&el.binding.target).unwrap().clone();
 
-    let step = match props.element.step {
+    let step = match el.step {
         Some(s) => s.to_string(),
         None => "any".to_string(),
     };
@@ -38,8 +27,8 @@ pub(crate) fn Slider(props: SliderProps) -> Element {
             input {
                 class: "slider {comp_type.kebab_name()}",
                 r#type: "range",
-                min: props.element.min,
-                max: props.element.max,
+                min: el.min,
+                max: el.max,
                 step: step,
                 value: cur_value,
                 onchange: move |event| {

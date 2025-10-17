@@ -11,12 +11,14 @@ use crate::{Component, ComponentType, QueryFilter, QueryTarget};
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct Dashboard {
-    pub name: String,
+    pub display_name: String,
     /// used for custom queries in this
     /// dashboard, not defined inside
     /// CustomElements
     pub targets: HashMap<String, QueryTarget>,
     pub child: DashElement,
+    /// Overwritten by Igloo at runtime
+    pub idx: Option<u16>,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From, PartialEq)]

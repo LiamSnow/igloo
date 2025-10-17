@@ -10,185 +10,19 @@ use axum::{
 };
 use axum_extra::{TypedHeader, headers::Cookie};
 use futures_util::StreamExt;
-use igloo_interface::{
-    ComponentType, DeviceID, QueryFilter, QueryTarget,
-    dash::{
-        ColorPickerElement, ColorPickerVariant, DashQuery, DashQueryNoType, Dashboard, HAlign,
-        Size, SliderElement, SwitchElement, VAlign, VStackElement,
-    },
-    ws::{ClientMessage, ElementUpdate, ServerMessage},
+use igloo_interface::ws::{ClientMessage, ClientPage, DashboardMeta, ServerMessage};
+use std::error::Error;
+use tokio::{net::TcpListener, sync::oneshot};
+
+use crate::{
+    GlobalState,
+    glacier::query::{Query, SnapshotQuery},
 };
-use std::{collections::HashMap, error::Error};
-use tokio::{net::TcpListener, sync::mpsc};
 
-use crate::{GlobalState, glacier::query::WatchAllQuery, web::watch::GetWatchers};
-
+mod test_dashes;
 mod watch;
 
 pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
-    // START TESTING CODE
-
-    let mut targets = HashMap::default();
-    targets.insert(
-        "surf".to_string(),
-        QueryTarget::Device(DeviceID::from_parts(0, 0)),
-    );
-
-    let mut dash = Dashboard {
-        name: "test".to_string(),
-        targets,
-        child: VStackElement {
-            justify: VAlign::Center,
-            align: HAlign::Center,
-            scroll: false,
-            children: vec![
-                SliderElement {
-                    watch_id: None,
-                    binding: DashQuery {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                        comp_type: ComponentType::Dimmer,
-                    },
-                    auto_validate: false,
-                    min: Some(0.),
-                    max: Some(1.),
-                    step: None,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::ColorWheel,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::Square,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::HueSlider,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::SaturationSlider,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::RedSlider,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::GreenSlider,
-                }
-                .into(),
-                ColorPickerElement {
-                    watch_id: None,
-                    binding: DashQueryNoType {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                    },
-                    variant: ColorPickerVariant::BlueSlider,
-                }
-                .into(),
-                SliderElement {
-                    watch_id: None,
-                    binding: DashQuery {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                        comp_type: ComponentType::ColorTemperature,
-                    },
-                    auto_validate: false,
-                    min: Some(2000.),
-                    max: Some(7000.),
-                    step: Some(1.),
-                }
-                .into(),
-                SwitchElement {
-                    watch_id: None,
-                    binding: DashQuery {
-                        target: "surf".to_string(),
-                        filter: QueryFilter::With(ComponentType::Light),
-                        comp_type: ComponentType::Switch,
-                    },
-                    size: Size::Medium,
-                }
-                .into(),
-            ],
-        }
-        .into(),
-    };
-
-    let dash_id = 0;
-
-    let watchers = dash.attach_watchers(dash_id).unwrap();
-
-    let (watch_tx, mut watch_rx) = mpsc::channel(10);
-    for watcher in watchers {
-        println!("registering query");
-        state
-            .query_tx
-            .send(
-                WatchAllQuery {
-                    filter: watcher.filter,
-                    target: watcher.target,
-                    update_tx: watch_tx.clone(),
-                    comp: watcher.comp,
-                    prefix: watcher.watch_id,
-                }
-                .into(),
-            )
-            .await
-            .unwrap();
-    }
-    let gs = state.clone();
-    tokio::spawn(async move {
-        while let Some((watch_id, _, _, value)) = watch_rx.recv().await {
-            // TODO we need some system of collecting all of these,
-            // then shipping out all values to new viewers
-            let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
-            let bytes = borsh::to_vec(&msg).unwrap(); // FIXME unwrap
-            let dash_id = (watch_id >> 16) as u16;
-            let res = gs.cast.send((dash_id, Message::Binary(bytes.into())));
-            if let Err(e) = res {
-                eprintln!("failed to broadcast: {e}");
-            }
-        }
-    });
-
-    let mut dashs = state.dashboards.write().await;
-    dashs.insert(dash_id, dash);
-    drop(dashs);
-
-    // END TESTING CODE
-
     let app = Router::new()
         // .route("/", get(d))
         .route("/ws", any(ws_handler))
@@ -213,12 +47,14 @@ async fn handle_socket(
     state: GlobalState,
     mut socket: WebSocket,
 ) {
+    test_dashes::make(state.clone()).await.unwrap();
+
     let mut cast_rx = state.cast.subscribe();
-    let mut cur_dash = u16::MAX;
+    let mut cur_dash_idx = u16::MAX;
     loop {
         tokio::select! {
             Ok((dash_id, msg)) = cast_rx.recv() => {
-                if dash_id != cur_dash {
+                if dash_id != cur_dash_idx {
                     println!("Client is on wrong dashboard, skipping.."); // FIXME remove
                     continue;
                 }
@@ -232,7 +68,7 @@ async fn handle_socket(
                         let res = handle_client_msg(
                             &state,
                             &mut socket,
-                            &mut cur_dash,
+                            &mut cur_dash_idx,
                             bytes
                         ).await;
 
@@ -253,30 +89,57 @@ async fn handle_socket(
 async fn handle_client_msg(
     state: &GlobalState,
     socket: &mut WebSocket,
-    cur_dash: &mut u16,
+    cur_dash_idx: &mut u16,
     bytes: Bytes,
 ) -> Result<(), Box<dyn Error>> {
     let msg: ClientMessage = borsh::from_slice(&bytes)?;
 
     match msg {
         ClientMessage::ExecSetQuery(q) => state.query_tx.send(q.into()).await.unwrap(),
-        ClientMessage::SetDashboard(dash_id) => {
-            *cur_dash = dash_id;
-            if dash_id == u16::MAX {
-                return Ok(());
+        ClientMessage::Init => {
+            let dashs = state.dashboards.read().await;
+            let mut metas = Vec::with_capacity(dashs.len());
+            for (id, dash) in dashs.clone().into_iter() {
+                metas.push(DashboardMeta {
+                    id,
+                    display_name: dash.display_name,
+                });
             }
+            drop(dashs);
+            let msg: ServerMessage = metas.into();
+            let bytes = borsh::to_vec(&msg)?;
+            socket.send(Message::Binary(bytes.into())).await?;
+        }
+        ClientMessage::GetPageData(ClientPage::Dashboard(dash_id)) => {
+            let Some(dash_id) = dash_id else {
+                *cur_dash_idx = u16::MAX;
+                return Ok(());
+            };
 
-            let dashboards = state.dashboards.read().await;
+            let dashs = state.dashboards.read().await;
 
-            let dash = dashboards.get(&dash_id).ok_or("invalid dashboard ID")?;
+            let dash = dashs.get(&dash_id).ok_or("invalid dashboard ID")?;
+            *cur_dash_idx = dash.idx.unwrap(); // always init
 
-            let msg: ServerMessage = (dash_id, Box::new(dash.clone())).into();
+            let msg: ServerMessage = (Some(dash_id), Box::new(dash.clone())).into();
             let bytes = borsh::to_vec(&msg)?;
 
-            drop(dashboards);
+            drop(dashs);
 
             socket.send(Message::Binary(bytes.into())).await?;
         }
+        ClientMessage::GetPageData(ClientPage::Tree) => {
+            let (response_tx, response_rx) = oneshot::channel();
+            state
+                .query_tx
+                .send(Query::Snapshot(SnapshotQuery { response_tx }))
+                .await?;
+            let msg: ServerMessage = Box::new(response_rx.await?).into();
+            let bytes = borsh::to_vec(&msg)?;
+            socket.send(Message::Binary(bytes.into())).await?;
+        }
+        ClientMessage::GetPageData(ClientPage::Settings) => {}
+        ClientMessage::GetPageData(ClientPage::Penguin) => {}
     }
 
     Ok(())

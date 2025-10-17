@@ -1,4 +1,12 @@
 /*TODO plz split up*/
+main:has(.dashboard) {
+  display: flex;
+}
+
+.dashboard {
+  padding: 40px 20px 0 20px;
+}
+
 
 .slider-box {
   margin-top: 5px;

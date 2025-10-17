@@ -1,9 +1,10 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::ws::CURRENT_DASHBOARD;
+use crate::{
+    sidebar::{SideBar, SideBarLink},
+    ws::{CURRENT_DASHBOARD, DASHBOARDS},
+    Route,
+};
 use dioxus::prelude::*;
-use igloo_interface::{dash::DashElement, QueryTarget};
+use igloo_interface::dash::DashElement;
 
 mod color;
 mod layout;
@@ -18,60 +19,92 @@ use switch::Switch;
 const DASH_CSS: Asset = asset!("/assets/styling/dash.css");
 
 #[component]
-pub fn Dash(id: u16) -> Element {
-    match CURRENT_DASHBOARD.read().as_ref() {
-        Some(dash) => {
-            rsx! {
-                document::Link { rel: "stylesheet", href: DASH_CSS }
-                div { class: "dashboard",
-                    DashComponent {
-                        el: dash.child.clone(),
-                        targets: Arc::new(dash.targets.clone())
-                    }
-                }
-            }
+pub fn DashDefault() -> Element {
+    let links = use_memo(move || {
+        let dashs = DASHBOARDS.read();
+        let mut v = Vec::with_capacity(dashs.len());
+        for dash in dashs.iter() {
+            v.push(SideBarLink {
+                label: dash.display_name.clone(),
+                to: Route::Dash {
+                    id: dash.id.clone(),
+                },
+                active: false,
+            });
         }
-        None => {
-            rsx! {
-                document::Link { rel: "stylesheet", href: DASH_CSS }
-                div { class: "dashboard" }
+        v
+    });
+
+    rsx! {
+        document::Link { rel: "stylesheet", href: DASH_CSS }
+
+        SideBar { links: links() }
+
+        div { class: "dashboard",
+            // TODO display default dashboard
+            h1 { "No dashboards exist. Try creating one." }
+        }
+    }
+}
+
+#[component]
+pub fn Dash(id: String) -> Element {
+    let links = use_memo(move || {
+        let dashs = DASHBOARDS.read();
+        let mut v = Vec::with_capacity(dashs.len());
+        for dash in dashs.iter() {
+            v.push(SideBarLink {
+                label: dash.display_name.clone(),
+                to: Route::Dash {
+                    id: dash.id.clone(),
+                },
+                active: false,
+            });
+        }
+        v
+    });
+
+    rsx! {
+        document::Link { rel: "stylesheet", href: DASH_CSS }
+
+        SideBar { links: links() }
+
+        div { class: "dashboard",
+            if let Some(dash) = CURRENT_DASHBOARD.read().cloned() {
+                DashComponent {
+                    el: dash.child,
+                }
             }
         }
     }
 }
 
-#[derive(PartialEq, Props, Clone)]
-struct DashComponentProps {
-    el: DashElement,
-    targets: Arc<HashMap<String, QueryTarget>>,
-}
-
 #[component]
-fn DashComponent(props: DashComponentProps) -> Element {
-    match props.el {
-        DashElement::HStack(e) => {
+fn DashComponent(el: DashElement) -> Element {
+    match el {
+        DashElement::HStack(el) => {
             rsx! {
-                HStack { element: e, targets: props.targets.clone() }
+                HStack { el }
             }
         }
-        DashElement::VStack(e) => {
+        DashElement::VStack(el) => {
             rsx! {
-                VStack { element: e, targets: props.targets.clone() }
+                VStack { el }
             }
         }
-        DashElement::Slider(e) => {
+        DashElement::Slider(el) => {
             rsx! {
-                Slider { element: e, targets: props.targets.clone() }
+                Slider { el }
             }
         }
-        DashElement::ColorPicker(e) => {
+        DashElement::ColorPicker(el) => {
             rsx! {
-                ColorPicker { element: e, targets: props.targets.clone() }
+                ColorPicker { el }
             }
         }
-        DashElement::Switch(e) => {
+        DashElement::Switch(el) => {
             rsx! {
-                Switch { element: e, targets: props.targets.clone() }
+                Switch { el }
             }
         }
         _ => rsx! { div { "Unsupported element" } },

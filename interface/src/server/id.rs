@@ -3,11 +3,11 @@ use std::fmt::Display;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 /// persistent
-#[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Default, Clone, BorshSerialize, BorshDeserialize)]
 pub struct FloeID(pub String);
 
 /// ephemeral
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, BorshSerialize, BorshDeserialize)]
 pub struct FloeRef(pub usize);
 
 /// persistent
@@ -35,7 +35,7 @@ impl GroupID {
 
 impl Display for GroupID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.idx(), self.generation())
+        write!(f, "G{}:{}", self.idx(), self.generation())
     }
 }
 
@@ -64,6 +64,18 @@ impl DeviceID {
 
 impl Display for DeviceID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.idx(), self.generation())
+        write!(f, "D{}:{}", self.idx(), self.generation())
+    }
+}
+
+impl Display for FloeID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Floe '{}'", self.0)
+    }
+}
+
+impl Display for FloeRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Floe #{}", self.0)
     }
 }

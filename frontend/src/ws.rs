@@ -3,16 +3,20 @@ use std::collections::HashMap;
 use dioxus::prelude::*;
 use igloo_interface::{
     dash::Dashboard,
-    ws::{ClientMessage, ServerMessage},
-    Component,
+    ws::{ClientMessage, ClientPage, DashboardMeta, ServerMessage},
+    Component, Snapshot,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{js_sys, ErrorEvent, MessageEvent, WebSocket};
 
+use crate::Route;
+
 pub static WS_CONNECTED: GlobalSignal<bool> = Global::new(|| false);
+pub static DASHBOARDS: GlobalSignal<Vec<DashboardMeta>> = Global::new(Vec::new);
 pub static CURRENT_DASHBOARD: GlobalSignal<Option<Dashboard>> = Global::new(|| None);
-pub static CURRENT_DASHBOARD_ID: GlobalSignal<u16> = Global::new(|| u16::MAX);
+pub static CURRENT_SNAPSHOT: GlobalSignal<Option<Snapshot>> = Global::new(|| None);
+pub static CURRENT_ROUTE: GlobalSignal<Route> = Global::new(|| Route::Settings {});
 pub static ELEMENT_VALUES: GlobalSignal<HashMap<u32, Component>> = Global::new(HashMap::new);
 static WS_INSTANCE: GlobalSignal<Option<WebSocket>> = Global::new(|| None);
 
@@ -35,7 +39,8 @@ pub fn connect_websocket() {
     let onopen = Closure::wrap(Box::new(move |_| {
         log::info!("WebSocket connected");
         *WS_CONNECTED.write() = true;
-        send_dash_id_ws(&ws_clone);
+        send_msg_ws(&ws_clone, ClientMessage::Init);
+        send_cur_page_ws(&ws_clone);
     }) as Box<dyn FnMut(JsValue)>);
     ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
     onopen.forget();
@@ -52,12 +57,19 @@ pub fn connect_websocket() {
         match borsh::from_slice::<ServerMessage>(&bytes) {
             Ok(msg) => match msg {
                 ServerMessage::Dashboard(dash_id, dash) => {
-                    log::info!("Received dashboard {}", dash_id);
+                    log::info!("Received dashboard {dash_id:?}");
                     *CURRENT_DASHBOARD.write() = Some(*dash);
                 }
                 ServerMessage::ElementUpdate(u) => {
                     // log::info!("Received update for watch_id {}", u.watch_id);
                     ELEMENT_VALUES.write().insert(u.watch_id, u.value);
+                }
+                ServerMessage::Snapshot(snap) => {
+                    log::info!("Received snapshot");
+                    *CURRENT_SNAPSHOT.write() = Some(*snap);
+                }
+                ServerMessage::Dashboards(metas) => {
+                    *DASHBOARDS.write() = metas;
                 }
             },
             Err(e) => {
@@ -113,11 +125,11 @@ fn send_msg_ws(ws: &WebSocket, msg: ClientMessage) {
     match borsh::to_vec(&msg) {
         Ok(bytes) => {
             if let Err(e) = ws.send_with_u8_array(&bytes) {
-                log::error!("Failed to send WS message: {:?}", e);
+                log::error!("Failed to send WS message: {e:?}");
             }
         }
         Err(e) => {
-            log::error!("Failed to serialize message: {:?}", e);
+            log::error!("Failed to serialize message: {e:?}");
         }
     }
 }
@@ -131,14 +143,20 @@ pub fn send_msg(msg: ClientMessage) {
     }
 }
 
-fn send_dash_id_ws(ws: &WebSocket) {
-    let dash_id = *CURRENT_DASHBOARD_ID.read();
-    let msg = ClientMessage::SetDashboard(dash_id);
-    send_msg_ws(ws, msg);
+fn send_cur_page_ws(ws: &WebSocket) {
+    send_msg_ws(ws, cur_page().into());
 }
 
-pub fn send_dash_id() {
-    let dash_id = *CURRENT_DASHBOARD_ID.read();
-    let msg = ClientMessage::SetDashboard(dash_id);
-    send_msg(msg);
+pub fn send_cur_page() {
+    send_msg(cur_page().into());
+}
+
+fn cur_page() -> ClientPage {
+    match &*CURRENT_ROUTE.read() {
+        Route::Dash { id } => ClientPage::Dashboard(Some(id.clone())),
+        Route::DashDefault {} => ClientPage::Dashboard(None),
+        Route::Penguin {} => ClientPage::Penguin,
+        Route::Settings {} => ClientPage::Settings,
+        Route::Tree {} => ClientPage::Tree,
+    }
 }

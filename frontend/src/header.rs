@@ -1,6 +1,5 @@
 use crate::{
-    set_current_dash_id,
-    ws::{self, WS_CONNECTED},
+    ws::{self, CURRENT_ROUTE, WS_CONNECTED},
     Route,
 };
 use dioxus::prelude::*;
@@ -12,7 +11,7 @@ pub fn Header() -> Element {
     let route = use_route::<Route>();
 
     use_hook(|| {
-        set_current_dash_id(&route);
+        *CURRENT_ROUTE.write() = route;
         ws::connect_websocket();
     });
 
@@ -30,12 +29,16 @@ pub fn Header() -> Element {
             },
             div {
                 Link {
-                    to: Route::Dash { id: 0 },
+                    to: Route::DashDefault {},
                     "Dash"
                 }
                 Link {
                     to: Route::Penguin {},
                     "Penguin"
+                }
+                Link {
+                    to: Route::Tree {},
+                    "Tree"
                 }
                 Link {
                     to: Route::Settings {},

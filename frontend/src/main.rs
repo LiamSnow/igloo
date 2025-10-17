@@ -5,28 +5,39 @@ mod header;
 mod mouse;
 mod penguin;
 mod settings;
+mod sidebar;
+mod tree;
 mod ws;
 
-use dash::Dash;
+use dash::{Dash, DashDefault};
 use header::Header;
 use penguin::Penguin;
 use settings::Settings;
+use tree::Tree;
 
-use crate::ws::CURRENT_DASHBOARD_ID;
+use crate::ws::CURRENT_ROUTE;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
 enum Route {
     #[layout(Header)]
-    #[redirect("/", || Route::Dash { id: 0 })]
+    #[redirect("/", || Route::DashDefault { })]
+
+    #[route("/dash")]
+    DashDefault { },
     #[route("/dash/:id")]
-    Dash { id: u16 },
+    Dash { id: String },
+
+    #[route("/tree")]
+    Tree { },
+
     #[route("/penguin")]
     Penguin { },
     // TODO nest penguin pages
+
     #[route("/settings")]
     Settings { },
-    // TODO nest settings pages
+    // TODO nest settings pages https://dioxuslabs.com/learn/0.7/essentials/router/nested-routes
 }
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -50,18 +61,10 @@ fn App() -> Element {
         Router::<Route> {
             config: || RouterConfig::default()
                 .on_update(|state| {
-                    set_current_dash_id(&state.current());
-                    ws::send_dash_id();
+                    *CURRENT_ROUTE.write() = state.current();
+                    ws::send_cur_page();
                     None
                 })
         }
     }
-}
-
-pub fn set_current_dash_id(route: &Route) {
-    let id = match route {
-        Route::Dash { id } => *id,
-        _ => u16::MAX,
-    };
-    *CURRENT_DASHBOARD_ID.write() = id;
 }
