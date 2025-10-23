@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     comps::PinComponent,
-    state::{GraphState, InteractionMode, Selected, SelectedStoreExt},
+    state::{GraphState, InteractionMode, Selected, SelectedStoreExt, ViewportState},
     types::*,
 };
 use dioxus::{html::input_data::MouseButton, prelude::*};
@@ -14,6 +14,7 @@ pub fn NodeComponent(
     node: Store<Node>,
     selected: Store<Selected>,
     interaction: Signal<InteractionMode>,
+    viewport: Signal<ViewportState>,
 ) -> Element {
     let onmousedown = move |e: Event<MouseData>| {
         if e.trigger_button() != Some(MouseButton::Primary) {
@@ -52,10 +53,6 @@ pub fn NodeComponent(
             transform: "translate({node.position()().x}px, {node.position()().y}px)",
             onmousedown,
             oncontextmenu,
-            onmount: move |e| {
-                node.el().set(Some(e.data()));
-                // TODO do we need a use_drop to free this ^^? seemed to cause issues when i tried
-            },
 
             div {
                 class: "penguin-node-title",
@@ -72,6 +69,7 @@ pub fn NodeComponent(
                         pin,
                         is_output: false,
                         interaction,
+                        viewport,
                     }
                 }
             }
@@ -86,6 +84,7 @@ pub fn NodeComponent(
                         pin,
                         is_output: true,
                         interaction,
+                        viewport,
                     }
                 }
             }

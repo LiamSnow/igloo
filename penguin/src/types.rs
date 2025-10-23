@@ -1,29 +1,27 @@
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 use dioxus::prelude::*;
 use euclid::default::Point2D;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct NodeId(pub u16);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WireId(pub u16);
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct PinId(pub String);
 
-#[derive(Debug, Store)]
+#[derive(Debug, Store, PartialEq)]
 pub struct Node {
-    pub el: Option<Rc<MountedData>>,
     pub title: String,
     pub inputs: HashMap<PinId, Pin>,
     pub outputs: HashMap<PinId, Pin>,
     pub position: Point2D<f64>,
 }
 
-#[derive(Debug, Store)]
+#[derive(Debug, Store, PartialEq)]
 pub struct Pin {
-    pub el: Option<Rc<MountedData>>,
     pub typ: PinType,
 }
 
@@ -33,36 +31,18 @@ pub enum PinType {
     Value { subtype: String, color: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct PinRef {
     pub node_id: NodeId,
     pub pin_id: PinId,
 }
 
-#[derive(Debug, Store)]
+#[derive(Clone, Debug, Store, PartialEq, Default)]
 pub struct Wire {
-    pub el: Option<Rc<MountedData>>,
-    pub from: PinRef,
-    pub to: PinRef,
-}
-
-impl PartialEq for Node {
-    fn eq(&self, other: &Self) -> bool {
-        self.title == other.title
-            && self.inputs == other.inputs
-            && self.outputs == other.outputs
-            && self.position == other.position
-    }
-}
-
-impl PartialEq for Pin {
-    fn eq(&self, other: &Self) -> bool {
-        self.typ == other.typ
-    }
-}
-
-impl PartialEq for Wire {
-    fn eq(&self, other: &Self) -> bool {
-        self.from == other.from && self.to == other.to
-    }
+    pub from_pin: PinRef,
+    pub to_pin: PinRef,
+    pub from_pos: Point2D<f64>,
+    pub to_pos: Point2D<f64>,
+    pub stroke: String,
+    pub stroke_width: u8,
 }

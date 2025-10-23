@@ -1,6 +1,7 @@
 use crate::{
-    state::{GraphState, GraphStateStoreExt, InteractionMode},
+    state::{GraphState, GraphStateStoreExt, InteractionMode, ViewportState},
     types::*,
+    update_wires,
 };
 use dioxus::{html::input_data::MouseButton, prelude::*};
 
@@ -12,6 +13,7 @@ pub fn PinComponent(
     pin: Store<Pin>,
     is_output: bool,
     interaction: Signal<InteractionMode>,
+    viewport: Signal<ViewportState>,
 ) -> Element {
     let pin_id_copy = pin_id.clone();
     let onmousedown = move |e: Event<MouseData>| {
@@ -60,7 +62,7 @@ pub fn PinComponent(
             };
             let mut w = graph.wires();
             let mut wires = w.write();
-            let (from, to) = if is_output { (me, start) } else { (start, me) };
+            let (from_pin, to_pin) = if is_output { (me, start) } else { (start, me) };
 
             let mut id = 0;
             loop {
@@ -70,7 +72,16 @@ pub fn PinComponent(
                 id += 1;
             }
 
-            wires.insert(WireId(id), Wire { el: None, from, to });
+            wires.insert(
+                WireId(id),
+                Wire {
+                    from_pin,
+                    to_pin,
+                    ..Default::default()
+                },
+            );
+
+            update_wires(&mut graph, &viewport);
         }
     };
 
@@ -96,7 +107,11 @@ pub fn PinComponent(
     let pin_id_copy = pin_id.clone();
     let is_connected = use_memo(move || {
         for (_, wire) in graph.wires().read().iter() {
-            let comp = if is_output { &wire.from } else { &wire.to };
+            let comp = if is_output {
+                &wire.from_pin
+            } else {
+                &wire.to_pin
+            };
             if comp.node_id == node_id && comp.pin_id == pin_id_copy {
                 return true;
             }
@@ -114,12 +129,8 @@ pub fn PinComponent(
             "data-pin-id": pin_id.0,
             "data-node-id": node_id.0,
             "data-is-output": "{is_output}",
-            // "data-connected": "{is_connected()}",
             onmousedown,
             onmouseup,
-            onmounted: move |e| {
-                pin.el().set(Some(e.data()));
-            },
 
             match &pin.read().typ {
                 PinType::Flow => rsx! {

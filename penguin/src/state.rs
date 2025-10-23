@@ -61,12 +61,10 @@ impl GraphState {
                     Node {
                         title: "Add".to_string(),
                         position: Point2D::new(50.0, 50.0),
-                        el: None,
                         inputs: HashMap::from([
                             (
                                 PinId("A".to_string()),
                                 Pin {
-                                    el: None,
                                     typ: PinType::Value {
                                         subtype: "number".to_string(),
                                         color: "#4CAF50".to_string(),
@@ -76,7 +74,6 @@ impl GraphState {
                             (
                                 PinId("B".to_string()),
                                 Pin {
-                                    el: None,
                                     typ: PinType::Value {
                                         subtype: "number".to_string(),
                                         color: "#4CAF50".to_string(),
@@ -87,7 +84,6 @@ impl GraphState {
                         outputs: HashMap::from([(
                             PinId("Result".to_string()),
                             Pin {
-                                el: None,
                                 typ: PinType::Value {
                                     subtype: "number".to_string(),
                                     color: "#4CAF50".to_string(),
@@ -101,19 +97,11 @@ impl GraphState {
                     Node {
                         title: "Print".to_string(),
                         position: Point2D::new(350.0, 100.0),
-                        el: None,
                         inputs: HashMap::from([
-                            (
-                                PinId("".to_string()),
-                                Pin {
-                                    el: None,
-                                    typ: PinType::Flow,
-                                },
-                            ),
+                            (PinId("".to_string()), Pin { typ: PinType::Flow }),
                             (
                                 PinId("Message".to_string()),
                                 Pin {
-                                    el: None,
                                     typ: PinType::Value {
                                         subtype: "string".to_string(),
                                         color: "#2196F3".to_string(),
@@ -123,10 +111,7 @@ impl GraphState {
                         ]),
                         outputs: HashMap::from([(
                             PinId("".to_string()),
-                            Pin {
-                                el: None,
-                                typ: PinType::Flow,
-                            },
+                            Pin { typ: PinType::Flow },
                         )]),
                     },
                 ),
@@ -135,12 +120,10 @@ impl GraphState {
                     Node {
                         title: "Add".to_string(),
                         position: Point2D::new(50.0, 200.0),
-                        el: None,
                         inputs: HashMap::from([
                             (
                                 PinId("A".to_string()),
                                 Pin {
-                                    el: None,
                                     typ: PinType::Value {
                                         subtype: "number".to_string(),
                                         color: "#4CAF50".to_string(),
@@ -150,7 +133,6 @@ impl GraphState {
                             (
                                 PinId("B".to_string()),
                                 Pin {
-                                    el: None,
                                     typ: PinType::Value {
                                         subtype: "number".to_string(),
                                         color: "#4CAF50".to_string(),
@@ -161,7 +143,6 @@ impl GraphState {
                         outputs: HashMap::from([(
                             PinId("Result".to_string()),
                             Pin {
-                                el: None,
                                 typ: PinType::Value {
                                     subtype: "number".to_string(),
                                     color: "#4CAF50".to_string(),
@@ -175,19 +156,11 @@ impl GraphState {
                     Node {
                         title: "Print".to_string(),
                         position: Point2D::new(750.0, 100.0),
-                        el: None,
                         inputs: HashMap::from([
-                            (
-                                PinId("".to_string()),
-                                Pin {
-                                    el: None,
-                                    typ: PinType::Flow,
-                                },
-                            ),
+                            (PinId("".to_string()), Pin { typ: PinType::Flow }),
                             (
                                 PinId("Message".to_string()),
                                 Pin {
-                                    el: None,
                                     typ: PinType::Value {
                                         subtype: "string".to_string(),
                                         color: "#2196F3".to_string(),
@@ -197,10 +170,7 @@ impl GraphState {
                         ]),
                         outputs: HashMap::from([(
                             PinId("".to_string()),
-                            Pin {
-                                el: None,
-                                typ: PinType::Flow,
-                            },
+                            Pin { typ: PinType::Flow },
                         )]),
                     },
                 ),
@@ -209,29 +179,29 @@ impl GraphState {
                 (
                     WireId(0),
                     Wire {
-                        el: None,
-                        from: PinRef {
+                        from_pin: PinRef {
                             node_id: NodeId(1),
                             pin_id: PinId("".to_string()),
                         },
-                        to: PinRef {
+                        to_pin: PinRef {
                             node_id: NodeId(3),
                             pin_id: PinId("".to_string()),
                         },
+                        ..Default::default()
                     },
                 ),
                 (
                     WireId(1),
                     Wire {
-                        el: None,
-                        from: PinRef {
+                        from_pin: PinRef {
                             node_id: NodeId(0),
                             pin_id: PinId("Result".to_string()),
                         },
-                        to: PinRef {
+                        to_pin: PinRef {
                             node_id: NodeId(2),
                             pin_id: PinId("A".to_string()),
                         },
+                        ..Default::default()
                     },
                 ),
             ]),

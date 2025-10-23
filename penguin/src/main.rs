@@ -1,9 +1,9 @@
 #![allow(non_snake_case)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use dioxus::html::geometry::PixelsRect;
+use dioxus::html::geometry::{PixelsRect, WheelDelta};
 use dioxus::html::input_data::MouseButton;
 use dioxus::logger::tracing;
 use dioxus::prelude::*;
@@ -14,12 +14,13 @@ mod sys;
 mod types;
 
 use comps::*;
-use dioxus::web::WebEventExt;
 use euclid::default::{Point2D, Rect};
 use euclid::Size2D;
 use state::*;
 use sys::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
+
+use crate::types::{NodeId, Pin, PinId, PinRef, PinType, Wire, WireId};
 
 fn main() {
     sys::setup();
@@ -31,6 +32,7 @@ fn App() -> Element {
     let mut selected = use_store(Selected::default);
     let mut viewport = use_signal(ViewportState::new);
     let mut interaction = use_signal(|| InteractionMode::Idle);
+    let mut view_box = use_signal(|| None);
 
     let onmousedown = move |e: Event<MouseData>| {
         if e.trigger_button() != Some(MouseButton::Primary) {
@@ -69,6 +71,11 @@ fn App() -> Element {
                         has_moved: true,
                     });
                 }
+
+                drop(vp);
+
+                let _ = update_view_box(&mut view_box, &viewport);
+                update_wires(&mut graph, &viewport);
             }
             InteractionMode::Dragging => {
                 let zoom = viewport.peek().zoom;
@@ -81,6 +88,8 @@ fn App() -> Element {
                         node.position += delta;
                     }
                 }
+
+                update_wires(&mut graph, &viewport);
             }
             _ => {}
         }
@@ -138,125 +147,47 @@ fn App() -> Element {
             }
             // complete box sel
             else {
-                spawn(async move {
-                    let mut selected = selected.write();
-
-                    if !append {
-                        selected.nodes.clear();
-                        selected.wires.clear();
-                    }
-
-                    let select_rect = points_to_rect(start, *MOUSE_POSITION.peek());
-                    for (id, node) in graph.nodes().read().iter() {
-                        let Some(el) = &node.el else {
-                            continue;
-                        };
-
-                        let node_rect = match el.get_client_rect().await {
-                            Ok(r) => r,
-                            Err(e) => {
-                                tracing::error!("Node mount error: {e}");
-                                return;
-                            }
-                        };
-
-                        if node_rect.intersection(&select_rect).is_some() {
-                            selected.nodes.insert(*id);
-                        }
-                    }
-
-                    let vp = viewport.peek();
-                    let world_select_rect = {
-                        Rect::new(
-                            Point2D::new(
-                                (select_rect.origin.x - vp.pan.x) / vp.zoom,
-                                (select_rect.origin.y - vp.pan.y) / vp.zoom,
-                            ),
-                            Size2D::new(
-                                select_rect.size.width / vp.zoom,
-                                select_rect.size.height / vp.zoom,
-                            ),
-                        )
-                    };
-
-                    let w = graph.wires();
-                    let wires = w.read();
-                    for (wire_id, wire) in wires.iter() {
-                        let Some(el) = &wire.el else {
-                            continue;
-                        };
-
-                        let elw = el.as_web_event();
-                        let Some(path_el) = elw.dyn_ref::<web_sys::SvgPathElement>() else {
-                            continue;
-                        };
-
-                        let total_length = path_el.get_total_length();
-
-                        let sample_interval = 5.0;
-                        let num_samples = (total_length / sample_interval).ceil() as i32;
-
-                        let mut intersects = false;
-                        for i in 0..=num_samples {
-                            let distance = (i as f32) * sample_interval;
-                            let Ok(point) = path_el.get_point_at_length(distance) else {
-                                continue;
-                            };
-
-                            let point = Point2D::new(point.x() as f64, point.y() as f64);
-
-                            if world_select_rect.contains(point) {
-                                intersects = true;
-                                break;
-                            }
-                        }
-
-                        if intersects {
-                            selected.wires.insert(*wire_id);
-                        }
-                    }
-                });
+                let select_rect = points_to_rect(start, *MOUSE_POSITION.peek());
+                complete_box_selection(&graph, &viewport, &mut selected, select_rect, append);
             }
         }
     });
 
-    let mut penguin_el = use_signal(|| None);
-
     let onwheel = move |e: Event<WheelData>| {
         e.prevent_default();
 
-        let Some(penguin_el): Option<Rc<MountedData>> = penguin_el() else {
-            tracing::error!("Penguin never set mounted element");
+        let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+            return;
+        };
+        let Ok(Some(penguin_el)) = doc.query_selector("#penguin") else {
             return;
         };
 
-        spawn(async move {
-            let rect = match penguin_el.get_client_rect().await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::error!("Penguin mount error: {e}");
-                    return;
-                }
-            };
+        let rect = penguin_el.get_bounding_client_rect();
+        let cc = e.client_coordinates();
+        let mouse_x = cc.x - rect.left();
+        let mouse_y = cc.y - rect.top();
 
-            let cc = e.client_coordinates();
-            let mouse_x = cc.x - rect.origin.x;
-            let mouse_y = cc.y - rect.origin.y;
+        let mut vp = viewport.write();
 
-            let mut vp = viewport.write();
-            // FIXME remove strip units
-            let zoom_delta = if e.delta().strip_units().y > 0.0 {
-                0.9
-            } else {
-                1.1
-            };
-            let new_zoom = (vp.zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM);
+        let delta_y = match e.delta() {
+            WheelDelta::Pixels(v) => v.y,
+            WheelDelta::Lines(v) => v.y * 20.0,
+            WheelDelta::Pages(v) => v.y * 800.0,
+        };
 
-            let zoom_ratio = new_zoom / vp.zoom;
-            vp.pan.x = mouse_x - (mouse_x - vp.pan.x) * zoom_ratio;
-            vp.pan.y = mouse_y - (mouse_y - vp.pan.y) * zoom_ratio;
-            vp.zoom = new_zoom;
-        });
+        let zoom_delta = if delta_y > 0.0 { 0.9 } else { 1.1 };
+
+        let new_zoom = (vp.zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM);
+
+        let zoom_ratio = new_zoom / vp.zoom;
+        vp.pan.x = mouse_x - (mouse_x - vp.pan.x) * zoom_ratio;
+        vp.pan.y = mouse_y - (mouse_y - vp.pan.y) * zoom_ratio;
+        vp.zoom = new_zoom;
+
+        drop(vp);
+        let _ = update_view_box(&mut view_box, &viewport);
+        let _ = update_wires(&mut graph, &viewport);
     };
 
     let onkeydown = move |e: Event<KeyboardData>| match e.data().key() {
@@ -278,29 +209,81 @@ fn App() -> Element {
             }
 
             g.wires.retain(|_, wire| {
-                !s.nodes.contains(&wire.from.node_id) && !s.nodes.contains(&wire.to.node_id)
+                !s.nodes.contains(&wire.from_pin.node_id) && !s.nodes.contains(&wire.to_pin.node_id)
             });
         }
         _ => {}
     };
 
-    let mut view_box = use_signal(|| None);
+    let mut temp_wire = use_store(Wire::default);
     use_effect(move || {
-        let viewport = viewport();
+        let InteractionMode::Wiring {
+            start,
+            is_output,
+            typ,
+        } = interaction()
+        else {
+            return;
+        };
 
-        spawn(async move {
-            let Some(penguin_el): Option<Rc<MountedData>> = penguin_el() else {
-                return;
-            };
-            let Ok(rect) = penguin_el.get_client_rect().await else {
-                return;
-            };
-            let x = -viewport.pan.x / viewport.zoom;
-            let y = -viewport.pan.y / viewport.zoom;
-            let width = rect.width() / viewport.zoom;
-            let height = rect.height() / viewport.zoom;
-            view_box.set(Some(format!("{x} {y} {width} {height}")))
-        });
+        let zoom = viewport().zoom;
+        let pan = viewport().pan;
+        let mouse = MOUSE_POSITION();
+
+        let Ok(node_lut) = build_node_lookup() else {
+            return;
+        };
+        let Ok(pin_lut) = build_pin_lookup() else {
+            return;
+        };
+
+        let n = graph.nodes();
+        let nodes = n.read();
+        let Some(start_node) = nodes.get(&start.node_id) else {
+            return;
+        };
+
+        let Some(start_node_el) = node_lut.get(&start.node_id) else {
+            return;
+        };
+        let start_pin_key = (start.node_id, start.pin_id.0.clone(), is_output);
+        let Some(start_pin_el) = pin_lut.get(&start_pin_key) else {
+            return;
+        };
+
+        let start_pos =
+            calculate_pin_world_position(start_node_el, start_pin_el, start_node.position, zoom);
+
+        let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+            return;
+        };
+        let Ok(Some(penguin_el)) = doc.query_selector("#penguin") else {
+            return;
+        };
+        let penguin_rect = penguin_el.get_bounding_client_rect();
+
+        let mouse_world = Point2D::new(
+            (mouse.x - penguin_rect.left() - pan.x) / zoom,
+            (mouse.y - penguin_rect.top() - pan.y) / zoom,
+        );
+
+        let (from_pos, to_pos) = if is_output {
+            (start_pos, mouse_world)
+        } else {
+            (mouse_world, start_pos)
+        };
+
+        let (stroke, stroke_width) = match typ {
+            PinType::Flow => ("white".to_string(), 4),
+            PinType::Value { color, .. } => (color, 2),
+        };
+
+        let mut wire = temp_wire.write();
+        wire.from_pin = start.clone();
+        wire.from_pos = from_pos;
+        wire.to_pos = to_pos;
+        wire.stroke = stroke;
+        wire.stroke_width = stroke_width;
     });
 
     rsx! {
@@ -320,9 +303,6 @@ fn App() -> Element {
             oncontextmenu,
             onkeydown,
             tabindex: 0,
-            onmounted: move |e| {
-                penguin_el.set(Some(e.data()));
-            },
 
             svg {
                 id: "penguin-wires",
@@ -330,16 +310,18 @@ fn App() -> Element {
 
                 for (id, wire) in graph.wires().iter() {
                     WireComponent {
-                        graph,
-                        id,
+                        id: Some(id),
                         wire,
                         selected,
-                        viewport,
                     }
                 }
 
-                if let InteractionMode::Wiring { start, is_output, typ } = interaction() {
-                    TempWireComponent { graph, start, is_output, typ, viewport }
+                if let InteractionMode::Wiring { .. } = interaction() {
+                    WireComponent {
+                        id: None,
+                        wire: temp_wire,
+                        selected,
+                    }
                 }
             }
 
@@ -356,6 +338,7 @@ fn App() -> Element {
                             node,
                             selected,
                             interaction,
+                            viewport,
                         }
                     }
                 }
@@ -377,4 +360,289 @@ fn selection_box_style(a: Point2D<f64>, b: Point2D<f64>) -> String {
         "left: {}px; top: {}px; width: {}px; height: {}px;",
         rect.origin.x, rect.origin.y, rect.size.width, rect.size.height
     )
+}
+
+fn update_view_box(
+    view_box: &mut Signal<Option<String>>,
+    viewport: &Signal<ViewportState>,
+) -> Result<(), JsValue> {
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return Err(JsValue::from_str("No document"));
+    };
+    let penguin_el = doc
+        .query_selector("#penguin")?
+        .ok_or(JsValue::from_str("No penguin element"))?;
+
+    let rect = penguin_el.get_bounding_client_rect();
+    let vp = viewport.read();
+
+    let x = -vp.pan.x / vp.zoom;
+    let y = -vp.pan.y / vp.zoom;
+    let width = rect.width() / vp.zoom;
+    let height = rect.height() / vp.zoom;
+
+    view_box.set(Some(format!("{x} {y} {width} {height}")));
+
+    Ok(())
+}
+
+fn complete_box_selection(
+    graph: &Store<GraphState>,
+    viewport: &Signal<ViewportState>,
+    selected: &mut Store<Selected>,
+    select_rect: PixelsRect,
+    append: bool,
+) -> Result<(), JsValue> {
+    let mut selected = selected.write();
+
+    if !append {
+        selected.nodes.clear();
+        selected.wires.clear();
+    }
+
+    let doc = web_sys::window().unwrap().document().unwrap();
+
+    let node_els = doc.query_selector_all(".penguin-node")?;
+
+    for i in 0..node_els.length() {
+        let Some(node_el) = node_els.item(i) else {
+            continue;
+        };
+
+        let Some(html_el) = node_el.dyn_ref::<web_sys::HtmlElement>() else {
+            continue;
+        };
+
+        let Some(node_id_str) = html_el.get_attribute("data-node-id") else {
+            continue;
+        };
+
+        let Ok(node_id_val) = node_id_str.parse::<u16>() else {
+            continue;
+        };
+
+        let node_rect = html_el.get_bounding_client_rect();
+
+        let node_pixels_rect = PixelsRect::new(
+            euclid::Point2D::new(node_rect.left(), node_rect.top()),
+            Size2D::new(node_rect.width(), node_rect.height()),
+        );
+
+        if node_pixels_rect.intersection(&select_rect).is_some() {
+            selected.nodes.insert(NodeId(node_id_val));
+        }
+    }
+
+    let vp = viewport.peek();
+    let world_select_rect = Rect::new(
+        Point2D::new(
+            (select_rect.origin.x - vp.pan.x) / vp.zoom,
+            (select_rect.origin.y - vp.pan.y) / vp.zoom,
+        ),
+        Size2D::new(
+            select_rect.size.width / vp.zoom,
+            select_rect.size.height / vp.zoom,
+        ),
+    );
+
+    let wire_elements = doc.query_selector_all(".penguin-wire")?;
+
+    for i in 0..wire_elements.length() {
+        let Some(wire_el) = wire_elements.item(i) else {
+            continue;
+        };
+
+        let Some(path_el) = wire_el.dyn_ref::<web_sys::SvgPathElement>() else {
+            continue;
+        };
+
+        let Some(wire_id_str) = path_el.get_attribute("data-wire-id") else {
+            continue;
+        };
+
+        let Ok(wire_id_val) = wire_id_str.parse::<u16>() else {
+            continue;
+        };
+
+        let total_length = path_el.get_total_length();
+        let sample_interval = 5.0;
+        let num_samples = (total_length / sample_interval).ceil() as i32;
+
+        let mut intersects = false;
+        for j in 0..=num_samples {
+            let distance = (j as f32) * sample_interval;
+            let Ok(point) = path_el.get_point_at_length(distance) else {
+                continue;
+            };
+
+            let point = Point2D::new(point.x() as f64, point.y() as f64);
+
+            if world_select_rect.contains(point) {
+                intersects = true;
+                break;
+            }
+        }
+
+        if intersects {
+            selected.wires.insert(WireId(wire_id_val));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn update_wires(
+    graph: &mut Store<GraphState>,
+    viewport: &Signal<ViewportState>,
+) -> Result<(), JsValue> {
+    let zoom = viewport.peek().zoom;
+
+    let node_lut = build_node_lookup()?;
+    let pin_lut = build_pin_lookup()?;
+
+    let mut g = graph.write();
+    let wire_ids: Vec<_> = g.wires.keys().copied().collect();
+
+    for wire_id in wire_ids {
+        let (from_pos, to_pos, stroke, stroke_width) = {
+            let wire = g.wires.get(&wire_id).unwrap();
+
+            let Some(from_node) = g.nodes.get(&wire.from_pin.node_id) else {
+                continue;
+            };
+            let Some(to_node) = g.nodes.get(&wire.to_pin.node_id) else {
+                continue;
+            };
+            let Some(from_pin) = from_node.outputs.get(&wire.from_pin.pin_id) else {
+                continue;
+            };
+
+            let Some(from_node_el) = node_lut.get(&wire.from_pin.node_id) else {
+                continue;
+            };
+            let Some(to_node_el) = node_lut.get(&wire.to_pin.node_id) else {
+                continue;
+            };
+
+            let from_pin_key = (wire.from_pin.node_id, wire.from_pin.pin_id.0.clone(), true);
+            let to_pin_key = (wire.to_pin.node_id, wire.to_pin.pin_id.0.clone(), false);
+
+            let Some(from_pin_el) = pin_lut.get(&from_pin_key) else {
+                continue;
+            };
+            let Some(to_pin_el) = pin_lut.get(&to_pin_key) else {
+                continue;
+            };
+
+            let from_pos =
+                calculate_pin_world_position(from_node_el, from_pin_el, from_node.position, zoom);
+            let to_pos =
+                calculate_pin_world_position(to_node_el, to_pin_el, to_node.position, zoom);
+
+            let (stroke, stroke_width) = get_pin_stroke(from_pin);
+
+            (from_pos, to_pos, stroke, stroke_width)
+        };
+
+        let wire = g.wires.get_mut(&wire_id).unwrap();
+        wire.from_pos = from_pos;
+        wire.to_pos = to_pos;
+        wire.stroke = stroke;
+        wire.stroke_width = stroke_width;
+    }
+
+    Ok(())
+}
+
+fn build_node_lookup() -> Result<HashMap<NodeId, web_sys::HtmlElement>, JsValue> {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let mut node_lut = HashMap::new();
+
+    let node_els = doc.query_selector_all(".penguin-node")?;
+    for i in 0..node_els.length() {
+        let Some(node_el) = node_els.item(i) else {
+            continue;
+        };
+        let Some(html_el) = node_el.dyn_ref::<web_sys::HtmlElement>() else {
+            continue;
+        };
+        let Some(node_id_str) = html_el.get_attribute("data-node-id") else {
+            continue;
+        };
+        let Ok(node_id_val) = node_id_str.parse::<u16>() else {
+            continue;
+        };
+
+        node_lut.insert(NodeId(node_id_val), html_el.clone());
+    }
+
+    Ok(node_lut)
+}
+
+fn build_pin_lookup() -> Result<HashMap<(NodeId, String, bool), web_sys::HtmlElement>, JsValue> {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let mut pin_lut = HashMap::new();
+
+    let pin_els = doc.query_selector_all(".penguin-pin-hitbox")?;
+    for i in 0..pin_els.length() {
+        let Some(pin_el) = pin_els.item(i) else {
+            continue;
+        };
+        let Some(html_el) = pin_el.dyn_ref::<web_sys::HtmlElement>() else {
+            continue;
+        };
+
+        let Some(node_id_str) = html_el.get_attribute("data-node-id") else {
+            continue;
+        };
+        let Some(pin_id_str) = html_el.get_attribute("data-pin-id") else {
+            continue;
+        };
+        let Some(is_output_str) = html_el.get_attribute("data-is-output") else {
+            continue;
+        };
+
+        let Ok(node_id_val) = node_id_str.parse::<u16>() else {
+            continue;
+        };
+        let is_output = is_output_str == "true";
+
+        pin_lut.insert(
+            (NodeId(node_id_val), pin_id_str, is_output),
+            html_el.clone(),
+        );
+    }
+
+    Ok(pin_lut)
+}
+
+fn calculate_pin_world_position(
+    node_el: &web_sys::HtmlElement,
+    pin_el: &web_sys::HtmlElement,
+    node_world_pos: Point2D<f64>,
+    zoom: f64,
+) -> Point2D<f64> {
+    let node_rect = node_el.get_bounding_client_rect();
+    let pin_rect = pin_el.get_bounding_client_rect();
+
+    let pin_center_x = pin_rect.left() + pin_rect.width() / 2.0;
+    let pin_center_y = pin_rect.top() + pin_rect.height() / 2.0;
+
+    let offset_x = pin_center_x - node_rect.left();
+    let offset_y = pin_center_y - node_rect.top();
+
+    let world_offset_x = offset_x / zoom;
+    let world_offset_y = offset_y / zoom;
+
+    Point2D::new(
+        node_world_pos.x + world_offset_x,
+        node_world_pos.y + world_offset_y,
+    )
+}
+
+fn get_pin_stroke(pin: &Pin) -> (String, u8) {
+    match &pin.typ {
+        PinType::Flow => ("white".to_string(), 4),
+        PinType::Value { color, .. } => (color.clone(), 2),
+    }
 }
