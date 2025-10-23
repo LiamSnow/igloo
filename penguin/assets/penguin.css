@@ -1,0 +1,185 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: monospace;
+}
+
+body {
+  width: 100vw;
+  height: 100vh;
+
+}
+
+#main {
+  background: #111;
+  padding: 50px;
+  width: calc(100% - 100px);
+  height: calc(100% - 100px);
+}
+
+#penguin {
+  background-color: #1a1a1a;
+  border: 1px solid #444;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: 20px;
+  overflow: clip;
+}
+
+#penguin-viewport {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+#penguin-wires {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#penguin-nodes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+}
+
+.penguin-node {
+  color: white;
+  background: rgba(0, 0, 0, 0.8);
+  width: 200px;
+  height: 100px;
+  border-radius: 10px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
+  user-select: none;
+  cursor: move;
+  border: 2px solid transparent;
+  pointer-events: auto;
+  position: absolute;
+}
+
+.penguin-node.selected {
+  border: 2px solid #2196F3;
+  cursor: move;
+  box-shadow: 0 0 10px rgba(33, 150, 243, 0.5);
+}
+
+.penguin-node-title {
+  text-align: center;
+  width: 100%;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.penguin-node-inputs {
+  position: absolute;
+  left: 0px;
+  top: 30px;
+}
+
+.penguin-node-outputs {
+  position: absolute;
+  right: 0px;
+  top: 30px;
+}
+
+.penguin-pin {
+  flex-shrink: 0;
+}
+
+.penguin-pin.value {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin: 5px;
+  border: 2px solid white;
+  background-color: transparent;
+  transition: background-color 0.2s ease;
+}
+
+.penguin-pin.flow {
+  width: 16px;
+  height: 16px;
+  margin: 4px;
+}
+
+.penguin-pin-hitbox {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.penguin-pin-hitbox:hover .penguin-pin.value {
+  box-shadow: 0 0 8px currentColor;
+  transform: scale(1.2);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.penguin-pin-hitbox:hover .penguin-pin.flow {
+  filter: drop-shadow(0 0 4px white);
+  transform: scale(1.1);
+  transition: transform 0.1s ease, filter 0.1s ease;
+}
+
+.penguin-pin-hitbox.valid-target {
+  cursor: copy;
+}
+
+.penguin-pin-hitbox.invalid-target {
+  cursor: not-allowed;
+}
+
+.penguin-pin-hitbox.valid-target .penguin-pin.value {
+  box-shadow: 0 0 8px #4CAF50;
+}
+
+.penguin-pin-hitbox.valid-target .penguin-pin.flow {
+  filter: drop-shadow(0 0 6px #4CAF50);
+}
+
+.penguin-pin-hitbox.invalid-target .penguin-pin {
+  opacity: 0.5;
+}
+
+#penguin-temp-wire {
+  pointer-events: none;
+}
+
+#penguin-selection-box {
+  position: fixed;
+  border: 2px solid #2196F3;
+  background: rgba(33, 150, 243, 0.1);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.penguin-wire {
+  pointer-events: stroke;
+  cursor: pointer;
+  transition: stroke-width 0.1s ease, filter 0.1s ease;
+}
+
+.penguin-wire:hover {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5));
+}
+
+.penguin-wire.selected {
+  filter:
+    drop-shadow(0 1px 0 #2196F3) drop-shadow(1px 0 0 #2196F3) drop-shadow(0 -1px 0 #2196F3) drop-shadow(-1px 0 0 #2196F3) drop-shadow(1px 1px 0 #2196F3) drop-shadow(-1px -1px 0 #2196F3) drop-shadow(1px -1px 0 #2196F3) drop-shadow(-1px 1px 0 #2196F3);
+}
