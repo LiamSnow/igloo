@@ -1,37 +1,40 @@
 #![allow(non_snake_case)]
 
-use dioxus::{logger::tracing, prelude::*};
+use dioxus::prelude::*;
 
 mod comps;
+mod context;
 mod ffi;
+mod graph;
 mod state;
 mod types;
 
 use comps::*;
-use euclid::default::Point2D;
 use state::*;
-use web_sys::js_sys::Array;
 
-use crate::{
-    ffi::{LMB_DOWN, RMB_DOWN},
-    types::{NodeId, WireId},
-};
+use crate::{context::ContextMenuState, ffi::*, graph::*};
 
 fn main() {
     dioxus::launch(App);
 }
 
 fn App() -> Element {
-    let mut graph = use_store(GraphState::new);
+    let mut graph = use_store(Graph::new);
     let mut wiring_state: Signal<Option<WiringData>> = use_signal(|| None);
     let grid_settings: Signal<GridSettings> = use_signal(GridSettings::default);
+    let mut context_menu_state = use_signal(ContextMenuState::default);
+    let mut rmb_start = use_signal(|| None);
 
     let onkeydown = move |e: Event<KeyboardData>| match e.key() {
         Key::Delete | Key::Backspace => {
             e.prevent_default();
-            handle_delete(&mut graph);
+            graph.write().delete_selection();
         }
         _ => {}
+    };
+
+    let oncontextmenu = move |e: Event<MouseData>| {
+        rmb_start.set(Some(e.client_coordinates()));
     };
 
     use_effect(move || {
@@ -42,7 +45,20 @@ fn App() -> Element {
 
     use_effect(move || {
         if !LMB_DOWN() {
-            sync_js_rust(&graph);
+            graph.write().sync_from_js();
+        }
+    });
+
+    use_effect(move || {
+        if !RMB_DOWN() {
+            let Some(start) = rmb_start.write().take() else {
+                return;
+            };
+
+            let pos = *MOUSE_POS.peek();
+            if start.distance_to(pos) < 10. {
+                context_menu_state.write().open_workspace(pos);
+            }
         }
     });
 
@@ -59,10 +75,13 @@ fn App() -> Element {
             display: "none",
         }
 
+        ContextMenu { graph, context_menu_state }
+
         div {
             id: "penguin",
             tabindex: 0,
             onkeydown,
+            oncontextmenu,
             onmount: move |_| {
                 ffi::init();
                 ffi::register_listeners();
@@ -108,6 +127,7 @@ fn App() -> Element {
                     WireComponent {
                         id,
                         wire,
+                        context_menu_state,
                     }
                 }
 
@@ -133,54 +153,11 @@ fn App() -> Element {
                             id,
                             node,
                             wiring_state,
+                            context_menu_state,
                         }
                     }
                 }
             }
         }
     }
-}
-
-fn handle_delete(graph: &mut Store<GraphState>) {
-    let selected_nodes = ffi::getSelectedNodeIds();
-    let selected_wires = ffi::getSelectedWireIds();
-
-    let mut g = graph.write();
-
-    for wire_id in selected_wires {
-        g.wires.remove(&WireId(wire_id));
-    }
-
-    for node_id in &selected_nodes {
-        g.nodes.remove(&NodeId(*node_id));
-    }
-
-    g.wires.retain(|_, wire| {
-        !selected_nodes.contains(&wire.from_node.0) && !selected_nodes.contains(&wire.to_node.0)
-    });
-
-    ffi::delayedRerender();
-}
-
-fn sync_js_rust(graph: &Store<GraphState>) -> Option<()> {
-    let items = ffi::getAllNodePositions();
-
-    let mut n = graph.nodes();
-    let mut nodes = n.write();
-
-    for item in items {
-        let item: Array = item.into();
-        let node_id = NodeId(item.get(0).as_f64()? as u16);
-        let x = item.get(1).as_f64()?;
-        let y = item.get(2).as_f64()?;
-
-        let Some(node) = nodes.get_mut(&node_id) else {
-            tracing::error!("JS requested update for {node_id:?}, which doesn't exist");
-            continue;
-        };
-
-        node.pos = Point2D::new(x, y);
-    }
-
-    Some(())
 }

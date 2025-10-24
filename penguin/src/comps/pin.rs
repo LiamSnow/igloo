@@ -1,15 +1,16 @@
 use crate::{
     ffi,
-    state::{GraphState, GraphStateStoreExt, WiringData},
+    graph::{Graph, GraphStoreExt},
+    state::WiringData,
     types::*,
 };
 use dioxus::{html::input_data::MouseButton, prelude::*};
 
 #[component]
 pub fn PinComponent(
-    graph: Store<GraphState>,
-    node_id: NodeId,
-    pin_id: PinId,
+    graph: Store<Graph>,
+    node_id: NodeID,
+    pin_id: PinID,
     pin_type: PinType,
     is_output: bool,
     wiring_state: Signal<Option<WiringData>>,
@@ -77,7 +78,7 @@ pub fn PinComponent(
         let next_id = g.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
 
         g.wires.insert(
-            WireId(next_id),
+            WireID(next_id),
             Wire {
                 from_node,
                 from_pin,

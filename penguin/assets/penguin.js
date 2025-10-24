@@ -9,6 +9,7 @@ let interaction = {
   startPan: null,
   draggedNodes: [],
   boxSelectStart: null,
+  boxSelectReplace: false,
   wiringData: null,
 };
 
@@ -24,6 +25,7 @@ export function init() {
 
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
+  window.onresize = rerender;
   penguin.addEventListener('keydown', onKeyDown);
   penguin.addEventListener('mousedown', onMouseDown);
   penguin.addEventListener('contextmenu', onContextMenu);
@@ -96,9 +98,7 @@ function onContextMenu(e) {
     interaction.mode = 'box-selecting';
     interaction.boxSelectStart = { x: e.clientX, y: e.clientY };
 
-    if (!e.shiftKey && !e.ctrlKey) {
-      clearSelection();
-    }
+    interaction.boxSelectReplace = !e.shiftKey && !e.ctrlKey;
   }
 }
 
@@ -297,6 +297,14 @@ function completeBoxSelection() {
   const box = document.getElementById('penguin-selection-box');
   const boxRect = box.getBoundingClientRect();
   box.style.display = 'none';
+
+  if (boxRect.width < 10 && boxRect.height < 10) {
+    return;
+  }
+
+  if (interaction.boxSelectReplace) {
+    clearSelection();
+  }
 
   const nodes = document.querySelectorAll('.penguin-node');
   nodes.forEach(node => {

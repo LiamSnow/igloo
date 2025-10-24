@@ -1,23 +1,26 @@
 use crate::{
-    comps::PinComponent,
-    ffi,
-    state::{GraphState, WiringData},
-    types::*,
+    comps::PinComponent, context::ContextMenuState, ffi, graph::Graph, state::WiringData, types::*,
 };
 use dioxus::prelude::*;
 
 #[component]
 pub fn NodeComponent(
-    graph: Store<GraphState>,
-    id: NodeId,
+    graph: Store<Graph>,
+    id: NodeID,
     node: Store<Node>,
     wiring_state: Signal<Option<WiringData>>,
+    context_menu_state: Signal<ContextMenuState>,
 ) -> Element {
     rsx! {
         div {
             class: "penguin-node",
             "data-node-id": id.0,
             transform: "translate({node.pos().read().x}px, {node.pos().read().y}px)",
+            oncontextmenu: move |e: Event<MouseData>| {
+                e.prevent_default();
+                e.stop_propagation();
+                context_menu_state.write().open_node(e.client_coordinates(), id);
+            },
             onmount: move |_| {
                 ffi::rerender();
             },

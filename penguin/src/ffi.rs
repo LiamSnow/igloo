@@ -1,4 +1,7 @@
-use dioxus::signals::{GlobalSignal, Signal};
+use dioxus::{
+    html::geometry::ClientPoint,
+    signals::{GlobalSignal, Signal},
+};
 use wasm_bindgen::prelude::*;
 use web_sys::Document;
 
@@ -17,11 +20,24 @@ extern "C" {
 
 pub static LMB_DOWN: GlobalSignal<bool> = Signal::global(|| false);
 pub static RMB_DOWN: GlobalSignal<bool> = Signal::global(|| false);
+pub static MOUSE_POS: GlobalSignal<ClientPoint> = Signal::global(ClientPoint::default);
 
 pub fn register_listeners() {
     let document = web_sys::window().unwrap().document().unwrap();
+    setup_mousemove(&document);
     setup_mouseup(&document);
     setup_mousedown(&document);
+}
+
+fn setup_mousemove(document: &Document) {
+    let c = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
+        *MOUSE_POS.write() = ClientPoint::new(e.client_x() as f64, e.client_y() as f64);
+    }) as Box<dyn FnMut(_)>);
+
+    document
+        .add_event_listener_with_callback("mousemove", c.as_ref().unchecked_ref())
+        .unwrap();
+    c.forget();
 }
 
 fn setup_mouseup(document: &Document) {

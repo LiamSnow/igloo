@@ -6,3 +6,5 @@ pub mod wire;
 pub use wire::*;
 pub mod grid;
 pub use grid::*;
+pub mod context;
+pub use context::*;

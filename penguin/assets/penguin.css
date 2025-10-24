@@ -168,7 +168,7 @@ body {
 
 #penguin-selection-box {
   position: fixed;
-  border: 2px solid #2196F3;
+  border: 1px solid #2196F3;
   background: rgba(33, 150, 243, 0.1);
   pointer-events: none;
   z-index: 1000;
@@ -226,4 +226,48 @@ body {
 
 .grid-setting-button:active {
   transform: scale(0.95);
+}
+
+#context-menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+}
+
+#context-menu {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 150px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  transition: background 0.1s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.context-menu-item:active {
+  background: rgba(255, 255, 255, 0.15);
 }
