@@ -7,8 +7,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::{
-    Color, ColorMode, DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_COLOR,
-    WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE, WRITE_DIMMER, WRITE_SWITCH,
+    Color, ColorMode, ColorTemperature, DESELECT_ENTITY, Dimmer, END_TRANSACTION,
+    FloeWriterDefault, Switch, WRITE_COLOR, WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE,
+    WRITE_DIMMER, WRITE_SWITCH,
 };
 
 #[async_trait]
@@ -33,6 +34,14 @@ impl EntityRegister for crate::api::ListEntitiesLightResponse {
     }
 }
 
+pub fn kelvin_to_mireds(kelvin: u16) -> f32 {
+    1_000_000. / kelvin as f32
+}
+
+pub fn mireds_to_kelvin(mireds: f32) -> u16 {
+    (1_000_000. / mireds).round() as u16
+}
+
 #[async_trait]
 impl EntityUpdate for api::LightStateResponse {
     fn key(&self) -> u32 {
@@ -50,7 +59,7 @@ impl EntityUpdate for api::LightStateResponse {
         writer.dimmer(&self.brightness).await?;
         writer.switch(&self.state).await?;
         writer
-            .color_temperature(&(self.color_temperature as u16))
+            .color_temperature(&(mireds_to_kelvin(self.color_temperature)))
             .await?;
 
         // ON_OFF = 1 << 0;
@@ -95,7 +104,7 @@ pub async fn process(
             }
 
             WRITE_DIMMER => {
-                let val: f32 = borsh::from_slice(&payload)?;
+                let val: Dimmer = borsh::from_slice(&payload)?;
                 // req.has_color_brightness = true;
                 // req.color_brightness = val;
                 req.has_brightness = true;
@@ -106,15 +115,15 @@ pub async fn process(
             }
 
             WRITE_SWITCH => {
-                let state: bool = borsh::from_slice(&payload)?;
+                let state: Switch = borsh::from_slice(&payload)?;
                 req.has_state = true;
                 req.state = state;
             }
 
             WRITE_COLOR_TEMPERATURE => {
-                let temp: u32 = borsh::from_slice(&payload)?;
+                let temp_kelvin: ColorTemperature = borsh::from_slice(&payload)?;
                 req.has_color_temperature = true;
-                req.color_temperature = temp as f32;
+                req.color_temperature = kelvin_to_mireds(temp_kelvin);
             }
 
             WRITE_COLOR_MODE => {
