@@ -20,11 +20,19 @@ mod glacier;
 mod test;
 mod web;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GlobalState {
     query_tx: mpsc::Sender<Query>,
     cast: broadcast::Sender<(u16, Message)>,
-    dashboards: Arc<RwLock<FxHashMap<String, Dashboard>>>,
+    /// send msgs to dash tasks
+    dash_tx: broadcast::Sender<(u16, DashboardRequest)>,
+    dashs: Arc<RwLock<FxHashMap<String, Dashboard>>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DashboardRequest {
+    Shutdown,
+    DumpData,
 }
 
 #[tokio::main]
@@ -36,7 +44,8 @@ async fn main() {
     let gs = GlobalState {
         query_tx,
         cast: broadcast::channel(100).0,
-        dashboards: Arc::new(RwLock::new(FxHashMap::default())),
+        dash_tx: broadcast::channel(10).0,
+        dashs: Arc::new(RwLock::new(FxHashMap::default())),
     };
 
     let gsc = gs.clone();

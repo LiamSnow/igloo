@@ -7,24 +7,115 @@ use igloo_interface::{
     },
     ws::{ElementUpdate, ServerMessage},
 };
+use rustc_hash::FxHashMap;
 use std::{collections::HashMap, error::Error};
 use tokio::sync::mpsc;
 
-use crate::{GlobalState, glacier::query::WatchAllQuery, web::watch::GetWatchers};
+use crate::{
+    DashboardRequest, GlobalState, glacier::query::WatchAllQuery, web::watch::GetWatchers,
+};
 
-pub async fn make(state: GlobalState) -> Result<(), Box<dyn Error>> {
+pub async fn init_dash(
+    state: GlobalState,
+    dash_idx: u16,
+    dash_id: String,
+    mut dash: Dashboard,
+) -> Result<(), Box<dyn Error>> {
+    dash.idx = Some(dash_idx);
+    let watchers = dash.attach_watchers(dash_idx).unwrap();
+
+    let (watch_tx, mut watch_rx) = mpsc::channel(10);
+    for watcher in watchers {
+        state
+            .query_tx
+            .send(
+                WatchAllQuery {
+                    filter: watcher.filter,
+                    target: watcher.target,
+                    update_tx: watch_tx.clone(),
+                    comp: watcher.comp,
+                    prefix: watcher.watch_id,
+                }
+                .into(),
+            )
+            .await
+            .unwrap();
+    }
+
+    let mut dashs = state.dashs.write().await;
+    dashs.insert(dash_id, dash);
+    drop(dashs);
+
+    tokio::spawn(async move {
+        // TODO probably need to keep this handle on GlobalState
+        // so we can update queries as dashboard is edited
+
+        let mut dash_rx = state.dash_tx.subscribe();
+        let mut watch_values = FxHashMap::default();
+
+        loop {
+            tokio::select! {
+                Some((watch_id, _, _, value)) = watch_rx.recv() => {
+                    watch_values.insert(watch_id, value.clone());
+                    let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
+                    let bytes = match borsh::to_vec(&msg) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            eprintln!("Failed to borsh serialize ServerMessage: {msg:?}, because {e}");
+                            continue;
+                        }
+                    };
+                    let res = state.cast.send((dash_idx, Message::Binary(bytes.into())));
+                    if let Err(e) = res {
+                        eprintln!("failed to broadcast: {e}");
+                    }
+                }
+
+                Ok((req_dash_idx, req)) = dash_rx.recv() => {
+                    if req_dash_idx != dash_idx {
+                        continue;
+                    }
+
+                    match req {
+                        DashboardRequest::Shutdown => {
+                            break;
+                        },
+                        DashboardRequest::DumpData => {
+                            for (watch_id, value) in watch_values.clone() {
+                                let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
+                                let bytes = match borsh::to_vec(&msg) {
+                                    Ok(b) => b,
+                                    Err(e) => {
+                                        eprintln!("Failed to borsh serialize ServerMessage: {msg:?}, because {e}");
+                                        continue;
+                                    }
+                                };
+                                let res = state.cast.send((dash_idx, Message::Binary(bytes.into())));
+                                if let Err(e) = res {
+                                    eprintln!("failed to broadcast: {e}");
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+pub async fn make(state: &GlobalState) -> Result<(), Box<dyn Error>> {
     let mut targets = HashMap::default();
     targets.insert(
         "surf".to_string(),
         QueryTarget::Device(DeviceID::from_parts(0, 0)),
     );
 
-    let dash_idx = 0;
-
-    let mut dash = Dashboard {
+    let main_dash = Dashboard {
         display_name: "Main".to_string(),
         targets,
-        idx: Some(dash_idx),
+        idx: None,
         child: VStackElement {
             justify: VAlign::Center,
             align: HAlign::Center,
@@ -134,57 +225,16 @@ pub async fn make(state: GlobalState) -> Result<(), Box<dyn Error>> {
         .into(),
     };
 
-    let watchers = dash.attach_watchers(dash_idx).unwrap();
-
-    let (watch_tx, mut watch_rx) = mpsc::channel(10);
-    for watcher in watchers {
-        println!("registering query");
-        state
-            .query_tx
-            .send(
-                WatchAllQuery {
-                    filter: watcher.filter,
-                    target: watcher.target,
-                    update_tx: watch_tx.clone(),
-                    comp: watcher.comp,
-                    prefix: watcher.watch_id,
-                }
-                .into(),
-            )
-            .await
-            .unwrap();
-    }
-    let gs = state.clone();
-    tokio::spawn(async move {
-        while let Some((watch_id, _, _, value)) = watch_rx.recv().await {
-            // TODO we need some system of collecting all of these,
-            // then shipping out all values to new viewers
-            let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
-            let bytes = borsh::to_vec(&msg).unwrap(); // FIXME unwrap
-            let dash_idx = (watch_id >> 16) as u16;
-            let res = gs.cast.send((dash_idx, Message::Binary(bytes.into())));
-            if let Err(e) = res {
-                eprintln!("failed to broadcast: {e}");
-            }
-        }
-    });
-
-    let mut dashs = state.dashboards.write().await;
-    dashs.insert("main".into(), dash);
-    drop(dashs);
-
     let mut targets = HashMap::default();
     targets.insert(
         "surf".to_string(),
         QueryTarget::Device(DeviceID::from_parts(0, 0)),
     );
 
-    let dash_idx = 1;
-
-    let mut dash = Dashboard {
+    let main2_dash = Dashboard {
         display_name: "Main 2".to_string(),
         targets,
-        idx: Some(dash_idx),
+        idx: None,
         child: HStackElement {
             justify: HAlign::Center,
             align: VAlign::Center,
@@ -294,44 +344,8 @@ pub async fn make(state: GlobalState) -> Result<(), Box<dyn Error>> {
         .into(),
     };
 
-    let watchers = dash.attach_watchers(dash_idx).unwrap();
-
-    let (watch_tx, mut watch_rx) = mpsc::channel(10);
-    for watcher in watchers {
-        println!("registering query");
-        state
-            .query_tx
-            .send(
-                WatchAllQuery {
-                    filter: watcher.filter,
-                    target: watcher.target,
-                    update_tx: watch_tx.clone(),
-                    comp: watcher.comp,
-                    prefix: watcher.watch_id,
-                }
-                .into(),
-            )
-            .await
-            .unwrap();
-    }
-    let gs = state.clone();
-    tokio::spawn(async move {
-        while let Some((watch_id, _, _, value)) = watch_rx.recv().await {
-            // TODO we need some system of collecting all of these,
-            // then shipping out all values to new viewers
-            let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
-            let bytes = borsh::to_vec(&msg).unwrap(); // FIXME unwrap
-            let dash_idx = (watch_id >> 16) as u16;
-            let res = gs.cast.send((dash_idx, Message::Binary(bytes.into())));
-            if let Err(e) = res {
-                eprintln!("failed to broadcast: {e}");
-            }
-        }
-    });
-
-    let mut dashs = state.dashboards.write().await;
-    dashs.insert("main_2".into(), dash);
-    drop(dashs);
+    init_dash(state.clone(), 0, "main".into(), main_dash).await?;
+    init_dash(state.clone(), 1, "main2".into(), main2_dash).await?;
 
     Ok(())
 }

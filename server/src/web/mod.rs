@@ -15,7 +15,7 @@ use std::error::Error;
 use tokio::{net::TcpListener, sync::oneshot};
 
 use crate::{
-    GlobalState,
+    DashboardRequest, GlobalState,
     glacier::query::{Query, SnapshotQuery},
 };
 
@@ -47,15 +47,14 @@ async fn handle_socket(
     state: GlobalState,
     mut socket: WebSocket,
 ) {
-    test_dashes::make(state.clone()).await.unwrap();
+    test_dashes::make(&state).await.unwrap();
 
     let mut cast_rx = state.cast.subscribe();
     let mut cur_dash_idx = u16::MAX;
     loop {
         tokio::select! {
-            Ok((dash_id, msg)) = cast_rx.recv() => {
-                if dash_id != cur_dash_idx {
-                    println!("Client is on wrong dashboard, skipping.."); // FIXME remove
+            Ok((dash_idx, msg)) = cast_rx.recv() => {
+                if dash_idx != cur_dash_idx {
                     continue;
                 }
 
@@ -97,10 +96,11 @@ async fn handle_client_msg(
     match msg {
         ClientMessage::ExecSetQuery(q) => state.query_tx.send(q.into()).await.unwrap(),
         ClientMessage::Init => {
-            let dashs = state.dashboards.read().await;
+            let dashs = state.dashs.read().await;
             let mut metas = Vec::with_capacity(dashs.len());
             for (id, dash) in dashs.clone().into_iter() {
                 metas.push(DashboardMeta {
+                    is_default: id == "main", // FIXME use user pref
                     id,
                     display_name: dash.display_name,
                 });
@@ -116,19 +116,26 @@ async fn handle_client_msg(
                 return Ok(());
             };
 
-            let dashs = state.dashboards.read().await;
+            let dash = state
+                .dashs
+                .read()
+                .await
+                .get(&dash_id)
+                .ok_or("invalid dashboard ID")?
+                .clone();
 
-            let dash = dashs.get(&dash_id).ok_or("invalid dashboard ID")?;
             *cur_dash_idx = dash.idx.unwrap(); // always init
-
-            let msg: ServerMessage = (Some(dash_id), Box::new(dash.clone())).into();
+            let msg: ServerMessage = (Some(dash_id), Box::new(dash)).into();
             let bytes = borsh::to_vec(&msg)?;
 
-            drop(dashs);
-
             socket.send(Message::Binary(bytes.into())).await?;
+
+            state
+                .dash_tx
+                .send((*cur_dash_idx, DashboardRequest::DumpData))?;
         }
         ClientMessage::GetPageData(ClientPage::Tree) => {
+            *cur_dash_idx = u16::MAX;
             let (response_tx, response_rx) = oneshot::channel();
             state
                 .query_tx
@@ -138,8 +145,12 @@ async fn handle_client_msg(
             let bytes = borsh::to_vec(&msg)?;
             socket.send(Message::Binary(bytes.into())).await?;
         }
-        ClientMessage::GetPageData(ClientPage::Settings) => {}
-        ClientMessage::GetPageData(ClientPage::Penguin) => {}
+        ClientMessage::GetPageData(ClientPage::Settings) => {
+            *cur_dash_idx = u16::MAX;
+        }
+        ClientMessage::GetPageData(ClientPage::Penguin) => {
+            *cur_dash_idx = u16::MAX;
+        }
     }
 
     Ok(())

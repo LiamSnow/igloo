@@ -13,7 +13,7 @@ use web_sys::{js_sys, ErrorEvent, MessageEvent, WebSocket};
 use crate::Route;
 
 pub static WS_CONNECTED: GlobalSignal<bool> = Global::new(|| false);
-pub static DASHBOARDS: GlobalSignal<Vec<DashboardMeta>> = Global::new(Vec::new);
+pub static DASHBOARDS: GlobalSignal<Option<Vec<DashboardMeta>>> = Global::new(|| None);
 pub static CURRENT_DASHBOARD: GlobalSignal<Option<Dashboard>> = Global::new(|| None);
 pub static CURRENT_SNAPSHOT: GlobalSignal<Option<Snapshot>> = Global::new(|| None);
 pub static CURRENT_ROUTE: GlobalSignal<Route> = Global::new(|| Route::Settings {});
@@ -69,7 +69,7 @@ pub fn connect_websocket() {
                     *CURRENT_SNAPSHOT.write() = Some(*snap);
                 }
                 ServerMessage::Dashboards(metas) => {
-                    *DASHBOARDS.write() = metas;
+                    *DASHBOARDS.write() = Some(metas);
                 }
             },
             Err(e) => {
@@ -154,7 +154,7 @@ pub fn send_cur_page() {
 fn cur_page() -> ClientPage {
     match &*CURRENT_ROUTE.read() {
         Route::Dash { id } => ClientPage::Dashboard(Some(id.clone())),
-        Route::DashDefault {} => ClientPage::Dashboard(None),
+        Route::DashEmpty {} => ClientPage::Dashboard(None),
         Route::Penguin {} => ClientPage::Penguin,
         Route::Settings {} => ClientPage::Settings,
         Route::Tree {} => ClientPage::Tree,

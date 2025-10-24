@@ -29,7 +29,7 @@ pub fn Header() -> Element {
             },
             div {
                 Link {
-                    to: Route::DashDefault {},
+                    to: Route::DashEmpty {},
                     "Dash"
                 }
                 Link {

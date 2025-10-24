@@ -9,22 +9,22 @@ mod sidebar;
 mod tree;
 mod ws;
 
-use dash::{Dash, DashDefault};
+use dash::{Dash, DashEmpty};
 use header::Header;
 use penguin::Penguin;
 use settings::Settings;
 use tree::Tree;
 
-use crate::ws::CURRENT_ROUTE;
+use crate::ws::{CURRENT_ROUTE, DASHBOARDS};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
 enum Route {
     #[layout(Header)]
-    #[redirect("/", || Route::DashDefault { })]
+    #[redirect("/", || Route::DashEmpty { })]
 
     #[route("/dash")]
-    DashDefault { },
+    DashEmpty { },
     #[route("/dash/:id")]
     Dash { id: String },
 

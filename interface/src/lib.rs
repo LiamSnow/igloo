@@ -12,3 +12,8 @@ pub use server::*;
 pub mod floe;
 #[cfg(feature = "floe")]
 pub use floe::*;
+
+#[cfg(feature = "penguin")]
+pub mod penguin;
+#[cfg(feature = "penguin")]
+pub use penguin::*;

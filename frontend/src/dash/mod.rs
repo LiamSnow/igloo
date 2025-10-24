@@ -19,9 +19,27 @@ use switch::Switch;
 const DASH_CSS: Asset = asset!("/assets/styling/dash.css");
 
 #[component]
-pub fn DashDefault() -> Element {
+pub fn DashEmpty() -> Element {
+    use_effect(|| {
+        let nav = navigator();
+        if let Some(dashboards) = DASHBOARDS.read().as_ref() {
+            for dash in dashboards.iter() {
+                if dash.is_default {
+                    nav.replace(Route::Dash {
+                        id: dash.id.clone(),
+                    });
+                    break;
+                }
+            }
+        }
+    });
+
+    // TODO make into func with other one?
     let links = use_memo(move || {
-        let dashs = DASHBOARDS.read();
+        let dop = DASHBOARDS.read();
+        let Some(dashs) = dop.as_ref() else {
+            return vec![];
+        };
         let mut v = Vec::with_capacity(dashs.len());
         for dash in dashs.iter() {
             v.push(SideBarLink {
@@ -41,7 +59,6 @@ pub fn DashDefault() -> Element {
         SideBar { links: links() }
 
         div { class: "dashboard",
-            // TODO display default dashboard
             h1 { "No dashboards exist. Try creating one." }
         }
     }
@@ -50,7 +67,10 @@ pub fn DashDefault() -> Element {
 #[component]
 pub fn Dash(id: String) -> Element {
     let links = use_memo(move || {
-        let dashs = DASHBOARDS.read();
+        let dop = DASHBOARDS.read();
+        let Some(dashs) = dop.as_ref() else {
+            return vec![];
+        };
         let mut v = Vec::with_capacity(dashs.len());
         for dash in dashs.iter() {
             v.push(SideBarLink {
@@ -82,31 +102,11 @@ pub fn Dash(id: String) -> Element {
 #[component]
 fn DashComponent(el: DashElement) -> Element {
     match el {
-        DashElement::HStack(el) => {
-            rsx! {
-                HStack { el }
-            }
-        }
-        DashElement::VStack(el) => {
-            rsx! {
-                VStack { el }
-            }
-        }
-        DashElement::Slider(el) => {
-            rsx! {
-                Slider { el }
-            }
-        }
-        DashElement::ColorPicker(el) => {
-            rsx! {
-                ColorPicker { el }
-            }
-        }
-        DashElement::Switch(el) => {
-            rsx! {
-                Switch { el }
-            }
-        }
+        DashElement::HStack(el) => rsx! { HStack { el } },
+        DashElement::VStack(el) => rsx! { VStack { el } },
+        DashElement::Slider(el) => rsx! { Slider { el } },
+        DashElement::ColorPicker(el) => rsx! { ColorPicker { el } },
+        DashElement::Switch(el) => rsx! { Switch { el } },
         _ => rsx! { div { "Unsupported element" } },
     }
 }

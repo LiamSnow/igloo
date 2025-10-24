@@ -8,6 +8,8 @@ const TREE_CSS: Asset = asset!("/assets/styling/tree.css");
 
 // TODO should add modification and refreshing/watching
 
+// TODO use dioxus stores so we don't need to be cloning all over the place!!
+
 #[component]
 pub fn Tree() -> Element {
     let expanded = use_signal(HashSet::<String>::new);
