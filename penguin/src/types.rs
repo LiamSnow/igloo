@@ -15,14 +15,9 @@ pub struct PinId(pub String);
 #[derive(Debug, Store, PartialEq)]
 pub struct Node {
     pub title: String,
-    pub inputs: HashMap<PinId, Pin>,
-    pub outputs: HashMap<PinId, Pin>,
-    pub position: Point2D<f64>,
-}
-
-#[derive(Debug, Store, PartialEq)]
-pub struct Pin {
-    pub typ: PinType,
+    pub inputs: HashMap<PinId, PinType>,
+    pub outputs: HashMap<PinId, PinType>,
+    pub pos: Point2D<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,18 +26,27 @@ pub enum PinType {
     Value { subtype: String, color: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-pub struct PinRef {
-    pub node_id: NodeId,
-    pub pin_id: PinId,
+#[derive(Clone, Debug, PartialEq)]
+pub struct Wire {
+    pub from_node: NodeId,
+    pub from_pin: PinId,
+    pub to_node: NodeId,
+    pub to_pin: PinId,
+    pub wire_type: PinType,
 }
 
-#[derive(Clone, Debug, Store, PartialEq, Default)]
-pub struct Wire {
-    pub from_pin: PinRef,
-    pub to_pin: PinRef,
-    pub from_pos: Point2D<f64>,
-    pub to_pos: Point2D<f64>,
-    pub stroke: String,
-    pub stroke_width: u8,
+impl PinType {
+    pub fn stroke(&self) -> &str {
+        match self {
+            PinType::Value { color, .. } => color,
+            _ => "white",
+        }
+    }
+
+    pub fn stroke_width(&self) -> u8 {
+        match self {
+            PinType::Flow => 4,
+            _ => 2,
+        }
+    }
 }

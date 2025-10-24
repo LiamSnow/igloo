@@ -1,58 +1,26 @@
-use std::collections::HashSet;
-
 use crate::{
     comps::PinComponent,
-    state::{GraphState, InteractionMode, Selected, SelectedStoreExt, ViewportState},
+    ffi,
+    state::{GraphState, WiringData},
     types::*,
 };
-use dioxus::{html::input_data::MouseButton, prelude::*};
+use dioxus::prelude::*;
 
 #[component]
 pub fn NodeComponent(
     graph: Store<GraphState>,
     id: NodeId,
     node: Store<Node>,
-    selected: Store<Selected>,
-    interaction: Signal<InteractionMode>,
-    viewport: Signal<ViewportState>,
+    wiring_state: Signal<Option<WiringData>>,
 ) -> Element {
-    let onmousedown = move |e: Event<MouseData>| {
-        if e.trigger_button() != Some(MouseButton::Primary) {
-            return;
-        }
-
-        e.stop_propagation();
-        e.prevent_default();
-
-        // append selection
-        let mods = e.data().modifiers();
-        if mods.shift() || mods.ctrl() {
-            selected.nodes().write().insert(id);
-        }
-        // replace selection
-        else {
-            let mut s = HashSet::new();
-            s.insert(id);
-            selected.nodes().set(s);
-            selected.wires().set(HashSet::default());
-        }
-
-        interaction.set(InteractionMode::Dragging);
-    };
-
-    let oncontextmenu = move |e: Event<MouseData>| {
-        e.stop_propagation();
-        e.prevent_default();
-        // TODO edit node
-    };
-
     rsx! {
         div {
-            class: if selected.nodes().read().contains(&id) { "penguin-node selected" } else { "penguin-node" },
+            class: "penguin-node",
             "data-node-id": id.0,
-            transform: "translate({node.position()().x}px, {node.position()().y}px)",
-            onmousedown,
-            oncontextmenu,
+            transform: "translate({node.pos().read().x}px, {node.pos().read().y}px)",
+            onmount: move |_| {
+                ffi::rerender();
+            },
 
             div {
                 class: "penguin-node-title",
@@ -61,30 +29,28 @@ pub fn NodeComponent(
 
             div {
                 class: "penguin-node-inputs",
-                for (pin_id, pin) in node.inputs().iter() {
+                for (pin_id, pin_type) in node.inputs()() {
                     PinComponent {
                         graph,
                         node_id: id,
                         pin_id,
-                        pin,
+                        pin_type,
                         is_output: false,
-                        interaction,
-                        viewport,
+                        wiring_state,
                     }
                 }
             }
 
             div {
                 class: "penguin-node-outputs",
-                for (pin_id, pin) in node.outputs().iter() {
+                for (pin_id, pin_type) in node.outputs()() {
                     PinComponent {
                         graph,
                         node_id: id,
                         pin_id,
-                        pin,
+                        pin_type,
                         is_output: true,
-                        interaction,
-                        viewport,
+                        wiring_state,
                     }
                 }
             }

@@ -20,12 +20,17 @@ body {
 
 #penguin {
   background-color: #1a1a1a;
-  border: 1px solid #444;
+  border: 1px solid #1a1a1a;
   width: 100%;
   height: 100%;
   position: relative;
   border-radius: 20px;
   overflow: clip;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+#penguin:focus {
+  outline: none;
 }
 
 #penguin-viewport {
@@ -182,4 +187,43 @@ body {
 .penguin-wire.selected {
   filter:
     drop-shadow(0 1px 0 #2196F3) drop-shadow(1px 0 0 #2196F3) drop-shadow(0 -1px 0 #2196F3) drop-shadow(-1px 0 0 #2196F3) drop-shadow(1px 1px 0 #2196F3) drop-shadow(-1px -1px 0 #2196F3) drop-shadow(1px -1px 0 #2196F3) drop-shadow(-1px 1px 0 #2196F3);
+}
+
+.grid-settings-toolbar {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  gap: 8px;
+}
+
+.grid-setting-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+.grid-setting-button:hover {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: #2196F3;
+  box-shadow: 0 0 10px rgba(33, 150, 243, 0.3);
+}
+
+.grid-setting-button.active {
+  border-color: #2196F3;
+  background: rgba(33, 150, 243, 0.2);
+}
+
+.grid-setting-button:active {
+  transform: scale(0.95);
 }
