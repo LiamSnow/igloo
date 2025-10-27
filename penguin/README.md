@@ -1,8 +1,8 @@
 # Igloo Penguin
 
 ## TODO
-- [ ] context menu for deleting (wires + nodes)
-- [ ] context menu for adding nodes
-- [ ] copy, paste
-- [ ] undo, redo
+- [x] context menu for deleting (wires + nodes)
+- [x] context menu for adding nodes
+- [x] copy, paste
+- [x] undo, redo
 - [ ] igloo server integration

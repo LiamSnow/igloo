@@ -1,7 +1,12 @@
 #![allow(non_snake_case)]
 
-use dioxus::prelude::*;
+use crate::{context::ContextMenuState, ffi::*, graph::*};
+use comps::*;
+use dioxus::{logger::tracing, prelude::*};
 use igloo_interface::PenguinRegistry;
+use state::*;
+use std::collections::HashSet;
+use wasm_bindgen::JsCast;
 
 mod comps;
 mod context;
@@ -9,12 +14,6 @@ mod ffi;
 mod graph;
 mod state;
 mod types;
-
-use comps::*;
-use state::*;
-use wasm_bindgen::JsCast;
-
-use crate::{context::ContextMenuState, ffi::*, graph::*};
 
 fn main() {
     dioxus::launch(App);
@@ -29,16 +28,38 @@ fn App() -> Element {
     let mut context_menu_state = use_signal(ContextMenuState::default);
     let mut rmb_start = use_signal(|| None);
 
+    let connectivity = use_memo(move || {
+        let mut map = HashSet::new();
+        for wire in graph.wires().read().values() {
+            map.insert((wire.from_node, wire.from_pin, true));
+            map.insert((wire.to_node, wire.to_pin, false));
+        }
+        map
+    });
+
     let onkeydown = move |e: Event<KeyboardData>| {
         if ffi::isInputFocused() {
             return;
         }
+
+        let mods = e.modifiers();
+        let ctrl = mods.ctrl();
+        let shift = mods.shift();
 
         match e.key() {
             Key::Delete | Key::Backspace => {
                 e.prevent_default();
                 graph.write().delete(ffi::get_selection());
                 ffi::clearSelection();
+            }
+            Key::Character(c) => {
+                if c == "z" && ctrl && !shift {
+                    e.prevent_default();
+                    graph.write().undo();
+                } else if (c == "y" && ctrl) || (c == "z" && ctrl && shift) {
+                    e.prevent_default();
+                    graph.write().redo();
+                }
             }
             _ => {}
         }
@@ -133,7 +154,7 @@ fn App() -> Element {
 
     use_effect(move || {
         if !LMB_DOWN() {
-            graph.write().sync_from_js();
+            graph.write().commit_node_moves();
         }
     });
 
@@ -243,6 +264,7 @@ fn App() -> Element {
                             graph,
                             id,
                             node,
+                            connectivity,
                             wiring_state,
                             context_menu_state,
                         }

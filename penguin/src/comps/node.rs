@@ -8,12 +8,14 @@ use crate::{
 };
 use dioxus::prelude::*;
 use igloo_interface::{NodeConfig, NodeStyle, PenguinRegistry, PinDefnType};
+use std::collections::HashSet;
 
 #[component]
 pub fn NodeComponent(
     graph: Store<Graph>,
     id: NodeID,
     node: Store<Node>,
+    connectivity: Memo<HashSet<(NodeID, PinRef, bool)>>,
     wiring_state: Signal<Option<WiringData>>,
     context_menu_state: Signal<ContextMenuState>,
 ) -> Element {
@@ -141,6 +143,7 @@ pub fn NodeComponent(
                         pin_type,
                         pin_name,
                         is_output: false,
+                        connectivity,
                         wiring_state,
                     }
                 }
@@ -157,6 +160,7 @@ pub fn NodeComponent(
                         pin_type,
                         pin_name,
                         is_output: true,
+                        connectivity,
                         wiring_state,
                     }
                 }
