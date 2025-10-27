@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use dioxus::prelude::*;
+use igloo_interface::PenguinRegistry;
 
 mod comps;
 mod context;
@@ -19,6 +20,8 @@ fn main() {
 }
 
 fn App() -> Element {
+    use_context_provider(PenguinRegistry::new);
+
     let mut graph = use_store(Graph::new);
     let mut wiring_state: Signal<Option<WiringData>> = use_signal(|| None);
     let grid_settings: Signal<GridSettings> = use_signal(GridSettings::default);
@@ -27,8 +30,10 @@ fn App() -> Element {
 
     let onkeydown = move |e: Event<KeyboardData>| match e.key() {
         Key::Delete | Key::Backspace => {
-            e.prevent_default();
-            graph.write().delete_selection();
+            if !ffi::isInputFocused() {
+                e.prevent_default();
+                graph.write().delete(ffi::get_selection());
+            }
         }
         _ => {}
     };
@@ -38,8 +43,21 @@ fn App() -> Element {
     };
 
     use_effect(move || {
-        if (!LMB_DOWN() || RMB_DOWN()) && wiring_state.write().take().is_some() {
+        if !LMB_DOWN() || RMB_DOWN() {
+            let Some(ws) = wiring_state.write().take() else {
+                return;
+            };
+
             ffi::stopWiring();
+
+            if !ws.is_output {
+                return;
+            }
+
+            let pos = *MOUSE_POS.peek();
+            context_menu_state
+                .write()
+                .open_workspace(pos, Some(ws.wire_type), Some(ws));
         }
     });
 
@@ -57,7 +75,7 @@ fn App() -> Element {
 
             let pos = *MOUSE_POS.peek();
             if start.distance_to(pos) < 10. {
-                context_menu_state.write().open_workspace(pos);
+                context_menu_state.write().open_workspace(pos, None, None);
             }
         }
     });
@@ -75,7 +93,7 @@ fn App() -> Element {
             display: "none",
         }
 
-        ContextMenu { graph, context_menu_state }
+        ContextMenu { graph, state: context_menu_state }
 
         div {
             id: "penguin",

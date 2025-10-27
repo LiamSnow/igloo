@@ -67,9 +67,9 @@ export function getSelectedWireIds() {
   return Array.from(wires).map(wire => parseInt(wire.dataset.wireId));
 }
 
-export function startWiring(startNodeId, startPinId, isOutput) {
+export function startWiring(startNodeId, startPinDefn, startPinPhantom, isOutput) {
   interaction.mode = 'wiring';
-  interaction.wiringData = { startNodeId, startPinId, isOutput };
+  interaction.wiringData = { startNodeId, startPinDefn, startPinPhantom, isOutput };
 }
 
 export function stopWiring() {
@@ -103,16 +103,26 @@ function onContextMenu(e) {
 }
 
 function onMouseDown(e) {
-  const penguin = document.getElementById('penguin');
-  penguin.focus();
+  const input = e.target.closest('.penguin-input');
+
+  if (input) {
+    input.focus();
+  } else {
+    const penguin = document.getElementById('penguin');
+    penguin.focus();
+  }
 
   if (e.button === 0) {
-    e.preventDefault();
+    // e.preventDefault();
 
     const node = e.target.closest('.penguin-node');
     const wire = e.target.closest('.penguin-wire');
 
     if (node) {
+      if (e.target.closest('.penguin-input') || e.target.closest('.penguin-pin-hitbox')) {
+        return;
+      }
+
       if (e.shiftKey || e.ctrlKey) {
         node.classList.add('selected');
       } else {
@@ -194,7 +204,7 @@ function changeInteractionMode(mode) {
   if (interaction.mode === 'dragging' && gridSettings.snap) {
     snapNodesToGrid();
   }
-  
+
   interaction.mode = mode;
 }
 
@@ -265,9 +275,9 @@ function updateTempWire(e) {
   const tempWire = document.getElementById('penguin-temp-wire');
   if (!tempWire) return;
 
-  const { startNodeId, startPinId, isOutput } = interaction.wiringData;
+  const { startNodeId, startPinDefn, startPinPhantom, isOutput } = interaction.wiringData;
 
-  const startPos = getPinWorldPosition(startNodeId, startPinId, isOutput);
+  const startPos = getPinWorldPosition(startNodeId, startPinDefn, startPinPhantom, isOutput);
   if (!startPos) return;
 
   const penguin = document.getElementById('penguin');
@@ -385,12 +395,14 @@ function updateAllWires() {
 
   wires.forEach(wirePath => {
     const fromNodeId = wirePath.dataset.fromNode;
-    const fromPinId = wirePath.dataset.fromPin;
+    const fromPinDefn = wirePath.dataset.fromPinDefn;
+    const fromPinPhantom = wirePath.dataset.fromPinPhantom;
     const toNodeId = wirePath.dataset.toNode;
-    const toPinId = wirePath.dataset.toPin;
+    const toPinDefn = wirePath.dataset.toPinDefn;
+    const toPinPhantom = wirePath.dataset.toPinPhantom;
 
-    const fromPos = getPinWorldPosition(fromNodeId, fromPinId, true);
-    const toPos = getPinWorldPosition(toNodeId, toPinId, false);
+    const fromPos = getPinWorldPosition(fromNodeId, fromPinDefn, fromPinPhantom, true);
+    const toPos = getPinWorldPosition(toNodeId, toPinDefn, toPinPhantom, false);
 
     if (fromPos && toPos) {
       const d = createBezierPath(fromPos, toPos);
@@ -403,31 +415,34 @@ function updateAllWires() {
 
 function getNodeWorldPosition(nodeEl) {
   const transform = nodeEl.style.transform;
-  
+
   // translate(Xpx, Ypx)
   let match = transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
   if (match) {
     return { x: parseFloat(match[1]), y: parseFloat(match[2]) };
   }
-  
+
   // translate(Xpx) (browser optimizes this when at 0,0)
   match = transform.match(/translate\(([-\d.]+)px\)/);
   if (match) {
     return { x: parseFloat(match[1]), y: 0 };
   }
-  
+
   console.error('Could not parse transform, defaulting to (0, 0):', transform);
   return { x: 0, y: 0 };
 }
 
-function getPinWorldPosition(nodeId, pinId, isOutput) {
+function getPinWorldPosition(nodeId, pinDefn, pinPhantom, isOutput) {
   const node = document.querySelector(`.penguin-node[data-node-id="${nodeId}"]`);
   const pin = document.querySelector(
-    `.penguin-pin-hitbox[data-node-id="${nodeId}"][data-pin-id="${pinId}"][data-is-output="${isOutput}"]`
+    `.penguin-pin-hitbox[data-node-id="${nodeId}"]` +
+    `[data-pin-defn="${pinDefn}"]` +
+    `[data-pin-phantom="${pinPhantom}"]` +
+    `[data-is-output="${isOutput}"]`
   );
 
   if (!node || !pin) {
-    console.warn('Missing node or pin', { nodeId, pinId, isOutput, node, pin });
+    console.warn('Missing node or pin', { nodeId, pinDefn, pinPhantom, isOutput, node, pin });
     return null;
   }
 
@@ -459,4 +474,19 @@ function createBezierPath(from, to) {
   const dist = Math.abs(to.x - from.x);
   const coff = Math.min(dist / 2, 100);
   return `M ${from.x} ${from.y} C ${from.x + coff} ${from.y}, ${to.x - coff} ${to.y}, ${to.x} ${to.y}`;
+}
+
+export function isInputFocused() {
+  return document.activeElement &&
+    document.activeElement.classList.contains('penguin-input');
+}
+
+export function clientToWorld(clientX, clientY) {
+  const penguin = document.getElementById('penguin');
+  const penguinRect = penguin.getBoundingClientRect();
+  
+  const worldX = (clientX - penguinRect.left - viewport.pan.x) / viewport.zoom;
+  const worldY = (clientY - penguinRect.top - viewport.pan.y) / viewport.zoom;
+  
+  return [worldX, worldY];
 }

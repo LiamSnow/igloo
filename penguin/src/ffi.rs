@@ -10,12 +10,19 @@ extern "C" {
     pub fn init();
     pub fn rerender();
     pub fn delayedRerender();
-    pub fn getSelectedNodeIds() -> Vec<u16>;
-    pub fn getSelectedWireIds() -> Vec<u16>;
-    pub fn startWiring(start_node: u16, start_pin: &str, is_output: bool);
+    fn getSelectedNodeIds() -> Vec<u16>;
+    fn getSelectedWireIds() -> Vec<u16>;
+    pub fn startWiring(
+        start_node: u16,
+        start_pin_defn: usize,
+        start_pin_phantom: usize,
+        is_output: bool,
+    );
     pub fn stopWiring();
     pub fn getAllNodePositions() -> Vec<JsValue>;
     pub fn setGridSettings(enabled: bool, snap: bool, size: f64);
+    pub fn isInputFocused() -> bool;
+    pub fn clientToWorld(client_x: f64, client_y: f64) -> Vec<f64>;
 }
 
 pub static LMB_DOWN: GlobalSignal<bool> = Signal::global(|| false);
@@ -27,6 +34,18 @@ pub fn register_listeners() {
     setup_mousemove(&document);
     setup_mouseup(&document);
     setup_mousedown(&document);
+}
+
+pub struct Selection {
+    pub node_ids: Vec<u16>,
+    pub wire_ids: Vec<u16>,
+}
+
+pub fn get_selection() -> Selection {
+    Selection {
+        node_ids: getSelectedNodeIds(),
+        wire_ids: getSelectedWireIds(),
+    }
 }
 
 fn setup_mousemove(document: &Document) {
