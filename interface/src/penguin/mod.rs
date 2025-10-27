@@ -1,8 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
-
-use derive_more::Display;
-
 use crate::Color;
+use borsh::{BorshDeserialize, BorshSerialize};
+use derive_more::Display;
+use std::{collections::HashMap, sync::Arc};
 
 pub mod core;
 
@@ -11,7 +10,7 @@ pub struct PenguinRegistry {
     pub libraries: Arc<HashMap<String, PenguinLibrary>>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Display)]
+#[derive(Debug, Clone, Default, PartialEq, Display, BorshSerialize, BorshDeserialize)]
 #[display("{library}.{name}")]
 pub struct NodeDefnRef {
     pub library: String,
@@ -92,13 +91,13 @@ pub enum PinDefnType {
     DynValue(u8),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, BorshSerialize, BorshDeserialize)]
 pub enum PinType {
     Flow,
     Value(ValueType),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
 pub enum ValueType {
     #[display("Integer")]
     Int,
@@ -112,7 +111,7 @@ pub enum ValueType {
     Color,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum ValueData {
     Int(i64),
     Real(f64),

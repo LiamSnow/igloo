@@ -32,9 +32,7 @@ pub enum ContextMenuAction {
     DeleteNode(NodeID),
     DeleteWire(WireID),
     DuplicateNode(NodeID),
-    DuplicateWire(WireID),
     CopyNode(NodeID),
-    CopyWire(WireID),
     Paste,
 }
 
@@ -57,9 +55,7 @@ impl ContextMenuAction {
                 graph.write().delete_wire(id);
             }
             ContextMenuAction::DuplicateNode(node_id) => todo!(),
-            ContextMenuAction::DuplicateWire(wire_id) => todo!(),
             ContextMenuAction::CopyNode(node_id) => todo!(),
-            ContextMenuAction::CopyWire(wire_id) => todo!(),
             ContextMenuAction::Paste => todo!(),
         }
     }
@@ -114,24 +110,10 @@ impl ContextMenuState {
     pub fn open_wire(&mut self, pos: ClientPoint, wire_id: WireID) {
         self.open_items(
             pos,
-            vec![
-                ContextMenuItem {
-                    label: "Copy Wire".to_string(),
-                    action: ContextMenuAction::CopyWire(wire_id),
-                },
-                ContextMenuItem {
-                    label: "Duplicate Wire".to_string(),
-                    action: ContextMenuAction::DuplicateWire(wire_id),
-                },
-                ContextMenuItem {
-                    label: "Delete Wire".to_string(),
-                    action: ContextMenuAction::DeleteWire(wire_id),
-                },
-                ContextMenuItem {
-                    label: "Paste".to_string(),
-                    action: ContextMenuAction::Paste,
-                },
-            ],
+            vec![ContextMenuItem {
+                label: "Delete Wire".to_string(),
+                action: ContextMenuAction::DeleteWire(wire_id),
+            }],
         );
     }
 }

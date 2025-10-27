@@ -12,6 +12,7 @@ mod types;
 
 use comps::*;
 use state::*;
+use wasm_bindgen::JsCast;
 
 use crate::{context::ContextMenuState, ffi::*, graph::*};
 
@@ -28,14 +29,83 @@ fn App() -> Element {
     let mut context_menu_state = use_signal(ContextMenuState::default);
     let mut rmb_start = use_signal(|| None);
 
-    let onkeydown = move |e: Event<KeyboardData>| match e.key() {
-        Key::Delete | Key::Backspace => {
-            if !ffi::isInputFocused() {
+    let onkeydown = move |e: Event<KeyboardData>| {
+        if ffi::isInputFocused() {
+            return;
+        }
+
+        match e.key() {
+            Key::Delete | Key::Backspace => {
                 e.prevent_default();
                 graph.write().delete(ffi::get_selection());
+                ffi::clearSelection();
+            }
+            _ => {}
+        }
+    };
+
+    let oncopy = move |e: Event<ClipboardData>| {
+        if ffi::isInputFocused() {
+            return;
+        }
+
+        e.prevent_default();
+
+        if let Some(event) = e.data.downcast::<web_sys::Event>() {
+            if let Some(clipboard_event) = event.dyn_ref::<web_sys::ClipboardEvent>() {
+                if let Some(dt) = clipboard_event.clipboard_data() {
+                    let selection = ffi::get_selection();
+                    let cursor_pos = ffi::get_mouse_world_pos();
+
+                    if let Ok(data) = graph.read().copy(&selection, cursor_pos) {
+                        let _ = dt.set_data("text/plain", &data);
+                    }
+                }
             }
         }
-        _ => {}
+    };
+
+    let oncut = move |e: Event<ClipboardData>| {
+        if ffi::isInputFocused() {
+            return;
+        }
+
+        e.prevent_default();
+
+        if let Some(event) = e.data.downcast::<web_sys::Event>() {
+            if let Some(clipboard_event) = event.dyn_ref::<web_sys::ClipboardEvent>() {
+                if let Some(dt) = clipboard_event.clipboard_data() {
+                    let selection = ffi::get_selection();
+                    let cursor_pos = ffi::get_mouse_world_pos();
+
+                    let Ok(data) = graph.read().copy(&selection, cursor_pos) else {
+                        return;
+                    };
+                    let _ = dt.set_data("text/plain", &data);
+                    graph.write().delete(selection);
+                    ffi::clearSelection();
+                }
+            }
+        }
+    };
+
+    let onpaste = move |e: Event<ClipboardData>| {
+        if ffi::isInputFocused() {
+            return;
+        }
+
+        e.prevent_default();
+
+        if let Some(event) = e.data.downcast::<web_sys::Event>() {
+            if let Some(clipboard_event) = event.dyn_ref::<web_sys::ClipboardEvent>() {
+                if let Some(dt) = clipboard_event.clipboard_data() {
+                    if let Ok(text) = dt.get_data("text/plain") {
+                        let cursor_pos = ffi::get_mouse_world_pos();
+                        let _ = graph.write().paste(&text, cursor_pos);
+                    }
+                }
+            }
+        }
     };
 
     let oncontextmenu = move |e: Event<MouseData>| {
@@ -99,6 +169,9 @@ fn App() -> Element {
             id: "penguin",
             tabindex: 0,
             onkeydown,
+            oncopy,
+            onpaste,
+            oncut,
             oncontextmenu,
             onmount: move |_| {
                 ffi::init();

@@ -45,6 +45,73 @@ impl Graph {
         ffi::delayedRerender();
     }
 
+    pub fn copy(&self, selection: &Selection, cursor_pos: Point2D<f64>) -> Result<String, String> {
+        let mut nodes = HashMap::new();
+        for node_id in &selection.node_ids {
+            let node_id = NodeID(*node_id);
+            if let Some(node) = self.nodes.get(&node_id) {
+                let mut cloned = node.clone();
+                cloned.x -= cursor_pos.x;
+                cloned.y -= cursor_pos.y;
+                nodes.insert(node_id, cloned);
+            }
+        }
+
+        let wires: Vec<Wire> = self
+            .wires
+            .values()
+            .filter(|wire| nodes.contains_key(&wire.from_node) && nodes.contains_key(&wire.to_node))
+            .cloned()
+            .collect();
+
+        let clip = PenguinClipboard { nodes, wires };
+
+        let bytes = borsh::to_vec(&clip)
+            .map_err(|e| format!("Borsh serialization of clipboard failed: {e}"))?;
+
+        Ok(base64::encode(&bytes))
+    }
+
+    pub fn paste(&mut self, clipboard_data: &str, cursor_pos: Point2D<f64>) -> Result<(), String> {
+        let bytes =
+            base64::decode(clipboard_data).map_err(|e| format!("Base64 decode failed: {}", e))?;
+
+        let clip: PenguinClipboard = borsh::from_slice(&bytes)
+            .map_err(|e| format!("Borsh deserialization failed: {}", e))?;
+
+        let next_node_id = self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+        let mut id_map = HashMap::new();
+
+        for (i, old_id) in clip.nodes.keys().enumerate() {
+            id_map.insert(*old_id, NodeID(next_node_id + i as u16));
+        }
+
+        for (old_id, node) in clip.nodes {
+            let new_id = id_map[&old_id];
+            let mut new_node = node;
+            new_node.x += cursor_pos.x;
+            new_node.y += cursor_pos.y;
+            self.nodes.insert(new_id, new_node);
+        }
+
+        let next_wire_id = self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+
+        for (i, wire) in clip.wires.into_iter().enumerate() {
+            let new_wire = Wire {
+                from_node: id_map[&wire.from_node],
+                from_pin: wire.from_pin,
+                to_node: id_map[&wire.to_node],
+                to_pin: wire.to_pin,
+                r#type: wire.r#type,
+            };
+            self.wires.insert(WireID(next_wire_id + i as u16), new_wire);
+        }
+
+        ffi::delayedRerender();
+
+        Ok(())
+    }
+
     pub fn sync_from_js(&mut self) {
         let items = ffi::getAllNodePositions();
 
@@ -72,7 +139,8 @@ impl Graph {
                 continue;
             };
 
-            node.pos = Point2D::new(x, y);
+            node.x = x;
+            node.y = y;
         }
     }
 
@@ -121,9 +189,13 @@ impl Graph {
             let from_pos = self
                 .nodes
                 .get(&from_node)
-                .map(|n| n.pos)
+                .map(|n| n.pos())
                 .unwrap_or_default();
-            let to_pos = self.nodes.get(&to_node).map(|n| n.pos).unwrap_or_default();
+            let to_pos = self
+                .nodes
+                .get(&to_node)
+                .map(|n| n.pos())
+                .unwrap_or_default();
             let mid_pos =
                 Point2D::new((from_pos.x + to_pos.x) / 2.0, (from_pos.y + to_pos.y) / 2.0);
 
@@ -133,7 +205,8 @@ impl Graph {
                 cast_node_id,
                 Node {
                     defn_ref: NodeDefnRef::new("std", &cast_name),
-                    pos: mid_pos,
+                    x: mid_pos.x,
+                    y: mid_pos.y,
                     phantom_state: HashMap::new(),
                     dynvalue_state: HashMap::new(),
                     value_inputs: HashMap::new(),
@@ -179,7 +252,8 @@ impl Graph {
             next_id,
             Node {
                 defn_ref,
-                pos: world_pos,
+                x: world_pos.x,
+                y: world_pos.y,
                 phantom_state: HashMap::new(),
                 dynvalue_state: HashMap::new(),
                 value_inputs: HashMap::new(),
@@ -204,7 +278,7 @@ impl Graph {
         if let Some(ws) = pending_wire {
             if let Some(defn) = registry.get_defn(&defn_ref.library, &defn_ref.name) {
                 if let Some((idx, pin_type)) = defn.find_compatible_inputs(ws.wire_type).first() {
-                    let pin_ref = PinRef::new(*idx);
+                    let pin_ref = PinRef::new(*idx as u32);
                     self.complete_wire(ws, new_node_id, pin_ref, *pin_type, false);
                 }
             }
@@ -220,7 +294,8 @@ impl Graph {
                     NodeID(0),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "on_start"),
-                        pos: Point2D::new(50.0, 50.0),
+                        x: 50.0,
+                        y: 50.0,
                         ..Default::default()
                     },
                 ),
@@ -228,7 +303,8 @@ impl Graph {
                     NodeID(1),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "print"),
-                        pos: Point2D::new(350.0, 100.0),
+                        x: 350.0,
+                        y: 100.0,
                         ..Default::default()
                     },
                 ),
@@ -236,7 +312,8 @@ impl Graph {
                     NodeID(2),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "const_text"),
-                        pos: Point2D::new(50.0, 200.0),
+                        x: 50.0,
+                        y: 200.0,
                         ..Default::default()
                     },
                 ),
@@ -244,7 +321,8 @@ impl Graph {
                     NodeID(3),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "int_add"),
-                        pos: Point2D::new(200.0, 300.0),
+                        x: 200.0,
+                        y: 300.0,
                         ..Default::default()
                     },
                 ),
@@ -252,7 +330,8 @@ impl Graph {
                     NodeID(4),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "const_bool"),
-                        pos: Point2D::new(200.0, 500.0),
+                        x: 200.0,
+                        y: 500.0,
                         ..Default::default()
                     },
                 ),
@@ -260,7 +339,8 @@ impl Graph {
                     NodeID(5),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "const_int"),
-                        pos: Point2D::new(0.0, 500.0),
+                        x: 0.0,
+                        y: 500.0,
                         ..Default::default()
                     },
                 ),
@@ -268,7 +348,8 @@ impl Graph {
                     NodeID(6),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "const_real"),
-                        pos: Point2D::new(0.0, 600.0),
+                        x: 0.0,
+                        y: 600.0,
                         ..Default::default()
                     },
                 ),
@@ -276,7 +357,8 @@ impl Graph {
                     NodeID(7),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "branch"),
-                        pos: Point2D::new(500.0, 500.0),
+                        x: 500.0,
+                        y: 500.0,
                         ..Default::default()
                     },
                 ),
@@ -284,7 +366,8 @@ impl Graph {
                     NodeID(8),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "merge"),
-                        pos: Point2D::new(700.0, 500.0),
+                        x: 700.0,
+                        y: 500.0,
                         ..Default::default()
                     },
                 ),
@@ -292,7 +375,8 @@ impl Graph {
                     NodeID(9),
                     Node {
                         defn_ref: NodeDefnRef::new("std", "comment"),
-                        pos: Point2D::new(560.0, 380.0),
+                        x: 560.0,
+                        y: 380.0,
                         ..Default::default()
                     },
                 ),

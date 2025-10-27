@@ -1,7 +1,8 @@
 use dioxus::{
     html::geometry::ClientPoint,
-    signals::{GlobalSignal, Signal},
+    signals::{GlobalSignal, ReadableExt, Signal},
 };
+use euclid::default::Point2D;
 use wasm_bindgen::prelude::*;
 use web_sys::Document;
 
@@ -10,12 +11,13 @@ extern "C" {
     pub fn init();
     pub fn rerender();
     pub fn delayedRerender();
+    pub fn clearSelection();
     fn getSelectedNodeIds() -> Vec<u16>;
     fn getSelectedWireIds() -> Vec<u16>;
     pub fn startWiring(
         start_node: u16,
-        start_pin_defn: usize,
-        start_pin_phantom: usize,
+        start_pin_defn: u32,
+        start_pin_phantom: u8,
         is_output: bool,
     );
     pub fn stopWiring();
@@ -46,6 +48,12 @@ pub fn get_selection() -> Selection {
         node_ids: getSelectedNodeIds(),
         wire_ids: getSelectedWireIds(),
     }
+}
+
+pub fn get_mouse_world_pos() -> Point2D<f64> {
+    let mouse = *MOUSE_POS.peek();
+    let world = clientToWorld(mouse.x, mouse.y);
+    Point2D::new(world[0], world[1])
 }
 
 fn setup_mousemove(document: &Document) {

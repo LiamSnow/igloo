@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["LiamSnow <mail@liamsnow.com>"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 dioxus = { version = "0.7.0-rc.1", features = [] }
 dioxus-stores = "0.7.0-rc.3"
@@ -22,9 +20,14 @@ web-sys = { version = "0.3.81", features = [
   "SvgPathElement",
   "SvgGeometryElement",
   "SvgPoint",
+  "Navigator",
+  "Clipboard",
+  "ClipboardEvent",
+  "DataTransfer",
 ] }
 igloo-interface = { path = "../interface/", features = ["penguin"] }
-
+borsh = { version = "1.5.7", features = ["derive"] }
+base64 = "0.22.1"
 
 [features]
 default = ["web"]

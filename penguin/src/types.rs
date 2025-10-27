@@ -1,26 +1,42 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use dioxus::prelude::*;
 use euclid::default::Point2D;
 use igloo_interface::{NodeDefn, NodeDefnRef, PinDefn, PinDefnType, PinType, ValueData, ValueType};
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Debug,
+    Default,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct NodeID(pub u16);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, BorshSerialize, BorshDeserialize)]
 pub struct WireID(pub u16);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(
+    Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Debug, BorshSerialize, BorshDeserialize,
+)]
 pub struct PinRef {
-    pub defn_index: usize,
-    pub phantom_instance: usize,
+    pub defn_index: u32,
+    pub phantom_instance: u8,
 }
 
-#[derive(Debug, Store, PartialEq, Clone, Default)]
+#[derive(Debug, Store, PartialEq, Clone, Default, BorshSerialize, BorshDeserialize)]
 pub struct Node {
     pub defn_ref: NodeDefnRef,
-    pub pos: Point2D<f64>,
+    pub x: f64,
+    pub y: f64,
     /// num pins for each PinDefnType::Phantom
-    pub phantom_state: HashMap<u8, usize>,
+    pub phantom_state: HashMap<u8, u8>,
     /// values for pins with PinDefnType::DynValue
     pub dynvalue_state: HashMap<u8, ValueType>,
     /// values for nodes with NodeConfig::Input
@@ -29,7 +45,7 @@ pub struct Node {
     pub pin_values: HashMap<PinRef, ValueData>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct Wire {
     pub from_node: NodeID,
     pub from_pin: PinRef,
@@ -38,14 +54,24 @@ pub struct Wire {
     pub r#type: PinType,
 }
 
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
+pub struct PenguinClipboard {
+    pub nodes: HashMap<NodeID, Node>,
+    pub wires: Vec<Wire>,
+}
+
 impl Node {
-    fn get_phantom_min(&self, defn: &igloo_interface::NodeDefn, phantom_id: u8) -> usize {
+    pub fn pos(&self) -> Point2D<f64> {
+        Point2D::new(self.x, self.y)
+    }
+
+    fn get_phantom_min(&self, defn: &igloo_interface::NodeDefn, phantom_id: u8) -> u8 {
         defn.cfg
             .iter()
             .find_map(|cfg| {
                 if let igloo_interface::NodeConfig::AddRemovePin(config) = cfg {
                     if config.phantom_id == phantom_id {
-                        return Some(config.min as usize);
+                        return Some(config.min);
                     }
                 }
                 None
@@ -74,20 +100,14 @@ impl Node {
             match &pin_defn.r#type {
                 PinDefnType::Flow => {
                     result.push((
-                        PinRef {
-                            defn_index,
-                            phantom_instance: 0,
-                        },
+                        PinRef::new(defn_index as u32),
                         PinType::Flow,
                         pin_defn.name.clone(),
                     ));
                 }
                 PinDefnType::Value(vt) => {
                     result.push((
-                        PinRef {
-                            defn_index,
-                            phantom_instance: 0,
-                        },
+                        PinRef::new(defn_index as u32),
                         PinType::Value(*vt),
                         pin_defn.name.clone(),
                     ));
@@ -103,10 +123,7 @@ impl Node {
 
                     for i in 0..count {
                         result.push((
-                            PinRef {
-                                defn_index,
-                                phantom_instance: i,
-                            },
+                            PinRef::with_phantom_inst(defn_index as u32, i as u8),
                             pin_type,
                             pin_defn.name.clone(),
                         ));
@@ -119,10 +136,7 @@ impl Node {
                         .copied()
                         .unwrap_or(ValueType::Int);
                     result.push((
-                        PinRef {
-                            defn_index,
-                            phantom_instance: 0,
-                        },
+                        PinRef::new(defn_index as u32),
                         PinType::Value(value_type),
                         pin_defn.name.clone(),
                     ));
@@ -159,14 +173,14 @@ impl Wire {
 }
 
 impl PinRef {
-    pub fn new(defn_index: usize) -> Self {
+    pub fn new(defn_index: u32) -> Self {
         Self {
             defn_index,
             phantom_instance: 0,
         }
     }
 
-    pub fn with_phantom_inst(defn_index: usize, phantom_instance: usize) -> Self {
+    pub fn with_phantom_inst(defn_index: u32, phantom_instance: u8) -> Self {
         Self {
             defn_index,
             phantom_instance,

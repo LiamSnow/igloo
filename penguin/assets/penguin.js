@@ -294,7 +294,7 @@ function updateTempWire(e) {
   tempWire.setAttribute('d', d);
 }
 
-function clearSelection() {
+export function clearSelection() {
   document.querySelectorAll('.penguin-node.selected').forEach(node => {
     node.classList.remove('selected');
   });

@@ -86,7 +86,7 @@ pub fn NodeComponent(
             None => return false,
         };
 
-        let last_pin_ref = PinRef::with_phantom_inst(defn_index, count - 1);
+        let last_pin_ref = PinRef::with_phantom_inst(defn_index as u32, count - 1);
 
         graph
             .wires()
@@ -100,7 +100,7 @@ pub fn NodeComponent(
             class: "penguin-node",
             "data-ref": "{node.defn_ref()()}",
             "data-node-id": id.0,
-            transform: "translate({node.pos().read().x}px, {node.pos().read().y}px)",
+            transform: "translate({node.x()}px, {node.y()}px)",
             oncontextmenu: move |e: Event<MouseData>| {
                 e.prevent_default();
                 e.stop_propagation();
@@ -170,7 +170,10 @@ pub fn NodeComponent(
                             let phantom_id = config.phantom_id;
                             let min = config.min;
                             let max = config.max;
-                            let current = node.phantom_state()().get(&phantom_id).copied().unwrap_or(min as usize);
+                            let current = node.phantom_state()()
+                                .get(&phantom_id)
+                                .copied()
+                                .unwrap_or(min);
 
                             let is_input = defn_memo()
                                 .map(|defn| {
@@ -186,9 +189,9 @@ pub fn NodeComponent(
 
                                     button {
                                         class: "penguin-phantom-button",
-                                        disabled: current <= min as usize || is_last_phantom_connected(phantom_id, is_input),
+                                        disabled: current <= min || is_last_phantom_connected(phantom_id, is_input),
                                         onclick: move |_| {
-                                            if current > min as usize {
+                                            if current > min {
                                                 node.write().phantom_state.insert(phantom_id, current - 1);
                                                 ffi::delayedRerender();
                                             }
@@ -198,9 +201,9 @@ pub fn NodeComponent(
 
                                     button {
                                         class: "penguin-phantom-button",
-                                        disabled: current >= max as usize,
+                                        disabled: current >= max,
                                         onclick: move |_| {
-                                            if current < max as usize {
+                                            if current < max {
                                                 node.write().phantom_state.insert(phantom_id, current + 1);
                                                 ffi::delayedRerender();
                                             }
