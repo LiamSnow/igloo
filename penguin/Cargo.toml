@@ -24,6 +24,7 @@ web-sys = { version = "0.3.81", features = [
   "Clipboard",
   "ClipboardEvent",
   "DataTransfer",
+  "console",
 ] }
 igloo-interface = { path = "../interface/", features = ["penguin"] }
 borsh = { version = "1.5.7", features = ["derive"] }

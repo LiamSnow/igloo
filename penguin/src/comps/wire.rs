@@ -25,9 +25,6 @@ pub fn WireComponent(
                 e.stop_propagation();
                 context_menu_state.write().open_wire(e.client_coordinates(), id);
             },
-            onmount: move |_| {
-                ffi::rerender();
-            },
         }
     }
 }

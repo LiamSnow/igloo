@@ -37,7 +37,7 @@ pub enum GraphCommand {
     },
 }
 
-#[derive(Debug, PartialEq, Store)]
+#[derive(Debug, PartialEq, Store, Default)]
 pub struct Graph {
     pub nodes: HashMap<NodeID, Node>,
     pub wires: HashMap<WireID, Wire>,
@@ -49,7 +49,9 @@ impl GraphCommand {
     pub fn execute(&self, graph: &mut Graph) {
         match self {
             GraphCommand::AddNode { id, node } => {
+                web_sys::console::time_with_label("insert_node");
                 graph.nodes.insert(*id, node.clone());
+                web_sys::console::time_with_label("insert_node");
             }
             GraphCommand::DeleteNode { id, .. } => {
                 graph.nodes.remove(id);
@@ -469,123 +471,146 @@ impl Graph {
     }
 
     pub fn new() -> Self {
-        Self {
-            nodes: HashMap::from([
-                (
-                    NodeID(0),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "on_start"),
-                        x: 50.0,
-                        y: 50.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(1),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "print"),
-                        x: 350.0,
-                        y: 100.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(2),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "const_text"),
-                        x: 50.0,
-                        y: 200.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(3),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "int_add"),
-                        x: 200.0,
-                        y: 300.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(4),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "const_bool"),
-                        x: 200.0,
-                        y: 500.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(5),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "const_int"),
-                        x: 0.0,
-                        y: 500.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(6),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "const_real"),
-                        x: 0.0,
-                        y: 600.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(7),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "branch"),
-                        x: 500.0,
-                        y: 500.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(8),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "merge"),
-                        x: 700.0,
-                        y: 500.0,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    NodeID(9),
-                    Node {
-                        defn_ref: NodeDefnRef::new("std", "comment"),
-                        x: 560.0,
-                        y: 380.0,
-                        ..Default::default()
-                    },
-                ),
-            ]),
-            wires: HashMap::from([
-                (
-                    WireID(0),
-                    Wire {
-                        from_node: NodeID(0),
-                        from_pin: PinRef::new(0),
-                        to_node: NodeID(1),
-                        to_pin: PinRef::new(0),
-                        r#type: PinType::Flow,
-                    },
-                ),
-                (
-                    WireID(1),
-                    Wire {
-                        from_node: NodeID(2),
-                        from_pin: PinRef::new(0),
-                        to_node: NodeID(1),
-                        to_pin: PinRef::new(1),
-                        r#type: PinType::Value(ValueType::Text),
-                    },
-                ),
-            ]),
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
+        let mut me = Self {
+            // nodes: HashMap::from([
+            //     (
+            //         NodeID(0),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "on_start"),
+            //             x: 50.0,
+            //             y: 50.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(1),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "print"),
+            //             x: 350.0,
+            //             y: 100.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(2),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "const_text"),
+            //             x: 50.0,
+            //             y: 200.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(3),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "int_add"),
+            //             x: 200.0,
+            //             y: 300.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(4),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "const_bool"),
+            //             x: 200.0,
+            //             y: 500.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(5),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "const_int"),
+            //             x: 0.0,
+            //             y: 500.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(6),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "const_real"),
+            //             x: 0.0,
+            //             y: 600.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(7),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "branch"),
+            //             x: 500.0,
+            //             y: 500.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(8),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "merge"),
+            //             x: 700.0,
+            //             y: 500.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            //     (
+            //         NodeID(9),
+            //         Node {
+            //             defn_ref: NodeDefnRef::new("std", "comment"),
+            //             x: 560.0,
+            //             y: 380.0,
+            //             ..Default::default()
+            //         },
+            //     ),
+            // ]),
+            // wires: HashMap::from([
+            //     (
+            //         WireID(0),
+            //         Wire {
+            //             from_node: NodeID(0),
+            //             from_pin: PinRef::new(0),
+            //             to_node: NodeID(1),
+            //             to_pin: PinRef::new(0),
+            //             r#type: PinType::Flow,
+            //         },
+            //     ),
+            //     (
+            //         WireID(1),
+            //         Wire {
+            //             from_node: NodeID(2),
+            //             from_pin: PinRef::new(0),
+            //             to_node: NodeID(1),
+            //             to_pin: PinRef::new(1),
+            //             r#type: PinType::Value(ValueType::Text),
+            //         },
+            //     ),
+            // ]),
+            ..Default::default()
+        };
+
+        let mut x = 0.;
+        let mut y = 0.;
+
+        for i in 0..500 {
+            if i % 10 == 0 {
+                x = 0.;
+                y += 200.;
+            } else {
+                x += 250.;
+            }
+
+            me.nodes.insert(
+                NodeID(i),
+                Node {
+                    defn_ref: NodeDefnRef::new("std", "int_add"),
+                    x,
+                    y,
+                    ..Default::default()
+                },
+            );
         }
+
+        me
     }
 }

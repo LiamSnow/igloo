@@ -33,7 +33,6 @@ pub enum ContextMenuAction {
     DeleteWire(WireID),
     DuplicateNode(NodeID),
     CopyNode(NodeID),
-    Paste,
 }
 
 impl Default for ContextMenuMode {
@@ -56,18 +55,12 @@ impl ContextMenuAction {
             }
             ContextMenuAction::DuplicateNode(node_id) => todo!(),
             ContextMenuAction::CopyNode(node_id) => todo!(),
-            ContextMenuAction::Paste => todo!(),
         }
     }
 }
 
 impl ContextMenuState {
     pub fn open_items(&mut self, pos: ClientPoint, mut items: Vec<ContextMenuItem>) {
-        items.push(ContextMenuItem {
-            label: "Paste".to_string(),
-            action: ContextMenuAction::Paste,
-        });
-
         self.visible = true;
         self.pos = pos;
         self.mode = ContextMenuMode::Items(items);

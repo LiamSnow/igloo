@@ -5,7 +5,6 @@ use comps::*;
 use dioxus::{logger::tracing, prelude::*};
 use igloo_interface::PenguinRegistry;
 use state::*;
-use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 
 mod comps;
@@ -23,19 +22,10 @@ fn App() -> Element {
     use_context_provider(PenguinRegistry::new);
 
     let mut graph = use_store(Graph::new);
-    let mut wiring_state: Signal<Option<WiringData>> = use_signal(|| None);
+    let wiring_state: Signal<Option<WiringData>> = use_signal(|| None);
     let grid_settings: Signal<GridSettings> = use_signal(GridSettings::default);
     let mut context_menu_state = use_signal(ContextMenuState::default);
     let mut rmb_start = use_signal(|| None);
-
-    let connectivity = use_memo(move || {
-        let mut map = HashSet::new();
-        for wire in graph.wires().read().values() {
-            map.insert((wire.from_node, wire.from_pin, true));
-            map.insert((wire.to_node, wire.to_pin, false));
-        }
-        map
-    });
 
     let onkeydown = move |e: Event<KeyboardData>| {
         if ffi::isInputFocused() {
@@ -135,17 +125,20 @@ fn App() -> Element {
 
     use_effect(move || {
         if !LMB_DOWN() || RMB_DOWN() {
-            let Some(ws) = wiring_state.write().take() else {
+            let Some(ws) = wiring_state.peek().cloned() else {
+                ffi::changeInteractionMode("idle".to_string());
                 return;
             };
 
-            ffi::stopWiring();
-
             if !ws.is_output {
+                ffi::changeInteractionMode("idle".to_string());
                 return;
             }
 
+            ffi::pauseWiring();
+
             let pos = *MOUSE_POS.peek();
+            tracing::info!("019");
             context_menu_state
                 .write()
                 .open_workspace(pos, Some(ws.wire_type), Some(ws));
@@ -160,6 +153,8 @@ fn App() -> Element {
 
     use_effect(move || {
         if !RMB_DOWN() {
+            ffi::changeInteractionMode("idle".to_string());
+
             let Some(start) = rmb_start.write().take() else {
                 return;
             };
@@ -184,7 +179,11 @@ fn App() -> Element {
             display: "none",
         }
 
-        ContextMenu { graph, state: context_menu_state }
+        ContextMenu {
+            graph,
+            state: context_menu_state,
+            wiring_state,
+        }
 
         div {
             id: "penguin",
@@ -261,10 +260,10 @@ fn App() -> Element {
                     id: "penguin-nodes",
                     for (id, node) in graph.nodes().iter() {
                         NodeComponent {
+                            key: "{id.0}",
                             graph,
                             id,
                             node,
-                            connectivity,
                             wiring_state,
                             context_menu_state,
                         }

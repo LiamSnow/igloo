@@ -1,6 +1,10 @@
-use std::collections::HashSet;
-
-use crate::{comps::PinInput, ffi, graph::Graph, state::WiringData, types::*};
+use crate::{
+    comps::PinInput,
+    ffi,
+    graph::{Graph, GraphStoreExt},
+    state::WiringData,
+    types::*,
+};
 use dioxus::{html::input_data::MouseButton, prelude::*};
 use igloo_interface::PinType;
 
@@ -13,7 +17,6 @@ pub fn PinComponent(
     pin_type: PinType,
     pin_name: String,
     is_output: bool,
-    connectivity: Memo<HashSet<(NodeID, PinRef, bool)>>,
     wiring_state: Signal<Option<WiringData>>,
 ) -> Element {
     // start wiring
@@ -50,14 +53,20 @@ pub fn PinComponent(
             return;
         };
 
-        ffi::stopWiring();
+        ffi::changeInteractionMode("idle".to_string());
 
         graph
             .write()
             .complete_wire(ws, node_id, pin_ref, pin_type, is_output);
     };
 
-    let is_connected = use_memo(move || connectivity().contains(&(node_id, pin_ref, is_output)));
+    let is_connected = use_memo(move || {
+        graph
+            .wires()
+            .read()
+            .values()
+            .any(|wire| wire.connects_to(node_id, &pin_ref, is_output))
+    });
 
     rsx! {
         div {
@@ -83,9 +92,6 @@ pub fn PinComponent(
                 "data-is-output": "{is_output}",
                 onmousedown,
                 onmouseup,
-                onmount: move |_| {
-                    ffi::rerender();
-                },
 
                 match pin_type {
                     PinType::Flow => rsx! {

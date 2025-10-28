@@ -24,7 +24,6 @@ export function init() {
   penguin.focus();
 
   document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('mouseup', onMouseUp);
   window.onresize = rerender;
   penguin.addEventListener('keydown', onKeyDown);
   penguin.addEventListener('mousedown', onMouseDown);
@@ -69,12 +68,11 @@ export function getSelectedWireIds() {
 
 export function startWiring(startNodeId, startPinDefn, startPinPhantom, isOutput) {
   interaction.mode = 'wiring';
-  interaction.wiringData = { startNodeId, startPinDefn, startPinPhantom, isOutput };
+  interaction.wiringData = { startNodeId, startPinDefn, startPinPhantom, isOutput, paused: false };
 }
 
-export function stopWiring() {
-  interaction.mode = 'idle';
-  interaction.wiringData = null;
+export function pauseWiring() {
+  interaction.wiringData.paused = true; 
 }
 
 function onKeyDown(e) {
@@ -167,14 +165,6 @@ function onMouseMove(e) {
   }
 }
 
-function onMouseUp(e) {
-  changeInteractionMode('idle');
-  interaction.startPos = null;
-  interaction.startPan = null;
-  interaction.draggedNodes = [];
-  interaction.boxSelectStart = null;
-}
-
 function onWheel(e) {
   e.preventDefault();
 
@@ -196,7 +186,7 @@ function onWheel(e) {
   rerender();
 }
 
-function changeInteractionMode(mode) {
+export function changeInteractionMode(mode) {
   if (interaction.mode === 'box-selecting') {
     completeBoxSelection();
   }
@@ -206,6 +196,14 @@ function changeInteractionMode(mode) {
   }
 
   interaction.mode = mode;
+
+  if (mode == 'idle') {
+    interaction.startPos = null;
+    interaction.startPan = null;
+    interaction.draggedNodes = [];
+    interaction.boxSelectStart = null;
+    interaction.wiringData = null;
+  }
 }
 
 function handlePanning(e) {
@@ -275,7 +273,11 @@ function updateTempWire(e) {
   const tempWire = document.getElementById('penguin-temp-wire');
   if (!tempWire) return;
 
-  const { startNodeId, startPinDefn, startPinPhantom, isOutput } = interaction.wiringData;
+  const { startNodeId, startPinDefn, startPinPhantom, isOutput, paused } = interaction.wiringData;
+
+  if (paused) {
+    return;
+  }
 
   const startPos = getPinWorldPosition(startNodeId, startPinDefn, startPinPhantom, isOutput);
   if (!startPos) return;

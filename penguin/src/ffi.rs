@@ -11,6 +11,7 @@ extern "C" {
     pub fn init();
     pub fn rerender();
     pub fn delayedRerender();
+    pub fn changeInteractionMode(mode: String);
     pub fn clearSelection();
     fn getSelectedNodeIds() -> Vec<u16>;
     fn getSelectedWireIds() -> Vec<u16>;
@@ -20,7 +21,7 @@ extern "C" {
         start_pin_phantom: u8,
         is_output: bool,
     );
-    pub fn stopWiring();
+    pub fn pauseWiring();
     pub fn getAllNodePositions() -> Vec<JsValue>;
     pub fn setGridSettings(enabled: bool, snap: bool, size: f64);
     pub fn isInputFocused() -> bool;

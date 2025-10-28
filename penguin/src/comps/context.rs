@@ -2,16 +2,28 @@ use crate::{
     context::{ContextMenuMode, ContextMenuState},
     ffi,
     graph::Graph,
+    state::WiringData,
 };
 use dioxus::prelude::*;
 use euclid::default::Point2D;
 use igloo_interface::{NodeDefnRef, PenguinRegistry};
 
 #[component]
-pub fn ContextMenu(graph: Store<Graph>, state: Signal<ContextMenuState>) -> Element {
+pub fn ContextMenu(
+    graph: Store<Graph>,
+    state: Signal<ContextMenuState>,
+    wiring_state: Signal<Option<WiringData>>,
+) -> Element {
     if !state().visible {
         return rsx! {};
     }
+
+    use_effect(move || {
+        if !state().visible {
+            ffi::changeInteractionMode("idle".to_string());
+            wiring_state.set(None);
+        }
+    });
 
     rsx! {
         div {
