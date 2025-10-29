@@ -14,6 +14,7 @@ floe = ["bytes", "tokio", "tokio-util"]
 borsh = { version = "1.5.7", features = ["derive"] }
 bytes = { version = "1.10.1", optional = true }
 derive_more = { version = "2.0.1", features = ["display", "from"] }
+indexmap = "2.12.0"
 tokio = { version = "1.47.1", features = ["io-util", "net"], optional = true }
 tokio-util = { version = "0.7.16", features = ["codec"], optional = true }
 
