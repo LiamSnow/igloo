@@ -5,19 +5,19 @@ use indexmap::IndexMap;
 
 #[derive(Debug, Clone, Default, PartialEq, Display, BorshSerialize, BorshDeserialize)]
 #[display("{library}.{name}")]
-pub struct NodeDefnRef {
+pub struct PenguinNodeDefnRef {
     pub library: String,
     pub name: String,
     pub version: u8,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct NodeDefn {
+pub struct PenguinNodeDefn {
     pub title: String,
     pub desc: String,
     pub style: NodeStyle,
-    pub inputs: IndexMap<PinID, PinDefn>,
-    pub outputs: IndexMap<PinID, PinDefn>,
+    pub inputs: IndexMap<PenguinPinID, PenguinPinDefn>,
+    pub outputs: IndexMap<PenguinPinID, PenguinPinDefn>,
     pub cfg: Vec<NodeConfig>,
     pub version: u8,
 }
@@ -59,8 +59,10 @@ pub struct InputConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryConfig {
-    /// Pin ID of a PinDefnType::DynValue
-    pub dyn_pin: PinID,
+    /// Base Name of NodeDefn
+    /// For query config you need "base_int", "base_text", ..
+    /// Then this will automatically switch between them
+    pub base_name: String,
 }
 
 impl NodeStyle {
@@ -83,16 +85,17 @@ impl Default for NodeStyle {
     }
 }
 
-impl NodeDefnRef {
-    pub fn new(library: &str, name: &str) -> Self {
+impl PenguinNodeDefnRef {
+    pub fn new(library: &str, name: &str, version: u8) -> Self {
         Self {
             library: library.to_string(),
             name: name.to_string(),
+            version,
         }
     }
 }
 
-impl NodeDefn {
+impl PenguinNodeDefn {
     pub fn get_variadic_config(&self) -> Option<&VariadicConfig> {
         self.cfg.iter().find_map(|cfg| {
             if let NodeConfig::Variadic(config) = cfg {

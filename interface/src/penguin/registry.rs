@@ -9,7 +9,7 @@ pub struct PenguinRegistry {
 #[derive(Debug, Clone, Default)]
 pub struct PenguinLibrary {
     pub name: String,
-    pub nodes: HashMap<String, NodeDefn>,
+    pub nodes: HashMap<String, PenguinNodeDefn>,
 }
 
 impl PenguinRegistry {
@@ -22,7 +22,7 @@ impl PenguinRegistry {
         }
     }
 
-    pub fn get_defn(&self, dref: &NodeDefnRef) -> Option<&NodeDefn> {
+    pub fn get_defn(&self, dref: &PenguinNodeDefnRef) -> Option<&PenguinNodeDefn> {
         self.libraries.get(&dref.library)?.nodes.get(&dref.name)
     }
 }

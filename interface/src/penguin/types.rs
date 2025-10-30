@@ -3,7 +3,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, BorshSerialize, BorshDeserialize)]
-pub enum PinType {
+pub enum PenguinPinType {
     /// execution flow
     Flow,
     /// holds value
@@ -33,36 +33,36 @@ pub enum PenguinValue {
     Color(Color),
 }
 
-impl PinType {
+impl PenguinPinType {
     pub fn can_cast(self, to: Self) -> bool {
         match (self, to) {
-            (PinType::Value(from), PinType::Value(to)) => from.can_cast(to),
+            (PenguinPinType::Value(from), PenguinPinType::Value(to)) => from.can_cast(to),
             _ => false,
         }
     }
 
     pub fn cast_name(self, to: Self) -> Option<String> {
         match (self, to) {
-            (PinType::Value(from), PinType::Value(to)) => from.cast_name(to),
+            (PenguinPinType::Value(from), PenguinPinType::Value(to)) => from.cast_name(to),
             _ => None,
         }
     }
 
-    pub fn can_connect_to(&self, target: PinType) -> bool {
+    pub fn can_connect_to(&self, target: PenguinPinType) -> bool {
         *self == target || self.can_cast(target)
     }
 
     pub fn stroke(&self) -> &str {
         match self {
-            PinType::Flow => "white",
-            PinType::Value(vt) => vt.color(),
+            PenguinPinType::Flow => "white",
+            PenguinPinType::Value(vt) => vt.color(),
         }
     }
 
     pub fn stroke_width(&self) -> u8 {
         match self {
-            PinType::Flow => 4,
-            PinType::Value(_) => 2,
+            PenguinPinType::Flow => 4,
+            PenguinPinType::Value(_) => 2,
         }
     }
 }
