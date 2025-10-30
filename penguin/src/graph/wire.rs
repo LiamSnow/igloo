@@ -71,7 +71,11 @@ impl WebWire {
                     return;
                 };
 
-                app.graph.select_wire(id, e.ctrl_key() || e.shift_key());
+                if e.alt_key() {
+                    app.graph.delete_wire(id);
+                } else {
+                    app.graph.select_wire(id, e.ctrl_key() || e.shift_key());
+                }
             });
         }) as Box<dyn FnMut(_)>);
 

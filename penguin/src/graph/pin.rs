@@ -122,7 +122,13 @@ impl WebPin {
                     return;
                 };
 
-                app.start_wiring(e, &hitbox_1, node_id, id_1.clone(), is_output, defn.r#type);
+                if e.shift_key() {
+                    app.graph.select_pin_wires(&node_id, &id_1, is_output);
+                } else if e.alt_key() {
+                    app.graph.delete_pin_wires(&node_id, &id_1, is_output);
+                } else {
+                    app.start_wiring(e, &hitbox_1, node_id, id_1.clone(), is_output, defn.r#type);
+                }
             });
         }) as Box<dyn FnMut(_)>);
 

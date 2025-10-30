@@ -145,6 +145,29 @@ impl WebGraph {
         Ok(())
     }
 
+    pub fn delete_pin_wires(
+        &mut self,
+        node_id: &PenguinNodeID,
+        pin_id: &PenguinPinID,
+        is_out: bool,
+    ) {
+        if let Some(node) = self.nodes.get(node_id) {
+            let pin = if is_out {
+                node.outputs.get(pin_id)
+            } else {
+                node.inputs.get(pin_id)
+            };
+
+            let Some(pin) = pin else {
+                return;
+            };
+
+            for wire_id in pin.connections().to_vec() {
+                self.delete_wire(wire_id);
+            }
+        }
+    }
+
     pub fn add_wire(
         &mut self,
         from_node_id: PenguinNodeID,
@@ -297,6 +320,29 @@ impl WebGraph {
 
         if let Some(wire) = self.wires.get(&wire_id) {
             wire.select(true);
+        }
+    }
+
+    pub fn select_pin_wires(
+        &mut self,
+        node_id: &PenguinNodeID,
+        pin_id: &PenguinPinID,
+        is_out: bool,
+    ) {
+        if let Some(node) = self.nodes.get(node_id) {
+            let pin = if is_out {
+                node.outputs.get(pin_id)
+            } else {
+                node.inputs.get(pin_id)
+            };
+
+            let Some(pin) = pin else {
+                return;
+            };
+
+            for wire_id in pin.connections().to_vec() {
+                self.select_wire(wire_id, true);
+            }
         }
     }
 
