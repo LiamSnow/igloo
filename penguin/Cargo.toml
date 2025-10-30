@@ -2,11 +2,12 @@
 name = "igloo-penguin"
 version = "0.1.0"
 authors = ["LiamSnow <mail@liamsnow.com>"]
-edition = "2021"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
-dioxus = { version = "0.7.0-rc.1", features = [] }
-dioxus-stores = "0.7.0-rc.3"
 euclid = "0.22.11"
 wasm-bindgen = "0.2.104"
 web-sys = { version = "0.3.81", features = [
@@ -17,6 +18,8 @@ web-sys = { version = "0.3.81", features = [
   "Element",
   "DomRect",
   "NodeList",
+  "SvgElement",
+  "SvgPatternElement",
   "SvgPathElement",
   "SvgGeometryElement",
   "SvgPoint",
@@ -25,13 +28,15 @@ web-sys = { version = "0.3.81", features = [
   "ClipboardEvent",
   "DataTransfer",
   "console",
+  "CssStyleDeclaration",
+  "HtmlElement",
+  "ResizeObserver",
 ] }
 igloo-interface = { path = "../interface/", features = ["penguin"] }
 borsh = { version = "1.5.7", features = ["derive"] }
 base64 = "0.22.1"
+maud = "0.27.0"
+log = "0.4.28"
+console_log = "1.0.0"
+indexmap = "2.12.0"
 
-[features]
-default = ["web"]
-web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
-mobile = ["dioxus/mobile"]

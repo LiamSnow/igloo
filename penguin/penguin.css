@@ -1,23 +1,3 @@
-html,
-body {
-  margin: 0;
-  padding: 0;
-  font-family: monospace;
-}
-
-body {
-  width: 100vw;
-  height: 100vh;
-
-}
-
-#main {
-  background: #111;
-  padding: 50px;
-  width: calc(100% - 100px);
-  height: calc(100% - 100px);
-}
-
 #penguin {
   background-color: #1a1a1a;
   border: 1px solid #1a1a1a;
@@ -43,7 +23,7 @@ body {
   pointer-events: none;
 }
 
-#penguin-wires {
+#penguin-grid {
   position: absolute;
   left: 0;
   right: 0;
@@ -307,16 +287,26 @@ body {
 }
 
 .penguin-wire {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.penguin-wire>path {
   pointer-events: stroke;
   cursor: pointer;
   transition: stroke-width 0.1s ease, filter 0.1s ease;
 }
 
-.penguin-wire:hover {
+.penguin-wire>path:hover {
   filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5));
 }
 
-.penguin-wire.selected {
+.penguin-wire>path.selected {
   filter:
     drop-shadow(0 1px 0 #2196F3) drop-shadow(1px 0 0 #2196F3) drop-shadow(0 -1px 0 #2196F3) drop-shadow(-1px 0 0 #2196F3) drop-shadow(1px 1px 0 #2196F3) drop-shadow(-1px -1px 0 #2196F3) drop-shadow(1px -1px 0 #2196F3) drop-shadow(-1px 1px 0 #2196F3);
 }
@@ -397,7 +387,7 @@ body {
   padding: 2px;
 }
 
-.grid-settings-toolbar {
+.penguin-grid-settings-toolbar {
   position: absolute;
   top: 20px;
   right: 20px;
@@ -406,7 +396,7 @@ body {
   gap: 8px;
 }
 
-.grid-setting-button {
+.penguin-grid-setting-button {
   width: 40px;
   height: 40px;
   border-radius: 8px;
@@ -421,120 +411,120 @@ body {
   pointer-events: auto;
 }
 
-.grid-setting-button:hover {
+.penguin-grid-setting-button:hover {
   background: rgba(0, 0, 0, 0.95);
   border-color: #2196F3;
   box-shadow: 0 0 10px rgba(33, 150, 243, 0.3);
 }
 
-.grid-setting-button.active {
+.penguin-grid-setting-button.active {
   border-color: #2196F3;
   background: rgba(33, 150, 243, 0.2);
 }
 
-.grid-setting-button:active {
+.penguin-grid-setting-button:active {
   transform: scale(0.95);
 }
 
-#context-menu-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 999;
-}
+/* #context-menu-backdrop { */
+/* position: fixed; */
+/* top: 0; */
+/* left: 0; */
+/* right: 0; */
+/* bottom: 0; */
+/* z-index: 999; */
+/* } */
 
-#context-menu {
-  position: fixed;
-  background: rgba(0, 0, 0, 0.95);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 0;
-  min-width: 250px;
-  max-width: 400px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  pointer-events: auto;
-  overflow: hidden;
-}
+/* #context-menu { */
+/* position: fixed; */
+/* background: rgba(0, 0, 0, 0.95); */
+/* border: 2px solid rgba(255, 255, 255, 0.2); */
+/* border-radius: 8px; */
+/* padding: 0; */
+/* min-width: 250px; */
+/* max-width: 400px; */
+/* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); */
+/* z-index: 1000; */
+/* pointer-events: auto; */
+/* overflow: hidden; */
+/* } */
 
-.context-menu-item {
-  display: block;
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  color: white;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 14px;
-  transition: background 0.1s ease;
-}
+/* .context-menu-item { */
+/* display: block; */
+/* width: 100%; */
+/* padding: 8px 12px; */
+/* background: transparent; */
+/* border: none; */
+/* color: white; */
+/* text-align: left; */
+/* cursor: pointer; */
+/* border-radius: 4px; */
+/* font-family: monospace; */
+/* font-size: 14px; */
+/* transition: background 0.1s ease; */
+/* } */
 
-.context-menu-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
+/* .context-menu-item:hover { */
+/* background: rgba(255, 255, 255, 0.1); */
+/* } */
 
-.context-menu-item:active {
-  background: rgba(255, 255, 255, 0.15);
-}
+/* .context-menu-item:active { */
+/* background: rgba(255, 255, 255, 0.15); */
+/* } */
 
-.node-search-input {
-  width: 100%;
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.5);
-  border: none;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  font-family: monospace;
-  font-size: 14px;
-  outline: none;
-  box-sizing: border-box;
-}
+/* .node-search-input { */
+/* width: 100%; */
+/* padding: 12px; */
+/* background: rgba(0, 0, 0, 0.5); */
+/* border: none; */
+/* border-bottom: 2px solid rgba(255, 255, 255, 0.2); */
+/* color: white; */
+/* font-family: monospace; */
+/* font-size: 14px; */
+/* outline: none; */
+/* box-sizing: border-box; */
+/* } */
 
-.node-search-input:focus {
-  border-bottom-color: #2196F3;
-}
+/* .node-search-input:focus { */
+/* border-bottom-color: #2196F3; */
+/* } */
 
-.node-search-results {
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 4px;
-}
+/* .node-search-results { */
+/* max-height: 400px; */
+/* overflow-y: auto; */
+/* padding: 4px; */
+/* } */
 
-.node-search-item {
-  display: block;
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  color: white;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.1s ease;
-  box-sizing: border-box;
-}
+/* .node-search-item { */
+/* display: block; */
+/* width: 100%; */
+/* padding: 8px 12px; */
+/* background: transparent; */
+/* border: none; */
+/* color: white; */
+/* text-align: left; */
+/* cursor: pointer; */
+/* border-radius: 4px; */
+/* transition: background 0.1s ease; */
+/* box-sizing: border-box; */
+/* } */
 
-.node-search-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
+/* .node-search-item:hover { */
+/* background: rgba(255, 255, 255, 0.1); */
+/* } */
 
-.node-search-item:focus {
-  outline: none;
-  background: rgba(33, 150, 243, 0.2);
-  box-shadow: inset 0 0 0 2px rgba(33, 150, 243, 0.5);
-}
+/* .node-search-item:focus { */
+/* outline: none; */
+/* background: rgba(33, 150, 243, 0.2); */
+/* box-shadow: inset 0 0 0 2px rgba(33, 150, 243, 0.5); */
+/* } */
 
-.node-search-item-title {
-  font-size: 14px;
-  margin-bottom: 2px;
-}
+/* .node-search-item-title { */
+/* font-size: 14px; */
+/* margin-bottom: 2px; */
+/* } */
 
-.node-search-item-path {
-  font-size: 11px;
-  opacity: 0.6;
-}
+/* .node-search-item-path { */
+/* font-size: 11px; */
+/* opacity: 0.6; */
+/* } */
