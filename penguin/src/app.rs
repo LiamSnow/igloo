@@ -1,3 +1,4 @@
+use crate::context::ContextMenu;
 use crate::ffi;
 use crate::graph::WebGraph;
 use crate::interaction::{Interaction, WiringState};
@@ -21,6 +22,7 @@ pub struct PenguinApp {
     pub graph: WebGraph,
     pub viewport: Viewport,
     interaction: Interaction,
+    pub context: ContextMenu,
     pub closures: [Box<dyn Any>; 6],
 }
 
@@ -51,6 +53,7 @@ impl PenguinApp {
         Ok(PenguinApp {
             closures: ffi::init(&penguin_el),
             registry: PenguinRegistry::default(),
+            context: ContextMenu::new(&penguin_el)?,
             penguin_el: penguin_el.clone(),
             graph: WebGraph::new(&viewport_el)?,
             viewport: Viewport::new(penguin_el, viewport_el, grid_svg)?,
@@ -70,12 +73,12 @@ impl PenguinApp {
     pub fn set_interaction(&mut self, interaction: Interaction) {
         match self.interaction {
             Interaction::Panning {
-                start_pos,
-                last_pos,
+                start_pos: a,
+                last_pos: b,
             } => {
-                let start_pos = start_pos.cast::<f64>();
-                let last_pos = last_pos.cast::<f64>();
-                if start_pos.distance_to(last_pos) < 10. {
+                let a = a.cast::<f64>();
+                let b = b.cast::<f64>();
+                if a.distance_to(b) < 10. {
                     self.graph.clear_selection();
                 }
             }
@@ -91,14 +94,19 @@ impl PenguinApp {
                 // TODO complete box selection
                 self.box_el.set_attribute("style", "display: none;");
 
-                self.graph.box_select(
-                    ClientBox::new(
-                        ClientPoint::new(i32::min(a.x, b.x), i32::min(a.y, b.y)),
-                        ClientPoint::new(i32::max(a.x, b.x), i32::max(a.y, b.y)),
-                    ),
-                    self.viewport.client_to_world_transform(),
-                    append,
-                );
+                if a.cast::<f64>().distance_to(b.cast::<f64>()) < 10. {
+                    self.context
+                        .show_search(&self.registry, &b, self.viewport.client_to_world(b));
+                } else {
+                    self.graph.box_select(
+                        ClientBox::new(
+                            ClientPoint::new(i32::min(a.x, b.x), i32::min(a.y, b.y)),
+                            ClientPoint::new(i32::max(a.x, b.x), i32::max(a.y, b.y)),
+                        ),
+                        self.viewport.client_to_world_transform(),
+                        append,
+                    );
+                }
             }
             _ => {}
         }

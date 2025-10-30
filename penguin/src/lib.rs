@@ -10,6 +10,7 @@ use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use crate::app::{APP, PenguinApp};
 
 mod app;
+mod context;
 mod ffi;
 mod graph;
 mod grid;

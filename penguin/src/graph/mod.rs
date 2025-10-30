@@ -4,7 +4,7 @@ pub mod wire;
 
 use igloo_interface::{
     PenguinPinID, PenguinPinType, PenguinRegistry,
-    graph::{PenguinGraph, PenguinNodeID, PenguinWire, PenguinWireID},
+    graph::{PenguinGraph, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 pub use node::*;
 pub use pin::*;
@@ -120,6 +120,21 @@ impl WebGraph {
 
     pub fn penguin_graph(&self) -> PenguinGraph {
         todo!()
+    }
+
+    pub fn place_node(
+        &mut self,
+        registry: &PenguinRegistry,
+        inner: PenguinNode,
+    ) -> Result<(), JsValue> {
+        let node_id = PenguinNodeID(self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1);
+
+        self.nodes.insert(
+            node_id,
+            WebNode::new(&self.nodes_el, registry, None, inner, node_id)?,
+        );
+
+        Ok(())
     }
 
     pub fn delete_wire(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
