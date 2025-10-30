@@ -1,7 +1,9 @@
-use crate::ffi;
+use crate::{app::APP, ffi};
 
 use super::*;
+use euclid::Box2D;
 use igloo_interface::{PenguinPinType, graph::PenguinWire};
+use wasm_bindgen::{JsCast, prelude::Closure};
 use web_sys::Element;
 
 #[derive(Debug)]
@@ -16,6 +18,8 @@ pub struct WebWire {
 
     from_pos: (f64, f64),
     to_pos: (f64, f64),
+
+    closure: Closure<dyn FnMut(MouseEvent)>,
 }
 
 #[derive(Debug)]
@@ -46,11 +50,32 @@ fn make_els(parent: &Element, r#type: PenguinPinType) -> Result<(Element, Elemen
 impl WebWire {
     pub fn new(
         parent: &Element,
+        id: PenguinWireID,
         inner: PenguinWire,
         from_hitbox: HtmlElement,
         to_hitbox: HtmlElement,
     ) -> Result<Self, JsValue> {
         let (svg, path) = make_els(parent, inner.r#type)?;
+
+        let closure = Closure::wrap(Box::new(move |e: MouseEvent| {
+            if e.button() != 0 {
+                return;
+            }
+
+            e.prevent_default();
+            e.stop_propagation();
+
+            APP.with(|app| {
+                let mut b = app.borrow_mut();
+                let Some(app) = b.as_mut() else {
+                    return;
+                };
+
+                app.graph.select_wire(id, e.ctrl_key() || e.shift_key());
+            });
+        }) as Box<dyn FnMut(_)>);
+
+        path.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
 
         Ok(Self {
             inner,
@@ -60,6 +85,7 @@ impl WebWire {
             path,
             from_pos: (0., 0.),
             to_pos: (0., 0.),
+            closure,
         })
     }
 
@@ -87,6 +113,59 @@ impl WebWire {
 
     fn update_path(&self) -> Result<(), JsValue> {
         draw_bezier_path(&self.path, self.from_pos, self.to_pos)
+    }
+
+    pub fn select(&self, selected: bool) -> Result<(), JsValue> {
+        if selected {
+            self.path.set_attribute("class", "selected")
+        } else {
+            self.path.set_attribute("class", "")
+        }
+    }
+
+    pub fn intersects(&self, cbox: &ClientBox, ctw: &ClientToWorld) -> bool {
+        let wbox = ctw.outer_transformed_box(&cbox.to_f64());
+
+        let (from_x, from_y) = self.from_pos;
+        let (to_x, to_y) = self.to_pos;
+        let offset = (to_x - from_x).abs() * 0.5;
+        let cx1 = from_x + offset;
+        let cx2 = to_x - offset;
+
+        let min_x = from_x.min(cx1).min(cx2).min(to_x);
+        let max_x = from_x.max(cx1).max(cx2).max(to_x);
+        let min_y = from_y.min(to_y);
+        let max_y = from_y.max(to_y);
+
+        let wire_bbox = Box2D::new(WorldPoint::new(min_x, min_y), WorldPoint::new(max_x, max_y));
+
+        if !wire_bbox.intersects(&wbox) {
+            return false;
+        }
+
+        let dx = to_x - from_x;
+        let dy = to_y - from_y;
+        let length = (dx * dx + dy * dy).sqrt();
+        let samples = ((length / 10.0).ceil() as usize).clamp(10, 500);
+
+        for i in 0..=samples {
+            let t = i as f64 / samples as f64;
+            let mt = 1.0 - t;
+            let mt2 = mt * mt;
+            let mt3 = mt2 * mt;
+            let t2 = t * t;
+            let t3 = t2 * t;
+
+            let x = mt3 * from_x + 3.0 * mt2 * t * cx1 + 3.0 * mt * t2 * cx2 + t3 * to_x;
+            let y = mt3 * from_y + 3.0 * mt2 * t * from_y + 3.0 * mt * t2 * to_y + t3 * to_y;
+
+            let point = WorldPoint::new(x, y);
+            if wbox.contains(point) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 

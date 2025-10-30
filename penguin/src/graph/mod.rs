@@ -9,12 +9,16 @@ use igloo_interface::{
 pub use node::*;
 pub use pin::*;
 use wasm_bindgen::JsValue;
-use web_sys::{Element, HtmlElement};
+use web_sys::{Element, HtmlElement, MouseEvent};
 pub use wire::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::{ffi, interaction::WiringState, viewport::WorldPoint};
+use crate::{
+    ffi,
+    interaction::WiringState,
+    viewport::{ClientBox, ClientToWorld, WorldPoint},
+};
 
 #[derive(Debug)]
 pub struct WebGraph {
@@ -23,6 +27,13 @@ pub struct WebGraph {
     nodes_el: Element,
     wires_el: Element,
     pub temp_wire: WebTempWire,
+    pub selection: Selection,
+}
+
+#[derive(Debug, Default)]
+pub struct Selection {
+    pub nodes: HashSet<PenguinNodeID>,
+    pub wires: HashSet<PenguinWireID>,
 }
 
 impl WebGraph {
@@ -43,6 +54,7 @@ impl WebGraph {
             temp_wire: WebTempWire::new(&wires_el)?,
             nodes_el,
             wires_el,
+            selection: Selection::default(),
         })
     }
 
@@ -56,9 +68,12 @@ impl WebGraph {
         self.nodes_el.set_inner_html("");
 
         for (id, node) in graph.nodes {
-            // TODO probably should load partial state? Or auto fix idk
-            self.nodes
-                .insert(id, WebNode::new(&self.nodes_el, registry, node, id)?);
+            // TODO probably should load partial state on error? And try auto fix idk
+
+            self.nodes.insert(
+                id,
+                WebNode::new(&self.nodes_el, registry, Some(&graph.wires), node, id)?,
+            );
         }
 
         for (id, wire) in graph.wires {
@@ -72,8 +87,6 @@ impl WebGraph {
                     log::error!("Dangling wire. Missing from_pin. id={id:?}, wire={wire:?}");
                     continue;
                 };
-
-                from_pin.add_connection(id)?;
 
                 (from_pin.hitbox.clone(), from_node.pos())
             };
@@ -89,14 +102,12 @@ impl WebGraph {
                     continue;
                 };
 
-                to_pin.add_connection(id)?;
-
                 (to_pin.hitbox.clone(), to_node.pos())
             };
 
             // TODO assert types match (from type, wire type, to type)
 
-            let mut wire = WebWire::new(&self.wires_el, wire, from_pin_hitbox, to_pin_hitbox)?;
+            let mut wire = WebWire::new(&self.wires_el, id, wire, from_pin_hitbox, to_pin_hitbox)?;
 
             wire.redraw_from(from_node_pos)?;
             wire.redraw_to(to_node_pos)?;
@@ -111,19 +122,25 @@ impl WebGraph {
         todo!()
     }
 
-    pub fn remove_wire(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
+    pub fn delete_wire(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
         let Some(wire) = self.wires.remove(&wire_id) else {
             return Ok(());
         };
 
-        // FIXME unwraps
-        let from_node = self.nodes.get_mut(&wire.inner.from_node).unwrap();
-        let from_pin = from_node.outputs.get_mut(&wire.inner.from_pin).unwrap();
-        from_pin.remove_connection(wire_id)?;
+        if let Some(from_node) = self.nodes.get_mut(&wire.inner.from_node)
+            && let Some(from_pin) = from_node.outputs.get_mut(&wire.inner.from_pin)
+        {
+            from_pin.remove_connection(wire_id)?;
+        }
 
-        let to_node = self.nodes.get_mut(&wire.inner.to_node).unwrap();
-        let to_pin = to_node.inputs.get_mut(&wire.inner.to_pin).unwrap();
-        to_pin.remove_connection(wire_id)?;
+        if let Some(to_node) = self.nodes.get_mut(&wire.inner.to_node)
+            && let Some(to_pin) = to_node.inputs.get_mut(&wire.inner.to_pin)
+        {
+            to_pin.remove_connection(wire_id)?;
+        }
+
+        self.redraw_node_wires(&wire.inner.from_node)?;
+        self.redraw_node_wires(&wire.inner.to_node)?;
 
         Ok(())
     }
@@ -143,7 +160,7 @@ impl WebGraph {
         let connections = to_pin.take_connections()?;
 
         for wire_id in connections {
-            self.remove_wire(wire_id)?;
+            self.delete_wire(wire_id)?;
         }
 
         // normal connections
@@ -170,7 +187,7 @@ impl WebGraph {
                 r#type: from_type,
             };
 
-            let mut wire = WebWire::new(&self.wires_el, inner, from_hitbox, to_hitbox)?;
+            let mut wire = WebWire::new(&self.wires_el, wire_id, inner, from_hitbox, to_hitbox)?;
 
             wire.redraw_from(from_node_pos)?;
             wire.redraw_to(to_node_pos)?;
@@ -212,7 +229,7 @@ impl WebGraph {
 
         node.set_pos(new_pos)?;
 
-        self.redraw_node_wires(node_id);
+        self.redraw_node_wires(node_id)?;
 
         Ok(())
     }
@@ -257,5 +274,103 @@ impl WebGraph {
         }
 
         Ok(())
+    }
+
+    pub fn select_node(&mut self, node_id: PenguinNodeID, append: bool) {
+        if !append {
+            self.clear_selection();
+        }
+
+        self.selection.nodes.insert(node_id);
+
+        if let Some(node) = self.nodes.get(&node_id) {
+            node.select(true);
+        }
+    }
+
+    pub fn select_wire(&mut self, wire_id: PenguinWireID, append: bool) {
+        if !append {
+            self.clear_selection();
+        }
+
+        self.selection.wires.insert(wire_id);
+
+        if let Some(wire) = self.wires.get(&wire_id) {
+            wire.select(true);
+        }
+    }
+
+    pub fn clear_selection(&mut self) {
+        for node_id in &self.selection.nodes {
+            if let Some(node) = self.nodes.get(node_id) {
+                node.select(false);
+            }
+        }
+
+        for wire_id in &self.selection.wires {
+            if let Some(wire) = self.wires.get(wire_id) {
+                wire.select(false);
+            }
+        }
+
+        self.selection.nodes.clear();
+        self.selection.wires.clear();
+    }
+
+    pub fn delete_selection(&mut self) {
+        let mut wires = self.selection.wires.clone();
+
+        for node_id in &self.selection.nodes {
+            if let Some(node) = self.nodes.remove(node_id) {
+                for pin in node.inputs.values() {
+                    let conns = pin.connections();
+                    for conn in conns {
+                        wires.insert(*conn);
+                    }
+                }
+
+                for pin in node.outputs.values() {
+                    let conns = pin.connections();
+                    for conn in conns {
+                        wires.insert(*conn);
+                    }
+                }
+            }
+        }
+
+        for wire in wires {
+            self.delete_wire(wire);
+        }
+
+        self.selection.nodes.clear();
+        self.selection.wires.clear();
+    }
+
+    pub fn box_select(&mut self, cbox: ClientBox, ctw: ClientToWorld, append: bool) {
+        if !append {
+            self.clear_selection();
+        }
+
+        let m: Vec<_> = self
+            .nodes
+            .iter()
+            .filter(|(_, node)| cbox.intersects(&node.client_box()))
+            .map(|(id, _)| *id)
+            .collect();
+
+        for id in m {
+            self.select_node(id, true);
+        }
+
+        let m: Vec<_> = self
+            .wires
+            .iter()
+            .filter(|(_, wire)| wire.intersects(&cbox, &ctw))
+            .map(|(id, _)| *id)
+            .collect();
+
+        for id in m {
+            self.select_wire(id, true);
+        }
     }
 }

@@ -15,12 +15,19 @@ pub struct WebPin {
     id: PenguinPinID,
     defn: PenguinPinDefn,
     is_output: bool,
+    wrapper: Element,
     pub hitbox: HtmlElement,
     /// flow=polygon, value=div
     pin_el: Element,
     input_el: Option<Element>,
     connections: Vec<PenguinWireID>,
     closures: Vec<Closure<dyn FnMut(MouseEvent)>>,
+}
+
+impl Drop for WebPin {
+    fn drop(&mut self) {
+        self.wrapper.remove();
+    }
 }
 
 impl WebPin {
@@ -30,6 +37,7 @@ impl WebPin {
         id: PenguinPinID,
         defn: PenguinPinDefn,
         is_output: bool,
+        connections: Vec<PenguinWireID>,
     ) -> Result<Self, JsValue> {
         let document = ffi::document();
 
@@ -204,10 +212,11 @@ impl WebPin {
             id,
             defn,
             is_output,
+            wrapper,
             hitbox,
             pin_el,
             input_el,
-            connections: Vec::with_capacity(if is_output { 5 } else { 1 }),
+            connections,
             closures,
         };
 
@@ -220,6 +229,7 @@ impl WebPin {
         &self.connections
     }
 
+    /// Make sure to update node wires
     pub fn remove_connection(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
         self.connections.retain(|&id| id != wire_id);
         self.update_fill()?;

@@ -11,9 +11,14 @@ pub enum Interaction {
         last_pos: ClientPoint,
     },
     Dragging {
-        node_id: PenguinNodeID,
+        nodes: PenguinNodeID,
         start_client_pos: ClientPoint,
         start_node_pos: WorldPoint,
+    },
+    BoxSelecting {
+        start_pos: ClientPoint,
+        last_pos: ClientPoint,
+        append: bool,
     },
     Wiring(WiringState),
 }

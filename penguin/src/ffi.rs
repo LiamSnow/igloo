@@ -2,16 +2,17 @@ use std::any::Any;
 
 use crate::app::APP;
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, HtmlElement, MouseEvent, WheelEvent};
+use web_sys::{Document, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
 
-pub fn init(penguin_el: &HtmlElement) -> Vec<Box<dyn Any>> {
+pub fn init(penguin_el: &HtmlElement) -> [Box<dyn Any>; 6] {
     let document = document();
-    vec![
+    [
         attach_onmousemove(&document),
         attach_onmouseup(&document),
         attach_onmousedown(penguin_el),
         attach_oncontextmenu(penguin_el),
         attach_onwheel(penguin_el),
+        attach_onkeydown(penguin_el),
     ]
 }
 
@@ -91,6 +92,22 @@ fn attach_onwheel(penguin_el: &HtmlElement) -> Box<dyn Any> {
 
     penguin_el
         .add_event_listener_with_callback("wheel", c.as_ref().unchecked_ref())
+        .unwrap();
+
+    Box::new(c)
+}
+
+fn attach_onkeydown(penguin_el: &HtmlElement) -> Box<dyn Any> {
+    let c = Closure::wrap(Box::new(move |e: KeyboardEvent| {
+        APP.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                app.onkeydown(e);
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    penguin_el
+        .add_event_listener_with_callback("keydown", c.as_ref().unchecked_ref())
         .unwrap();
 
     Box::new(c)

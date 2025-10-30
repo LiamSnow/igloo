@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use igloo_interface::{
     NodeConfig, NodeStyle, PenguinNodeDefn, PenguinPinID, PenguinRegistry, PenguinType,
-    graph::{PenguinNode, PenguinNodeID},
+    graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 use indexmap::IndexMap;
 use maud::html;
@@ -12,7 +14,7 @@ use crate::{
     ffi,
     graph::WebPin,
     interaction::Interaction,
-    viewport::{ClientPoint, WorldPoint},
+    viewport::{ClientBox, ClientPoint, WorldPoint},
 };
 
 #[derive(Debug)]
@@ -26,10 +28,17 @@ pub struct WebNode {
     pub outputs: IndexMap<PenguinPinID, WebPin>,
 }
 
+impl Drop for WebNode {
+    fn drop(&mut self) {
+        self.el.remove();
+    }
+}
+
 impl WebNode {
     pub fn new(
         parent: &Element,
         registry: &PenguinRegistry,
+        wires: Option<&HashMap<PenguinWireID, PenguinWire>>,
         inner: PenguinNode,
         id: PenguinNodeID,
     ) -> Result<Self, JsValue> {
@@ -39,9 +48,13 @@ impl WebNode {
             .ok_or(JsValue::from_str("Unknown Node Definition"))?;
 
         let document = ffi::document();
-        let el = document.create_element("div")?;
 
+        let el = document.create_element("div")?;
         el.set_class_name("penguin-node");
+        el.set_attribute(
+            "oncontextmenu",
+            "event.stopPropagation(); event.preventDefault();",
+        )?;
 
         parent.append_child(&el)?;
 
@@ -74,6 +87,8 @@ impl WebNode {
                     start_client_pos: client_pos,
                     start_node_pos,
                 });
+
+                app.graph.select_node(id, e.ctrl_key() || e.shift_key());
             });
         }) as Box<dyn FnMut(_)>);
 
@@ -177,10 +192,31 @@ impl WebNode {
         inputs_el.set_class_name("penguin-node-inputs");
         el.append_child(&inputs_el)?;
         let mut inputs = IndexMap::with_capacity(defn.inputs.len());
+        let fwires: Option<Vec<_>> = wires.map(|wires| {
+            wires
+                .iter()
+                .filter(|(_, wire)| wire.to_node == id)
+                .collect()
+        });
         for (pin_id, pin_defn) in &defn.inputs {
+            let connections = fwires.as_ref().map(|wires| {
+                wires
+                    .iter()
+                    .filter(|(_, wire)| wire.to_pin == pin_id.clone())
+                    .map(|(id, _)| **id)
+                    .collect()
+            });
+
             inputs.insert(
                 pin_id.clone(),
-                WebPin::new(&inputs_el, id, pin_id.clone(), pin_defn.clone(), false)?,
+                WebPin::new(
+                    &inputs_el,
+                    id,
+                    pin_id.clone(),
+                    pin_defn.clone(),
+                    false,
+                    connections.unwrap_or_default(),
+                )?,
             );
         }
 
@@ -188,10 +224,31 @@ impl WebNode {
         outputs_el.set_class_name("penguin-node-outputs");
         el.append_child(&outputs_el)?;
         let mut outputs = IndexMap::with_capacity(defn.outputs.len());
+        let fwires: Option<Vec<_>> = wires.map(|wires| {
+            wires
+                .iter()
+                .filter(|(_, wire)| wire.from_node == id)
+                .collect()
+        });
         for (pin_id, pin_defn) in &defn.outputs {
+            let connections = fwires.as_ref().map(|wires| {
+                wires
+                    .iter()
+                    .filter(|(_, wire)| wire.from_pin == pin_id.clone())
+                    .map(|(id, _)| **id)
+                    .collect()
+            });
+
             outputs.insert(
                 pin_id.clone(),
-                WebPin::new(&outputs_el, id, pin_id.clone(), pin_defn.clone(), true)?,
+                WebPin::new(
+                    &outputs_el,
+                    id,
+                    pin_id.clone(),
+                    pin_defn.clone(),
+                    true,
+                    connections.unwrap_or_default(),
+                )?,
             );
         }
 
@@ -228,5 +285,24 @@ impl WebNode {
 
     pub fn pos(&self) -> WorldPoint {
         WorldPoint::new(self.inner.x, self.inner.y)
+    }
+
+    pub fn select(&self, selected: bool) {
+        if selected {
+            self.el.set_class_name("penguin-node selected");
+        } else {
+            self.el.set_class_name("penguin-node");
+        }
+    }
+
+    pub fn client_box(&self) -> ClientBox {
+        let rect = self.el.get_bounding_client_rect();
+        ClientBox::new(
+            ClientPoint::new(rect.x() as i32, rect.y() as i32),
+            ClientPoint::new(
+                (rect.x() + rect.width()) as i32,
+                (rect.y() + rect.height()) as i32,
+            ),
+        )
     }
 }

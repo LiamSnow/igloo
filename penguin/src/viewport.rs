@@ -1,4 +1,4 @@
-use euclid::{Point2D, Transform2D, Vector2D};
+use euclid::{Box2D, Point2D, Transform2D, Vector2D};
 use wasm_bindgen::JsValue;
 use web_sys::{Element, HtmlElement, MouseEvent};
 
@@ -7,6 +7,7 @@ use crate::grid::{Grid, GridSettings};
 // Untransformed Browser viewport space
 pub struct ClientSpace;
 pub type ClientPoint = Point2D<i32, ClientSpace>;
+pub type ClientBox = Box2D<i32, ClientSpace>;
 
 // Untransformed #penguin Element space
 pub struct PenguinSpace;
@@ -16,6 +17,8 @@ pub type PenguinVector = Vector2D<f64, PenguinSpace>;
 // Transformed world space
 pub struct WorldSpace;
 pub type WorldPoint = Point2D<f64, WorldSpace>;
+
+pub type ClientToWorld = Transform2D<f64, ClientSpace, WorldSpace>;
 
 #[derive(Debug)]
 pub struct Viewport {
@@ -104,6 +107,11 @@ impl Viewport {
 
     pub fn client_to_world(&self, client_pos: ClientPoint) -> WorldPoint {
         self.penguin_to_world(self.client_to_penguin(client_pos))
+    }
+
+    pub fn client_to_world_transform(&self) -> ClientToWorld {
+        let rect = self.penguin_el.get_bounding_client_rect();
+        Transform2D::translation(-rect.left(), -rect.top()).then(&self.penguin_to_world_transform())
     }
 }
 

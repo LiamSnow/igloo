@@ -1,13 +1,13 @@
 use crate::ffi;
 use crate::graph::WebGraph;
 use crate::interaction::{Interaction, WiringState};
-use crate::viewport::{ClientPoint, PenguinVector, Viewport, mouse_client_pos};
+use crate::viewport::{ClientBox, ClientPoint, PenguinVector, Viewport, mouse_client_pos};
 use igloo_interface::graph::{PenguinGraph, PenguinNodeID};
 use igloo_interface::{PenguinPinID, PenguinPinType, PenguinRegistry};
 use std::mem;
 use std::{any::Any, cell::RefCell};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{HtmlElement, MouseEvent, WheelEvent};
+use web_sys::{Element, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
 
 thread_local! {
     pub static APP: RefCell<Option<PenguinApp>> = const { RefCell::new(None) };
@@ -16,14 +16,12 @@ thread_local! {
 #[derive(Debug)]
 pub struct PenguinApp {
     pub registry: PenguinRegistry,
-
     pub penguin_el: HtmlElement,
-
+    pub box_el: Element,
     pub graph: WebGraph,
     pub viewport: Viewport,
     interaction: Interaction,
-
-    pub closures: Vec<Box<dyn Any>>,
+    pub closures: [Box<dyn Any>; 6],
 }
 
 impl PenguinApp {
@@ -45,6 +43,11 @@ impl PenguinApp {
         viewport_el.set_id("penguin-viewport");
         penguin_el.append_child(&viewport_el)?;
 
+        let box_el = document.create_element("div")?;
+        box_el.set_id("penguin-selection-box");
+        box_el.set_attribute("style", "display: none;")?;
+        penguin_el.append_child(&box_el)?;
+
         Ok(PenguinApp {
             closures: ffi::init(&penguin_el),
             registry: PenguinRegistry::default(),
@@ -52,6 +55,7 @@ impl PenguinApp {
             graph: WebGraph::new(&viewport_el)?,
             viewport: Viewport::new(penguin_el, viewport_el, grid_svg)?,
             interaction: Interaction::default(),
+            box_el,
         })
     }
 
@@ -64,12 +68,42 @@ impl PenguinApp {
     }
 
     pub fn set_interaction(&mut self, interaction: Interaction) {
-        // TODO append node moves to history
+        match self.interaction {
+            Interaction::Panning {
+                start_pos,
+                last_pos,
+            } => {
+                let start_pos = start_pos.cast::<f64>();
+                let last_pos = last_pos.cast::<f64>();
+                if start_pos.distance_to(last_pos) < 10. {
+                    self.graph.clear_selection();
+                }
+            }
+            Interaction::Wiring(_) => {
+                self.graph.temp_wire.hide();
+                self.graph.hide_wiring();
+            }
+            Interaction::BoxSelecting {
+                start_pos: a,
+                last_pos: b,
+                append,
+            } => {
+                // TODO complete box selection
+                self.box_el.set_attribute("style", "display: none;");
 
-        if matches!(self.interaction, Interaction::Wiring(_)) {
-            self.graph.temp_wire.hide();
-            self.graph.hide_wiring();
+                self.graph.box_select(
+                    ClientBox::new(
+                        ClientPoint::new(i32::min(a.x, b.x), i32::min(a.y, b.y)),
+                        ClientPoint::new(i32::max(a.x, b.x), i32::max(a.y, b.y)),
+                    ),
+                    self.viewport.client_to_world_transform(),
+                    append,
+                );
+            }
+            _ => {}
         }
+
+        // TODO append node moves to history
 
         self.interaction = interaction;
     }
@@ -148,6 +182,8 @@ impl PenguinApp {
     }
 
     pub fn onmousedown(&mut self, e: MouseEvent) {
+        self.penguin_el.focus();
+
         if e.button() == 0 {
             let client_pos = mouse_client_pos(&e);
 
@@ -162,25 +198,35 @@ impl PenguinApp {
         self.set_interaction(Interaction::Idle);
     }
 
-    pub fn oncontextmenu(&mut self, e: MouseEvent) {}
+    pub fn oncontextmenu(&mut self, e: MouseEvent) {
+        e.prevent_default();
+
+        let client_pos = mouse_client_pos(&e);
+
+        self.set_interaction(Interaction::BoxSelecting {
+            start_pos: client_pos,
+            last_pos: client_pos,
+            append: e.ctrl_key() || e.shift_key(),
+        });
+    }
 
     pub fn onmousemove(&mut self, e: MouseEvent) {
-        let client_pos = mouse_client_pos(&e);
+        let mouse_pos = mouse_client_pos(&e);
 
         match &self.interaction {
             Interaction::Panning {
                 last_pos,
                 start_pos,
             } => {
-                let delta = (client_pos - *last_pos).cast::<f64>();
+                let delta = (mouse_pos - *last_pos).cast::<f64>();
 
-                // Client delta == Penguin delta (just diff origins)
+                // Client delta == Penguin delta
                 self.viewport.pan_by(PenguinVector::new(delta.x, delta.y));
 
-                self.set_interaction(Interaction::Panning {
+                self.interaction = Interaction::Panning {
                     start_pos: *start_pos,
-                    last_pos: client_pos,
-                });
+                    last_pos: mouse_pos,
+                };
             }
             Interaction::Dragging {
                 node_id,
@@ -188,20 +234,46 @@ impl PenguinApp {
                 start_node_pos,
             } => {
                 let start_penguin = self.viewport.client_to_penguin(*start_client_pos);
-                let current_penguin = self.viewport.client_to_penguin(client_pos);
+                let current_penguin = self.viewport.client_to_penguin(mouse_pos);
 
                 let start_world = self.viewport.penguin_to_world(start_penguin);
                 let current_world = self.viewport.penguin_to_world(current_penguin);
 
                 let delta = current_world - start_world;
-                let new_pos = *start_node_pos + delta;
+                let mut new_pos = *start_node_pos + delta;
+
+                let gs = self.viewport.grid.settings();
+                if gs.snap {
+                    new_pos.x = f64::round(new_pos.x / gs.size) * gs.size;
+                    new_pos.y = f64::round(new_pos.y / gs.size) * gs.size;
+                }
 
                 self.graph.move_node(node_id, new_pos);
             }
             Interaction::Wiring(_) => {
                 self.graph
                     .temp_wire
-                    .update(self.viewport.client_to_world(client_pos));
+                    .update(self.viewport.client_to_world(mouse_pos));
+            }
+            Interaction::BoxSelecting {
+                start_pos, append, ..
+            } => {
+                let left = i32::min(start_pos.x, mouse_pos.x);
+                let top = i32::min(start_pos.y, mouse_pos.y);
+                let width = i32::abs(start_pos.x - mouse_pos.x);
+                let height = i32::abs(start_pos.y - mouse_pos.y);
+
+                let style = format!(
+                    "display: block; left: {left}px; top: {top}px; width: {width}px; height: {height}px;"
+                );
+
+                self.box_el.set_attribute("style", &style);
+
+                self.interaction = Interaction::BoxSelecting {
+                    start_pos: *start_pos,
+                    last_pos: mouse_pos,
+                    append: *append,
+                };
             }
             _ => {}
         }
@@ -210,10 +282,26 @@ impl PenguinApp {
     pub fn onwheel(&mut self, e: WheelEvent) {
         e.prevent_default();
 
+        self.penguin_el.focus();
+
         let client_pos = mouse_client_pos(&e);
         let penguin_pos = self.viewport.client_to_penguin(client_pos);
 
         let delta = if e.delta_y() > 0.0 { 0.9 } else { 1.1 };
         self.viewport.zoom_at(penguin_pos, delta);
+    }
+
+    pub fn onkeydown(&mut self, e: KeyboardEvent) {
+        match e.key().as_str() {
+            "Escape" => {
+                self.graph.clear_selection();
+            }
+            "Backspace" | "Delete" => {
+                self.graph.delete_selection();
+            }
+            _ => {}
+        }
+
+        //
     }
 }

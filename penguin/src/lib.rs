@@ -54,38 +54,41 @@ fn test_graph() -> PenguinGraph {
     let mut x = 0.;
     let mut y = 0.;
 
-    for i in 0..5 {
+    for i in 0..10 {
         if i % 50 == 0 {
             x = 0.;
-            y += 200.;
+            y += 500.;
         } else {
-            // x += 250.;
-            x += 450.;
+            x += 250.;
+            // x += 450.;
         }
 
         g.nodes.insert(
             PenguinNodeID(i),
-            if i % 2 == 0 {
-                PenguinNode::new(PenguinNodeDefnRef::new("std", "print", 1), x, y)
-            } else {
-                PenguinNode::new(PenguinNodeDefnRef::new("std", "const_text", 1), x, y)
-            }, // PenguinNode::new(PenguinNodeDefnRef::new("std", "int_add_3", 1), x, y),
+            // if i % 2 == 0 {
+            //     PenguinNode::new(PenguinNodeDefnRef::new("std", "print", 1), x, y)
+            // } else {
+            //     PenguinNode::new(PenguinNodeDefnRef::new("std", "const_text", 1), x, y)
+            // },
+            PenguinNode::new(PenguinNodeDefnRef::new("std", "int_add_5", 1), x, y),
         );
 
         if i == 0 {
             continue;
         }
 
-        // g.wires.insert(
-        //     PenguinWireID(i),
-        //     PenguinWire {
-        //         from_node: PenguinNodeID(i - 1),
-        //         from_pin: PenguinPinID::from_str("Output"),
-        //         to_node: PenguinNodeID(i),
-        //         to_pin: PenguinPinID::from_str("Input_1"),
-        //         r#type: PenguinPinType::Value(PenguinType::Int),
-        //     },
-        // );
+        for w in 0..5 {
+            g.wires.insert(
+                PenguinWireID((w << 8) + i),
+                PenguinWire {
+                    from_node: PenguinNodeID(i - 1),
+                    from_pin: PenguinPinID::from_str("Output"),
+                    to_node: PenguinNodeID(i),
+                    to_pin: PenguinPinID::from_str(&format!("Input_{w}")),
+                    r#type: PenguinPinType::Value(PenguinType::Int),
+                },
+            );
+        }
     }
 
     g

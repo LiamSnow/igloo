@@ -129,7 +129,7 @@
   padding-left: 20px;
 }
 
-.penguin-phantom-controls {
+.penguin-vari-controls {
   position: absolute;
   bottom: 8px;
   right: 8px;
@@ -141,17 +141,17 @@
   transition: opacity 0.2s ease;
 }
 
-.penguin-node:hover .penguin-phantom-controls {
+.penguin-node:hover .penguin-vari-controls {
   opacity: 1;
   pointer-events: auto;
 }
 
-.penguin-phantom-control-group {
+.penguin-vari-control-group {
   display: flex;
   gap: 4px;
 }
 
-.penguin-phantom-button {
+.penguin-vari-button {
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -167,16 +167,16 @@
   transition: all 0.1s ease;
 }
 
-.penguin-phantom-button:hover:not(:disabled) {
+.penguin-vari-button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.2);
   border-color: #2196F3;
 }
 
-.penguin-phantom-button:active:not(:disabled) {
+.penguin-vari-button:active:not(:disabled) {
   transform: scale(0.95);
 }
 
-.penguin-phantom-button:disabled {
+.penguin-vari-button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
@@ -299,7 +299,6 @@
 .penguin-wire>path {
   pointer-events: stroke;
   cursor: pointer;
-  transition: stroke-width 0.1s ease, filter 0.1s ease;
 }
 
 .penguin-wire>path:hover {
