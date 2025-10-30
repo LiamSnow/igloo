@@ -189,15 +189,15 @@ impl WebGraph {
 
             let mut wire = WebWire::new(&self.wires_el, wire_id, inner, from_hitbox, to_hitbox)?;
 
-            wire.redraw_from(from_node_pos)?;
-            wire.redraw_to(to_node_pos)?;
-
             self.wires.insert(wire_id, wire);
         }
         // cast connections
         else {
             // TODO
         }
+
+        self.redraw_node_wires(&from_node_id)?;
+        self.redraw_node_wires(&to_node_id)?;
 
         Ok(())
     }

@@ -11,7 +11,7 @@ pub enum Interaction {
         last_pos: ClientPoint,
     },
     Dragging {
-        nodes: PenguinNodeID,
+        node_id: PenguinNodeID,
         start_client_pos: ClientPoint,
         start_node_pos: WorldPoint,
     },
