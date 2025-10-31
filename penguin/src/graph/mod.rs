@@ -118,8 +118,127 @@ impl WebGraph {
         Ok(())
     }
 
-    pub fn penguin_graph(&self) -> PenguinGraph {
-        todo!()
+    pub fn paste(
+        &mut self,
+        registry: &PenguinRegistry,
+        graph: PenguinGraph,
+        origin: WorldPoint,
+    ) -> Result<(), JsValue> {
+        let next_node_id = self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+        let next_wire_id = self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+
+        let mut node_id_map = HashMap::new();
+        let mut wire_id_map = HashMap::new();
+
+        // give new IDs
+        for (i, old_id) in graph.nodes.keys().enumerate() {
+            node_id_map.insert(*old_id, PenguinNodeID(next_node_id + i as u16));
+        }
+
+        for (i, old_id) in graph.wires.keys().enumerate() {
+            wire_id_map.insert(*old_id, PenguinWireID(next_wire_id + i as u16));
+        }
+
+        // update wires with new IDs
+        let mut transformed_wires = HashMap::new();
+        for (old_id, mut wire) in graph.wires {
+            let new_id = *wire_id_map.get(&old_id).unwrap();
+            wire.from_node = *node_id_map.get(&wire.from_node).unwrap();
+            wire.to_node = *node_id_map.get(&wire.to_node).unwrap();
+            transformed_wires.insert(new_id, wire);
+        }
+
+        for (old_id, mut node) in graph.nodes {
+            let new_id = *node_id_map.get(&old_id).unwrap();
+            node.x += origin.x;
+            node.y += origin.y;
+            self.nodes.insert(
+                new_id,
+                WebNode::new(
+                    &self.nodes_el,
+                    registry,
+                    Some(&transformed_wires),
+                    node,
+                    new_id,
+                )?,
+            );
+        }
+
+        for (new_id, wire) in transformed_wires {
+            let (from_pin_hitbox, from_node_pos) = {
+                let Some(from_node) = self.nodes.get_mut(&wire.from_node) else {
+                    log::error!("Missing from_node during paste. wire={wire:?}");
+                    continue;
+                };
+                let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin) else {
+                    log::error!("Missing from_pin during paste. wire={wire:?}");
+                    continue;
+                };
+                (from_pin.hitbox.clone(), from_node.pos())
+            };
+
+            let (to_pin_hitbox, to_node_pos) = {
+                let Some(to_node) = self.nodes.get_mut(&wire.to_node) else {
+                    log::error!("Missing to_node during paste. wire={wire:?}");
+                    continue;
+                };
+                let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin) else {
+                    log::error!("Missing to_pin during paste. wire={wire:?}");
+                    continue;
+                };
+                (to_pin.hitbox.clone(), to_node.pos())
+            };
+
+            let mut web_wire =
+                WebWire::new(&self.wires_el, new_id, wire, from_pin_hitbox, to_pin_hitbox)?;
+            web_wire.redraw_from(from_node_pos)?;
+            web_wire.redraw_to(to_node_pos)?;
+
+            self.wires.insert(new_id, web_wire);
+        }
+
+        Ok(())
+    }
+
+    pub fn penguin(&self) -> PenguinGraph {
+        let mut res = PenguinGraph {
+            nodes: HashMap::with_capacity(self.nodes.len()),
+            wires: HashMap::with_capacity(self.wires.len()),
+        };
+
+        for (id, node) in &self.nodes {
+            res.nodes.insert(*id, node.inner().clone());
+        }
+
+        for (id, wire) in &self.wires {
+            res.wires.insert(*id, wire.inner().clone());
+        }
+
+        res
+    }
+
+    pub fn copy_selection(&self, origin: WorldPoint) -> PenguinGraph {
+        let mut res = PenguinGraph {
+            nodes: HashMap::with_capacity(self.selection.nodes.len()),
+            wires: HashMap::with_capacity(self.selection.wires.len()),
+        };
+
+        for id in &self.selection.nodes {
+            if let Some(node) = self.nodes.get(id) {
+                let mut node = node.inner().clone();
+                node.x -= origin.x;
+                node.y -= origin.y;
+                res.nodes.insert(*id, node);
+            }
+        }
+
+        for id in &self.selection.wires {
+            if let Some(wire) = self.wires.get(id) {
+                res.wires.insert(*id, wire.inner().clone());
+            }
+        }
+
+        res
     }
 
     pub fn place_node(

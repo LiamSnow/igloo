@@ -10,7 +10,7 @@ use igloo_interface::{
 use std::collections::HashMap;
 use std::{any::Any, cell::RefCell};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
+use web_sys::{ClipboardEvent, Element, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
 
 thread_local! {
     pub static APP: RefCell<Option<PenguinApp>> = const { RefCell::new(None) };
@@ -25,7 +25,8 @@ pub struct PenguinApp {
     pub viewport: Viewport,
     interaction: Interaction,
     context: ContextMenu,
-    pub closures: [Box<dyn Any>; 6],
+    pub closures: [Box<dyn Any>; 9],
+    mouse_pos: ClientPoint,
 }
 
 impl PenguinApp {
@@ -63,15 +64,12 @@ impl PenguinApp {
             viewport: Viewport::new(penguin_el, viewport_el, grid_svg)?,
             interaction: Interaction::default(),
             box_el,
+            mouse_pos: ClientPoint::default(),
         })
     }
 
     pub fn load(&mut self, graph: PenguinGraph) -> Result<(), JsValue> {
         self.graph.load(&self.registry, graph)
-    }
-
-    pub fn penguin_graph(&self) -> PenguinGraph {
-        self.graph.penguin_graph()
     }
 
     pub fn set_interaction(&mut self, interaction: Interaction) {
@@ -172,6 +170,8 @@ impl PenguinApp {
         end_type: PenguinPinType,
         end_is_out: bool,
     ) -> Result<(), JsValue> {
+        self.set_interaction(Interaction::Idle);
+
         if !ws.is_valid_end(end_node, end_type, end_is_out) {
             return Ok(());
         }
@@ -195,8 +195,6 @@ impl PenguinApp {
                 end_type,
             )?;
         }
-
-        self.set_interaction(Interaction::Idle);
 
         Ok(())
     }
@@ -241,6 +239,7 @@ impl PenguinApp {
 
     pub fn onmousemove(&mut self, e: MouseEvent) {
         let mouse_pos = mouse_client_pos(&e);
+        self.mouse_pos = mouse_pos;
 
         match &self.interaction {
             Interaction::Panning {
@@ -258,7 +257,6 @@ impl PenguinApp {
                 };
             }
             Interaction::Dragging {
-                primary_node,
                 primary_node_pos,
                 start_pos: start_world,
                 node_poses,
@@ -394,5 +392,37 @@ impl PenguinApp {
             node_poses: self.graph.selection_poses()?,
         });
         Ok(())
+    }
+
+    pub fn oncopy(&mut self, e: ClipboardEvent) {
+        let origin = self.viewport.client_to_world(self.mouse_pos);
+        let peng = self.graph.copy_selection(origin);
+        let s = serde_json::to_string(&peng).unwrap();
+        if let Some(data) = e.clipboard_data() {
+            data.set_data("text/plain", &s).unwrap();
+            e.prevent_default();
+        }
+    }
+
+    pub fn onpaste(&mut self, e: ClipboardEvent) {
+        let Some(data) = e.clipboard_data() else {
+            return;
+        };
+
+        let Ok(text) = data.get_data("text/plain") else {
+            return;
+        };
+
+        let Ok(peng) = serde_json::from_str::<PenguinGraph>(&text) else {
+            return;
+        };
+
+        let origin = self.viewport.client_to_world(self.mouse_pos);
+        self.graph.paste(&self.registry, peng, origin);
+    }
+
+    pub fn oncut(&mut self, e: ClipboardEvent) {
+        self.oncopy(e);
+        self.graph.delete_selection();
     }
 }

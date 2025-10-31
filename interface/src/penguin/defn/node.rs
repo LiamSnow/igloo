@@ -1,9 +1,9 @@
 use crate::penguin::*;
-use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, PartialEq, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Display, Serialize, Deserialize)]
 #[display("{lib_path}.{node_path}")]
 pub struct PenguinNodeDefnRef {
     pub lib_path: String,
@@ -48,7 +48,7 @@ pub struct VariadicConfig {
     pub next: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, BorshSerialize, BorshDeserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct InputID(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]

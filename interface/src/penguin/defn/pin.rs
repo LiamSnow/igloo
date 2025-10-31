@@ -1,8 +1,8 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 
 use crate::penguin::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct PenguinPinID(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]

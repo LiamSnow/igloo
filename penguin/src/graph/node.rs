@@ -304,4 +304,8 @@ impl WebNode {
             ),
         )
     }
+
+    pub fn inner(&self) -> &PenguinNode {
+        &self.inner
+    }
 }

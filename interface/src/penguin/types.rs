@@ -1,8 +1,7 @@
-use crate::Color;
-use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize)]
 pub enum PenguinPinType {
     /// execution flow
     Flow,
@@ -10,7 +9,7 @@ pub enum PenguinPinType {
     Value(PenguinType),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 pub enum PenguinType {
     #[display("Integer")]
     Int,
@@ -24,13 +23,20 @@ pub enum PenguinType {
     Color,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PenguinValue {
     Int(i64),
     Real(f64),
     Text(String),
     Bool(bool),
-    Color(Color),
+    Color(PenguinColor),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PenguinColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 impl PenguinPinType {
@@ -100,13 +106,13 @@ impl PenguinType {
     }
 }
 
-impl Color {
+impl PenguinColor {
     pub fn from_hex(s: &str) -> Option<Self> {
         let s = s.trim_start_matches('#');
         if s.len() != 6 {
             return None;
         }
-        Some(Color {
+        Some(Self {
             r: u8::from_str_radix(&s[0..2], 16).ok()?,
             g: u8::from_str_radix(&s[2..4], 16).ok()?,
             b: u8::from_str_radix(&s[4..6], 16).ok()?,

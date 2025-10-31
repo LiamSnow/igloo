@@ -8,8 +8,11 @@
 - [x] place node from wiring
 - [x] drag selection
 - [ ] undo redo
-- [ ] copy paste
+- [x] copy paste
 - [ ] reroute nodes
 - [ ] sections
 - [ ] save inputs (pin + node cfgs)
+- [ ] node context menu
+- [ ] node alignment and distrbute
+- [ ] wire context menu
 

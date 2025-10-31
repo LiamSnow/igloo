@@ -2,9 +2,9 @@ use std::any::Any;
 
 use crate::app::APP;
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
+use web_sys::{ClipboardEvent, Document, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
 
-pub fn init(penguin_el: &HtmlElement) -> [Box<dyn Any>; 6] {
+pub fn init(penguin_el: &HtmlElement) -> [Box<dyn Any>; 9] {
     let document = document();
     [
         attach_onmousemove(&document),
@@ -13,6 +13,9 @@ pub fn init(penguin_el: &HtmlElement) -> [Box<dyn Any>; 6] {
         attach_oncontextmenu(penguin_el),
         attach_onwheel(penguin_el),
         attach_onkeydown(penguin_el),
+        attach_oncopy(penguin_el),
+        attach_onpaste(penguin_el),
+        attach_oncut(penguin_el),
     ]
 }
 
@@ -108,6 +111,54 @@ fn attach_onkeydown(penguin_el: &HtmlElement) -> Box<dyn Any> {
 
     penguin_el
         .add_event_listener_with_callback("keydown", c.as_ref().unchecked_ref())
+        .unwrap();
+
+    Box::new(c)
+}
+
+fn attach_oncopy(penguin_el: &HtmlElement) -> Box<dyn Any> {
+    let c = Closure::wrap(Box::new(move |e: ClipboardEvent| {
+        APP.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                app.oncopy(e);
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    penguin_el
+        .add_event_listener_with_callback("copy", c.as_ref().unchecked_ref())
+        .unwrap();
+
+    Box::new(c)
+}
+
+fn attach_onpaste(penguin_el: &HtmlElement) -> Box<dyn Any> {
+    let c = Closure::wrap(Box::new(move |e: ClipboardEvent| {
+        APP.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                app.onpaste(e);
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    penguin_el
+        .add_event_listener_with_callback("paste", c.as_ref().unchecked_ref())
+        .unwrap();
+
+    Box::new(c)
+}
+
+fn attach_oncut(penguin_el: &HtmlElement) -> Box<dyn Any> {
+    let c = Closure::wrap(Box::new(move |e: ClipboardEvent| {
+        APP.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                app.oncut(e);
+            }
+        });
+    }) as Box<dyn FnMut(_)>);
+
+    penguin_el
+        .add_event_listener_with_callback("cut", c.as_ref().unchecked_ref())
         .unwrap();
 
     Box::new(c)

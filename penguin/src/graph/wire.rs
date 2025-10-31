@@ -171,6 +171,10 @@ impl WebWire {
 
         false
     }
+
+    pub fn inner(&self) -> &PenguinWire {
+        &self.inner
+    }
 }
 
 impl Drop for WebWire {

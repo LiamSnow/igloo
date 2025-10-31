@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::penguin::*;
-use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 
 /// PenguinGraph is meant to be a reliable serialization format
 /// for saving and transferring around graphs.
@@ -10,54 +10,35 @@ use borsh::{BorshDeserialize, BorshSerialize};
 /// I have chosen to do it this way because the UI and Server
 /// have very different requirements for what they need to do
 /// with the graph.
-#[derive(Debug, Default, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PenguinGraph {
     pub nodes: HashMap<PenguinNodeID, PenguinNode>,
     pub wires: HashMap<PenguinWireID, PenguinWire>,
 }
 
 #[derive(
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    Debug,
-    Default,
-    BorshSerialize,
-    BorshDeserialize,
+    Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default, Serialize, Deserialize,
 )]
 pub struct PenguinNodeID(pub u16);
 
-#[derive(Debug, Default, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PenguinNode {
     pub defn_ref: PenguinNodeDefnRef,
     pub x: f64,
     pub y: f64,
     /// values for nodes with NodeConfig::Input
     pub input_cfg_values: HashMap<InputID, PenguinValue>,
+    // TODO also track size of textareas
     /// values of pins which are unconnected
     pub input_pin_values: HashMap<PenguinPinID, PenguinValue>,
 }
 
 #[derive(
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Debug,
-    Default,
-    BorshSerialize,
-    BorshDeserialize,
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]
 pub struct PenguinWireID(pub u16);
 
-#[derive(Clone, Debug, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PenguinWire {
     pub from_node: PenguinNodeID,
     pub from_pin: PenguinPinID,
