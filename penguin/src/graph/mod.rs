@@ -434,4 +434,12 @@ impl WebGraph {
             self.select_wire(id, true);
         }
     }
+
+    pub fn selection_poses(&self) -> Result<Vec<(PenguinNodeID, WorldPoint)>, JsValue> {
+        let mut res = Vec::with_capacity(self.selection.nodes.len());
+        for node_id in &self.selection.nodes {
+            res.push((*node_id, self.get_node_pos(node_id)?));
+        }
+        Ok(res)
+    }
 }

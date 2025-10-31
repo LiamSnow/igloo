@@ -8,7 +8,6 @@ use igloo_interface::{
     PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinRegistry,
 };
 use std::collections::HashMap;
-use std::mem;
 use std::{any::Any, cell::RefCell};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
@@ -259,26 +258,30 @@ impl PenguinApp {
                 };
             }
             Interaction::Dragging {
-                node_id,
-                start_client_pos,
-                start_node_pos,
+                primary_node,
+                primary_node_pos,
+                start_pos: start_world,
+                node_poses,
+                ..
             } => {
-                let start_penguin = self.viewport.client_to_penguin(*start_client_pos);
                 let current_penguin = self.viewport.client_to_penguin(mouse_pos);
-
-                let start_world = self.viewport.penguin_to_world(start_penguin);
                 let current_world = self.viewport.penguin_to_world(current_penguin);
 
-                let delta = current_world - start_world;
-                let mut new_pos = *start_node_pos + delta;
+                let delta = current_world - *start_world;
 
+                let mut primary_new_pos = *primary_node_pos + delta;
                 let gs = self.viewport.grid.settings();
                 if gs.snap {
-                    new_pos.x = f64::round(new_pos.x / gs.size) * gs.size;
-                    new_pos.y = f64::round(new_pos.y / gs.size) * gs.size;
+                    primary_new_pos.x = f64::round(primary_new_pos.x / gs.size) * gs.size;
+                    primary_new_pos.y = f64::round(primary_new_pos.y / gs.size) * gs.size;
                 }
 
-                self.graph.move_node(node_id, new_pos);
+                let actual_delta = primary_new_pos - *primary_node_pos;
+
+                for (node_id, initial_pos) in node_poses {
+                    let new_pos = *initial_pos + actual_delta;
+                    self.graph.move_node(node_id, new_pos);
+                }
             }
             Interaction::Wiring(_) => {
                 self.graph
@@ -377,5 +380,19 @@ impl PenguinApp {
 
     pub fn interaction(&self) -> &Interaction {
         &self.interaction
+    }
+
+    pub fn start_dragging(
+        &mut self,
+        primary_node: PenguinNodeID,
+        start_pos: ClientPoint,
+    ) -> Result<(), JsValue> {
+        self.set_interaction(Interaction::Dragging {
+            primary_node_pos: self.graph.get_node_pos(&primary_node)?,
+            primary_node,
+            start_pos: self.viewport.client_to_world(start_pos),
+            node_poses: self.graph.selection_poses()?,
+        });
+        Ok(())
     }
 }

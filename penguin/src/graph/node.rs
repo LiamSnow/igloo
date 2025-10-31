@@ -70,7 +70,7 @@ impl WebNode {
             e.prevent_default();
             e.stop_propagation();
 
-            let client_pos = ClientPoint::new(e.client_x(), e.client_y());
+            let cpos = ClientPoint::new(e.client_x(), e.client_y());
 
             APP.with(|app| {
                 let mut b = app.borrow_mut();
@@ -85,13 +85,9 @@ impl WebNode {
                     .map(|n| n.pos())
                     .unwrap_or_default();
 
-                app.set_interaction(Interaction::Dragging {
-                    node_id: id,
-                    start_client_pos: client_pos,
-                    start_node_pos,
-                });
-
                 app.graph.select_node(id, e.ctrl_key() || e.shift_key());
+
+                app.start_dragging(id, cpos);
             });
         }) as Box<dyn FnMut(_)>);
 

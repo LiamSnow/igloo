@@ -13,9 +13,10 @@ pub enum Interaction {
         last_pos: ClientPoint,
     },
     Dragging {
-        node_id: PenguinNodeID,
-        start_client_pos: ClientPoint,
-        start_node_pos: WorldPoint,
+        primary_node: PenguinNodeID,
+        primary_node_pos: WorldPoint,
+        start_pos: WorldPoint,
+        node_poses: Vec<(PenguinNodeID, WorldPoint)>,
     },
     BoxSelecting {
         start_pos: ClientPoint,
