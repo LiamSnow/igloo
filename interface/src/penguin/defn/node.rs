@@ -4,10 +4,10 @@ use derive_more::Display;
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, Default, PartialEq, Display, BorshSerialize, BorshDeserialize)]
-#[display("{library}.{name}")]
+#[display("{lib_path}.{node_path}")]
 pub struct PenguinNodeDefnRef {
-    pub library: String,
-    pub name: String,
+    pub lib_path: String,
+    pub node_path: String,
     pub version: u8,
 }
 
@@ -20,6 +20,7 @@ pub struct PenguinNodeDefn {
     pub outputs: IndexMap<PenguinPinID, PenguinPinDefn>,
     pub cfg: Vec<NodeConfig>,
     pub version: u8,
+    pub hide_search: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,10 +87,10 @@ impl Default for NodeStyle {
 }
 
 impl PenguinNodeDefnRef {
-    pub fn new(library: &str, name: &str, version: u8) -> Self {
+    pub fn new(lib_path: &str, node_path: &str, version: u8) -> Self {
         Self {
-            library: library.to_string(),
-            name: name.to_string(),
+            lib_path: lib_path.to_string(),
+            node_path: node_path.to_string(),
             version,
         }
     }
@@ -104,6 +105,16 @@ impl PenguinNodeDefn {
                 None
             }
         })
+    }
+
+    pub fn num_input_configs(&self) -> usize {
+        let mut count = 0;
+        for cfg in &self.cfg {
+            if matches!(cfg, NodeConfig::Input(_)) {
+                count += 1;
+            }
+        }
+        count
     }
 }
 

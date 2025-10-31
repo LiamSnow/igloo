@@ -1115,7 +1115,7 @@ pub fn std_library() -> PenguinLibrary {
     add_cast(&mut nodes, PenguinType::Color, PenguinType::Text);
 
     PenguinLibrary {
-        name: "std".to_string(),
+        display_name: "std".to_string(),
         nodes,
     }
 }
@@ -1185,6 +1185,7 @@ fn add_variadic(
                 inputs,
                 outputs,
                 cfg: vec![NodeConfig::Variadic(VariadicConfig { prev, next })],
+                hide_search: count != min,
             },
         );
     }

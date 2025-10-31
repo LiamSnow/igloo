@@ -37,9 +37,9 @@ pub struct PenguinNode {
     pub x: f64,
     pub y: f64,
     /// values for nodes with NodeConfig::Input
-    pub inputs: HashMap<InputID, PenguinValue>,
+    pub input_cfg_values: HashMap<InputID, PenguinValue>,
     /// values of pins which are unconnected
-    pub values: HashMap<PenguinPinID, PenguinValue>,
+    pub input_pin_values: HashMap<PenguinPinID, PenguinValue>,
 }
 
 #[derive(

@@ -1,14 +1,14 @@
 use super::*;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct PenguinRegistry {
-    pub libraries: Arc<HashMap<String, PenguinLibrary>>,
+    pub libraries: HashMap<String, PenguinLibrary>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct PenguinLibrary {
-    pub name: String,
+    pub display_name: String,
     pub nodes: HashMap<String, PenguinNodeDefn>,
 }
 
@@ -17,13 +17,14 @@ impl PenguinRegistry {
         let mut libraries = HashMap::new();
         libraries.insert("std".to_string(), std_library());
 
-        Self {
-            libraries: Arc::new(libraries),
-        }
+        Self { libraries }
     }
 
     pub fn get_defn(&self, dref: &PenguinNodeDefnRef) -> Option<&PenguinNodeDefn> {
-        self.libraries.get(&dref.library)?.nodes.get(&dref.name)
+        self.libraries
+            .get(&dref.lib_path)?
+            .nodes
+            .get(&dref.node_path)
     }
 }
 
