@@ -1,4 +1,6 @@
-use igloo_interface::{PenguinPinID, PenguinPinType, graph::PenguinNodeID};
+use igloo_interface::{
+    PenguinNodeDefn, PenguinPinDefn, PenguinPinID, PenguinPinType, graph::PenguinNodeID,
+};
 
 use crate::viewport::{ClientPoint, WorldPoint};
 
@@ -21,6 +23,10 @@ pub enum Interaction {
         append: bool,
     },
     Wiring(WiringState),
+    Context {
+        wpos: WorldPoint,
+        ws: Option<WiringState>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,5 +59,24 @@ impl WiringState {
         } else {
             end_type.cast_name(self.wire_type)
         }
+    }
+
+    pub fn find_compatible<'a>(
+        &self,
+        defn: &'a PenguinNodeDefn,
+    ) -> Option<(&'a PenguinPinID, &'a PenguinPinDefn)> {
+        let t = if self.is_output {
+            &defn.inputs
+        } else {
+            &defn.outputs
+        };
+
+        for (id, defn) in t {
+            if defn.r#type == self.wire_type {
+                return Some((id, defn));
+            }
+        }
+
+        None
     }
 }

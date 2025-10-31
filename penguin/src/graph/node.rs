@@ -45,7 +45,10 @@ impl WebNode {
         let defn = registry
             .get_defn(&inner.defn_ref)
             .cloned()
-            .ok_or(JsValue::from_str("Unknown Node Definition"))?;
+            .ok_or(JsValue::from_str(&format!(
+                "Unknown Node Definition {}",
+                inner.defn_ref
+            )))?;
 
         let document = ffi::document();
 

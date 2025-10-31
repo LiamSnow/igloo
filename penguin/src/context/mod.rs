@@ -6,6 +6,7 @@ use crate::{
     app::APP,
     context::search::ContextSearch,
     ffi,
+    interaction::{Interaction, WiringState},
     viewport::{ClientPoint, WorldPoint},
 };
 
@@ -16,7 +17,7 @@ pub struct ContextMenu {
     backdrop: Element,
     menu: Element,
     closures: [Closure<dyn FnMut(MouseEvent)>; 2],
-    search: Option<ContextSearch>,
+    search: ContextSearch,
 }
 
 impl Drop for ContextMenu {
@@ -26,7 +27,7 @@ impl Drop for ContextMenu {
 }
 
 impl ContextMenu {
-    pub fn new(penguin_el: &Element) -> Result<Self, JsValue> {
+    pub fn new(registry: &PenguinRegistry, penguin_el: &Element) -> Result<Self, JsValue> {
         let document = ffi::document();
 
         let backdrop = document.create_element("div")?;
@@ -38,6 +39,7 @@ impl ContextMenu {
         menu.set_id("penguin-context-menu");
         backdrop.append_child(&menu)?;
         menu.set_attribute("onmousedown", "event.stopPropagation();")?;
+        menu.set_attribute("onmouseup", "event.stopPropagation();")?;
         menu.set_attribute("onwheel", "event.stopPropagation();")?;
 
         let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
@@ -50,7 +52,7 @@ impl ContextMenu {
                     return;
                 };
 
-                app.context.hide();
+                app.set_interaction(Interaction::Idle);
             });
         }) as Box<dyn FnMut(_)>);
         backdrop
@@ -66,7 +68,7 @@ impl ContextMenu {
                     return;
                 };
 
-                app.context.hide();
+                app.set_interaction(Interaction::Idle);
             });
         }) as Box<dyn FnMut(_)>);
         backdrop.add_event_listener_with_callback(
@@ -76,15 +78,15 @@ impl ContextMenu {
 
         Ok(Self {
             backdrop,
+            search: ContextSearch::new(registry, &menu)?,
             menu,
-            search: None,
             closures: [onmousedown, oncontextmenu],
         })
     }
 
     pub fn hide(&mut self) -> Result<(), JsValue> {
         self.backdrop.set_attribute("style", "display: none;")?;
-        self.search.take();
+        self.search.hide()?;
         Ok(())
     }
 
@@ -102,13 +104,9 @@ impl ContextMenu {
         &mut self,
         registry: &PenguinRegistry,
         cpos: &ClientPoint,
-        wpos: WorldPoint,
+        ws: &Option<WiringState>,
     ) -> Result<(), JsValue> {
         self.show(cpos)?;
-
-        self.search = Some(ContextSearch::new(registry, &self.menu, wpos)?);
-
-        //
-        Ok(())
+        self.search.show(ws)
     }
 }

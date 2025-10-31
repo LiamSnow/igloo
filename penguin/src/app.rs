@@ -3,8 +3,11 @@ use crate::ffi;
 use crate::graph::WebGraph;
 use crate::interaction::{Interaction, WiringState};
 use crate::viewport::{ClientBox, ClientPoint, PenguinVector, Viewport, mouse_client_pos};
-use igloo_interface::graph::{PenguinGraph, PenguinNodeID};
-use igloo_interface::{PenguinPinID, PenguinPinType, PenguinRegistry};
+use igloo_interface::graph::{PenguinGraph, PenguinNode, PenguinNodeID};
+use igloo_interface::{
+    PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinRegistry,
+};
+use std::collections::HashMap;
 use std::mem;
 use std::{any::Any, cell::RefCell};
 use wasm_bindgen::{JsCast, JsValue};
@@ -22,7 +25,7 @@ pub struct PenguinApp {
     pub graph: WebGraph,
     pub viewport: Viewport,
     interaction: Interaction,
-    pub context: ContextMenu,
+    context: ContextMenu,
     pub closures: [Box<dyn Any>; 6],
 }
 
@@ -50,10 +53,12 @@ impl PenguinApp {
         box_el.set_attribute("style", "display: none;")?;
         penguin_el.append_child(&box_el)?;
 
+        let registry = PenguinRegistry::default();
+
         Ok(PenguinApp {
             closures: ffi::init(&penguin_el),
-            registry: PenguinRegistry::default(),
-            context: ContextMenu::new(&penguin_el)?,
+            context: ContextMenu::new(&registry, &penguin_el)?,
+            registry,
             penguin_el: penguin_el.clone(),
             graph: WebGraph::new(&viewport_el)?,
             viewport: Viewport::new(penguin_el, viewport_el, grid_svg)?,
@@ -83,8 +88,10 @@ impl PenguinApp {
                 }
             }
             Interaction::Wiring(_) => {
-                self.graph.temp_wire.hide();
                 self.graph.hide_wiring();
+                if !matches!(interaction, Interaction::Context { .. }) {
+                    self.graph.temp_wire.hide();
+                }
             }
             Interaction::BoxSelecting {
                 start_pos: a,
@@ -95,8 +102,12 @@ impl PenguinApp {
                 self.box_el.set_attribute("style", "display: none;");
 
                 if a.cast::<f64>().distance_to(b.cast::<f64>()) < 10. {
-                    self.context
-                        .show_search(&self.registry, &b, self.viewport.client_to_world(b));
+                    self.context.show_search(&self.registry, &b, &None);
+                    self.interaction = Interaction::Context {
+                        wpos: self.viewport.client_to_world(b),
+                        ws: None,
+                    };
+                    return;
                 } else {
                     self.graph.box_select(
                         ClientBox::new(
@@ -107,6 +118,10 @@ impl PenguinApp {
                         append,
                     );
                 }
+            }
+            Interaction::Context { .. } => {
+                self.context.hide();
+                self.graph.temp_wire.hide();
             }
             _ => {}
         }
@@ -150,20 +165,14 @@ impl PenguinApp {
         Ok(())
     }
 
-    pub fn stop_wiring(
+    pub fn place_wire(
         &mut self,
+        ws: WiringState,
         end_node: PenguinNodeID,
         end_pin: PenguinPinID,
         end_type: PenguinPinType,
         end_is_out: bool,
     ) -> Result<(), JsValue> {
-        let Interaction::Wiring(ws) = mem::take(&mut self.interaction) else {
-            return Ok(());
-        };
-
-        self.graph.temp_wire.hide()?;
-        self.graph.hide_wiring();
-
         if !ws.is_valid_end(end_node, end_type, end_is_out) {
             return Ok(());
         }
@@ -176,7 +185,7 @@ impl PenguinApp {
                 ws.start_node,
                 ws.start_pin,
                 ws.wire_type,
-            )
+            )?;
         } else {
             self.graph.add_wire(
                 ws.start_node,
@@ -185,8 +194,12 @@ impl PenguinApp {
                 end_node,
                 end_pin,
                 end_type,
-            )
+            )?;
         }
+
+        self.set_interaction(Interaction::Idle);
+
+        Ok(())
     }
 
     pub fn onmousedown(&mut self, e: MouseEvent) {
@@ -202,18 +215,27 @@ impl PenguinApp {
         }
     }
 
-    pub fn onmouseup(&mut self, _e: MouseEvent) {
-        self.set_interaction(Interaction::Idle);
+    pub fn onmouseup(&mut self, e: MouseEvent) {
+        let cpos = mouse_client_pos(&e);
+        let wpos = self.viewport.client_to_world(cpos);
+
+        if let Interaction::Wiring(ws) = &self.interaction {
+            let ws = Some(ws.clone());
+            self.context.show_search(&self.registry, &cpos, &ws);
+            self.set_interaction(Interaction::Context { wpos, ws });
+        } else {
+            self.set_interaction(Interaction::Idle);
+        }
     }
 
     pub fn oncontextmenu(&mut self, e: MouseEvent) {
         e.prevent_default();
 
-        let client_pos = mouse_client_pos(&e);
+        let cpos = mouse_client_pos(&e);
 
         self.set_interaction(Interaction::BoxSelecting {
-            start_pos: client_pos,
-            last_pos: client_pos,
+            start_pos: cpos,
+            last_pos: cpos,
             append: e.ctrl_key() || e.shift_key(),
         });
     }
@@ -287,16 +309,16 @@ impl PenguinApp {
         }
     }
 
-    pub fn onwheel(&mut self, e: WheelEvent) {
+    pub fn onwheel(&mut self, e: WheelEvent) -> Result<(), JsValue> {
         e.prevent_default();
 
-        self.penguin_el.focus();
+        self.penguin_el.focus()?;
 
         let client_pos = mouse_client_pos(&e);
         let penguin_pos = self.viewport.client_to_penguin(client_pos);
 
         let delta = if e.delta_y() > 0.0 { 0.9 } else { 1.1 };
-        self.viewport.zoom_at(penguin_pos, delta);
+        self.viewport.zoom_at(penguin_pos, delta)
     }
 
     pub fn onkeydown(&mut self, e: KeyboardEvent) {
@@ -311,5 +333,49 @@ impl PenguinApp {
         }
 
         //
+    }
+
+    pub fn context_add_node(
+        &mut self,
+        defn: PenguinNodeDefn,
+        defn_ref: PenguinNodeDefnRef,
+        close: bool,
+    ) -> Result<(), JsValue> {
+        let Interaction::Context { wpos, ws } = &self.interaction else {
+            return Ok(());
+        };
+
+        let node_id = self.graph.place_node(
+            &self.registry,
+            PenguinNode {
+                defn_ref,
+                x: wpos.x,
+                y: wpos.y,
+                input_cfg_values: HashMap::with_capacity(defn.num_input_configs()),
+                input_pin_values: HashMap::with_capacity(defn.inputs.len()),
+            },
+        )?;
+
+        if let Some(ws) = ws
+            && let Some((pin_id, pin_defn)) = ws.find_compatible(&defn)
+        {
+            self.place_wire(
+                ws.clone(),
+                node_id,
+                pin_id.clone(),
+                pin_defn.r#type,
+                !ws.is_output,
+            )?;
+        }
+
+        if close {
+            self.set_interaction(Interaction::Idle);
+        }
+
+        Ok(())
+    }
+
+    pub fn interaction(&self) -> &Interaction {
+        &self.interaction
     }
 }

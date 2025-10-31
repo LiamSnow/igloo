@@ -1,14 +1,12 @@
-use std::collections::HashMap;
-
-use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinRegistry, graph::PenguinNode};
+use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinRegistry};
 use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
-use web_sys::{Element, HtmlElement, MouseEvent};
+use web_sys::{Element, HtmlInputElement, MouseEvent};
 
-use crate::{app::APP, ffi, viewport::WorldPoint};
+use crate::{app::APP, ffi, interaction::WiringState};
 
 #[derive(Debug)]
 pub struct ContextSearch {
-    input: HtmlElement,
+    input: HtmlInputElement,
     results: Element,
     items: Vec<ContextSearchItem>,
 }
@@ -21,22 +19,18 @@ impl Drop for ContextSearch {
 }
 
 impl ContextSearch {
-    pub fn new(
-        registry: &PenguinRegistry,
-        parent: &Element,
-        wpos: WorldPoint,
-    ) -> Result<Self, JsValue> {
+    pub fn new(registry: &PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
         let document = ffi::document();
 
         let input = document
             .create_element("input")?
-            .dyn_into::<HtmlElement>()?;
+            .dyn_into::<HtmlInputElement>()?;
         input.set_id("penguin-context-search-input");
         input.set_attribute("type", "text")?;
         input.set_attribute("placeholder", "Search nodes...")?;
         input.set_attribute(
             "oninput", 
-            r#"document.querySelectorAll('.penguin-context-search-item').forEach(item => {
+            r#"document.querySelectorAll('#penguin-context-search-results > .penguin-context-search-item[data-compatible]').forEach(item => {
                  item.style.display = item.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none';
             })"#
         )?;
@@ -60,16 +54,46 @@ impl ContextSearch {
                     lib_path.clone(),
                     node_path.clone(),
                     defn.clone(),
-                    wpos,
                 )?);
             }
         }
 
-        Ok(Self {
+        let me = Self {
             input,
             results,
             items,
-        })
+        };
+
+        me.hide()?;
+
+        Ok(me)
+    }
+
+    pub fn hide(&self) -> Result<(), JsValue> {
+        self.input.set_attribute("style", "display: none;")?;
+        self.results.set_attribute("style", "display: none;")
+    }
+
+    pub fn show(&mut self, ws: &Option<WiringState>) -> Result<(), JsValue> {
+        for item in &mut self.items {
+            let comp = if let Some(ws) = ws {
+                ws.find_compatible(&item.defn).is_some()
+            } else {
+                true
+            };
+
+            if comp {
+                item.el.set_attribute("data-compatible", "")?;
+                item.el.remove_attribute("style")?;
+            } else {
+                item.el.remove_attribute("data-compatible")?;
+                item.el.set_attribute("style", "display: none;")?;
+            }
+        }
+
+        self.input.remove_attribute("style")?;
+        self.input.set_value("");
+        self.results.remove_attribute("style")
     }
 }
 
@@ -77,6 +101,7 @@ impl ContextSearch {
 pub struct ContextSearchItem {
     el: Element,
     closure: Closure<dyn FnMut(MouseEvent)>,
+    defn: PenguinNodeDefn,
 }
 
 impl Drop for ContextSearchItem {
@@ -91,7 +116,6 @@ impl ContextSearchItem {
         lib_path: String,
         node_path: String,
         defn: PenguinNodeDefn,
-        wpos: WorldPoint,
     ) -> Result<Self, JsValue> {
         let document = ffi::document();
 
@@ -109,6 +133,7 @@ impl ContextSearchItem {
         path.set_inner_html(&format!("{lib_path}.{node_path}"));
         el.append_child(&path)?;
 
+        let defn_1 = defn.clone();
         let closure = Closure::wrap(Box::new(move |e: MouseEvent| {
             e.prevent_default();
             e.stop_propagation();
@@ -119,24 +144,23 @@ impl ContextSearchItem {
                     return;
                 };
 
-                app.graph.place_node(
-                    &app.registry,
-                    PenguinNode {
-                        defn_ref: PenguinNodeDefnRef::new(&lib_path, &node_path, defn.version),
-                        x: wpos.x,
-                        y: wpos.y,
-                        inputs: HashMap::default(),
-                        values: HashMap::default(),
-                    },
+                app.context_add_node(
+                    defn_1.clone(),
+                    PenguinNodeDefnRef::new(&lib_path, &node_path, defn.version),
+                    !e.shift_key(),
                 );
-
-                if !e.shift_key() {
-                    app.context.hide();
-                }
             });
         }) as Box<dyn FnMut(_)>);
         el.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
 
-        Ok(Self { el, closure })
+        Ok(Self { el, closure, defn })
     }
+
+    // pub fn hide(&self) -> Result<(), JsValue> {
+    //     self.el.set_attribute("style", "display: none;")
+    // }
+
+    // pub fn show(&self) -> Result<(), JsValue> {
+    //     self.el.remove_attribute("style")
+    // }
 }

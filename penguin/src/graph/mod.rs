@@ -59,12 +59,12 @@ impl WebGraph {
     }
 
     pub fn load(&mut self, registry: &PenguinRegistry, graph: PenguinGraph) -> Result<(), JsValue> {
-        self.wires.clear();
+        self.wires = HashMap::with_capacity(graph.wires.len());
         self.wires_el.set_inner_html("");
 
         self.temp_wire = WebTempWire::new(&self.wires_el)?;
 
-        self.nodes.clear();
+        self.nodes = HashMap::with_capacity(graph.nodes.len());
         self.nodes_el.set_inner_html("");
 
         for (id, node) in graph.nodes {
@@ -126,7 +126,7 @@ impl WebGraph {
         &mut self,
         registry: &PenguinRegistry,
         inner: PenguinNode,
-    ) -> Result<(), JsValue> {
+    ) -> Result<PenguinNodeID, JsValue> {
         let node_id = PenguinNodeID(self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1);
 
         self.nodes.insert(
@@ -134,7 +134,7 @@ impl WebGraph {
             WebNode::new(&self.nodes_el, registry, None, inner, node_id)?,
         );
 
-        Ok(())
+        Ok(node_id)
     }
 
     pub fn delete_wire(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {

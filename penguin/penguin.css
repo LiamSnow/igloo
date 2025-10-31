@@ -50,7 +50,7 @@
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
   user-select: none;
   cursor: pointer;
-  border: 2px solid #222;
+  border: 2px solid transparent;
   pointer-events: auto;
   position: absolute;
   display: grid;
@@ -64,13 +64,21 @@
   box-shadow: 0 0 10px rgba(33, 150, 243, 0.5);
 }
 
+.penguin-node.selected>.penguin-node-title {
+  border: 2px solid #2196F3;
+  border-bottom: none;
+}
+
 .penguin-node-title {
+  border: 2px solid #191919;
+  border-bottom: none;
+  margin: -2px -2px 0 -2px;
   grid-column: 1 / -1;
   grid-row: 1;
   text-align: center;
   padding: 3px 12px;
   font-size: 14px;
-  background: #222;
+  background: #191919;
   border-radius: 8px 8px 0 0;
   white-space: nowrap;
   cursor: pointer;

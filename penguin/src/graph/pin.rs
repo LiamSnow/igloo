@@ -7,7 +7,11 @@ use igloo_interface::{
 use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
 use web_sys::{Element, HtmlElement, MouseEvent, ResizeObserver, SvgElement};
 
-use crate::{app::APP, ffi, interaction::WiringState};
+use crate::{
+    app::APP,
+    ffi,
+    interaction::{Interaction, WiringState},
+};
 
 #[derive(Debug)]
 pub struct WebPin {
@@ -149,7 +153,13 @@ impl WebPin {
                     return;
                 };
 
-                app.stop_wiring(node_id, id_2.clone(), defn.r#type, is_output);
+                if let Interaction::Wiring(ws) = app.interaction() {
+                    let ws = ws.clone();
+                    let res = app.place_wire(ws, node_id, id_2.clone(), defn.r#type, is_output);
+                    if let Err(e) = res {
+                        log::error!("Failed to place wire: {e:?}");
+                    }
+                }
             });
         }) as Box<dyn FnMut(_)>);
 
