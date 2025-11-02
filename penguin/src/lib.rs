@@ -1,8 +1,12 @@
 #![allow(non_snake_case)]
 
+use std::collections::HashMap;
+
 use igloo_interface::{
-    PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinType,
-    graph::{PenguinGraph, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
+    InputID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinType, PenguinValue,
+    graph::{
+        PenguinGraph, PenguinInputValue, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID,
+    },
 };
 use log::Level;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
@@ -200,7 +204,16 @@ fn test_graph() -> PenguinGraph {
 
     g.nodes.insert(
         PenguinNodeID(19),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "comment", 1), 700., 500.),
+        PenguinNode {
+            defn_ref: PenguinNodeDefnRef::new("std", "comment", 1),
+            x: 700.,
+            y: 500.,
+            input_cfg_values: HashMap::from([(
+                InputID("Value".to_string()),
+                PenguinInputValue::new(PenguinValue::Text("Example Comment".to_string())),
+            )]),
+            ..Default::default()
+        }, // PenguinNode::new(, 700., 500.),
     );
 
     g.wires.insert(

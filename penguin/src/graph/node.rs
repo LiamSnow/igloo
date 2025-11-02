@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{any::Any, collections::HashMap};
 
 use igloo_interface::{
     NodeConfig, NodeStyle, PenguinNodeDefn, PenguinPinID, PenguinRegistry, PenguinType,
@@ -7,23 +7,25 @@ use igloo_interface::{
 use indexmap::IndexMap;
 use maud::html;
 use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
-use web_sys::{Element, MouseEvent, ResizeObserver};
+use web_sys::{
+    Element, Event, HtmlElement, HtmlInputElement, HtmlTextAreaElement, InputEvent, MouseEvent,
+    ResizeObserver,
+};
 
 use crate::{
     app::APP,
     ffi,
     graph::WebPin,
-    interaction::Interaction,
     viewport::{ClientBox, ClientPoint, WorldPoint},
 };
 
 #[derive(Debug)]
 pub struct WebNode {
-    inner: PenguinNode,
+    pub(super) inner: PenguinNode,
     id: PenguinNodeID,
     defn: PenguinNodeDefn,
     el: Element,
-    closures: Vec<Closure<dyn FnMut(MouseEvent)>>,
+    closures: Vec<Box<dyn Any>>,
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
 }
@@ -39,7 +41,7 @@ impl WebNode {
         parent: &Element,
         registry: &PenguinRegistry,
         wires: Option<&HashMap<PenguinWireID, PenguinWire>>,
-        inner: PenguinNode,
+        mut inner: PenguinNode,
         id: PenguinNodeID,
     ) -> Result<Self, JsValue> {
         let defn = registry
@@ -61,7 +63,7 @@ impl WebNode {
 
         parent.append_child(&el)?;
 
-        let mut closures = Vec::with_capacity(5);
+        let mut closures: Vec<Box<dyn Any>> = Vec::with_capacity(5);
         let mousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
             if e.button() != 0 {
                 return;
@@ -92,7 +94,7 @@ impl WebNode {
         }) as Box<dyn FnMut(_)>);
 
         el.add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref())?;
-        closures.push(mousedown);
+        closures.push(Box::new(mousedown));
 
         match &defn.style {
             NodeStyle::Normal(icon) => {
@@ -131,6 +133,7 @@ impl WebNode {
                 }
             })
             .collect();
+
         if !input_cfgs.is_empty() {
             let content_el = document.create_element("div")?;
             content_el.set_class_name("penguin-node-content");
@@ -142,38 +145,73 @@ impl WebNode {
                     "input"
                 };
 
-                let input = document.create_element(el_type)?;
-
+                let input = document
+                    .create_element(el_type)?
+                    .dyn_into::<HtmlElement>()?;
                 input.set_class_name("penguin-input");
-                // TODO set inner value
-
                 input.set_attribute("onmousedown", "event.stopPropagation()")?;
+                inner.ensure_input_cfg_value(cfg);
+                let cfg_value = inner.input_cfg_values.get(&cfg.id).unwrap();
+                input.set_attribute("value", &cfg_value.value.to_string())?;
+
                 match cfg.r#type {
                     PenguinType::Int => {
                         input.set_attribute("type", "number")?;
                         input.set_attribute("step", "1")?;
-                        // input.set_inner_text()
                     }
                     PenguinType::Real => {
                         input.set_attribute("type", "number")?;
                         input.set_attribute("step", "any")?;
                     }
                     PenguinType::Text => {
-                        let onresize = Closure::wrap(Box::new(move |_| {
+                        let textarea = input.dyn_ref::<HtmlTextAreaElement>().unwrap().clone();
+                        textarea.set_value(&cfg_value.value.to_string());
+                        let (width, height) = cfg_value.size.unwrap();
+                        textarea
+                            .style()
+                            .set_property("width", &format!("{width}px"))?;
+                        textarea
+                            .style()
+                            .set_property("height", &format!("{height}px"))?;
+                        textarea.style().set_property("resize", "both")?;
+
+                        let cfg_id = cfg.id.clone();
+                        let onresize = Closure::wrap(Box::new(move |_: Event| {
                             APP.with(|app| {
                                 let mut b = app.borrow_mut();
                                 let Some(app) = b.as_mut() else {
                                     return;
                                 };
 
-                                app.graph.redraw_node_wires(&id);
+                                if let Err(e) = app.graph.redraw_node_wires(&id) {
+                                    log::error!("Error redrawing node wires: {e:?}");
+                                }
+
+                                match app.graph.node_mut(&id) {
+                                    Ok(node) => {
+                                        let Some(cfg_value) =
+                                            node.inner.input_cfg_values.get_mut(&cfg_id)
+                                        else {
+                                            // TODO log
+                                            return;
+                                        };
+
+                                        cfg_value.size = Some((
+                                            textarea.offset_width(),
+                                            textarea.offset_height(),
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        log::error!("Error getting node: {e:?}");
+                                    }
+                                }
                             });
                         })
                             as Box<dyn FnMut(_)>);
 
                         let observer = ResizeObserver::new(onresize.as_ref().unchecked_ref())?;
                         observer.observe(&input);
-                        closures.push(onresize);
+                        closures.push(Box::new(onresize));
                     }
                     PenguinType::Bool => {
                         input.set_attribute("type", "checkbox")?;
@@ -182,6 +220,48 @@ impl WebNode {
                         input.set_attribute("type", "color")?;
                     }
                 }
+
+                let cfg_id = cfg.id.clone();
+                let cfg_type = cfg.r#type.clone();
+                let input_1 = input.clone();
+                let oninput = Closure::wrap(Box::new(move |e: InputEvent| {
+                    APP.with(|app| {
+                        let mut b = app.borrow_mut();
+                        let Some(app) = b.as_mut() else {
+                            return;
+                        };
+
+                        match app.graph.node_mut(&id) {
+                            Ok(node) => {
+                                let Some(cfg_value) = node.inner.input_cfg_values.get_mut(&cfg_id)
+                                else {
+                                    // TODO log
+                                    return;
+                                };
+
+                                match cfg_type {
+                                    PenguinType::Text => {
+                                        // FIXME unwrap
+                                        let el = input_1.dyn_ref::<HtmlTextAreaElement>().unwrap();
+                                        cfg_value.set_from_string(el.value());
+                                    }
+                                    _ => {
+                                        // FIXME unwrap
+                                        let el = input_1.dyn_ref::<HtmlInputElement>().unwrap();
+                                        cfg_value.set_from_string(el.value());
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Error getting node: {e:?}");
+                            }
+                        }
+                    });
+                }) as Box<dyn FnMut(_)>);
+
+                input
+                    .add_event_listener_with_callback("input", oninput.as_ref().unchecked_ref())?;
+                closures.push(Box::new(oninput));
 
                 content_el.append_child(&input)?;
             }
@@ -211,6 +291,7 @@ impl WebNode {
                 WebPin::new(
                     &inputs_el,
                     id,
+                    &mut inner,
                     pin_id.clone(),
                     pin_defn.clone(),
                     false,
@@ -243,6 +324,7 @@ impl WebNode {
                 WebPin::new(
                     &outputs_el,
                     id,
+                    &mut inner,
                     pin_id.clone(),
                     pin_defn.clone(),
                     true,

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error};
 
 use crate::penguin::*;
 use serde::{Deserialize, Serialize};
@@ -27,10 +27,16 @@ pub struct PenguinNode {
     pub x: f64,
     pub y: f64,
     /// values for nodes with NodeConfig::Input
-    pub input_cfg_values: HashMap<InputID, PenguinValue>,
+    pub input_cfg_values: HashMap<InputID, PenguinInputValue>,
     // TODO also track size of textareas
     /// values of pins which are unconnected
-    pub input_pin_values: HashMap<PenguinPinID, PenguinValue>,
+    pub input_pin_values: HashMap<PenguinPinID, PenguinInputValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PenguinInputValue {
+    pub value: PenguinValue,
+    pub size: Option<(i32, i32)>,
 }
 
 #[derive(
@@ -55,5 +61,39 @@ impl PenguinNode {
             y,
             ..Default::default()
         }
+    }
+
+    pub fn ensure_input_cfg_value(&mut self, cfg: &InputConfig) {
+        if !self.input_cfg_values.contains_key(&cfg.id) {
+            self.input_cfg_values.insert(
+                cfg.id.clone(),
+                PenguinInputValue::new(PenguinValue::default(&cfg.r#type)),
+            );
+        }
+    }
+
+    pub fn ensure_input_pin_value(&mut self, pin_id: &PenguinPinID, r#type: &PenguinType) {
+        if !self.input_pin_values.contains_key(pin_id) {
+            self.input_pin_values.insert(
+                pin_id.clone(),
+                PenguinInputValue::new(PenguinValue::default(r#type)),
+            );
+        }
+    }
+}
+
+impl PenguinInputValue {
+    pub fn new(value: PenguinValue) -> Self {
+        Self {
+            size: match &value {
+                PenguinValue::Text(_) => Some((100, 20)),
+                _ => None,
+            },
+            value,
+        }
+    }
+
+    pub fn set_from_string(&mut self, value: String) -> Result<(), Box<dyn Error>> {
+        self.value.set_from_string(value)
     }
 }

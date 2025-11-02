@@ -33,6 +33,8 @@ web-sys = { version = "0.3.81", features = [
   "ResizeObserver",
   "KeyboardEvent",
   "HtmlInputElement",
+  "HtmlTextAreaElement",
+  "InputEvent",
 ] }
 igloo-interface = { path = "../interface/", features = ["penguin"] }
 borsh = { version = "1.5.7", features = ["derive"] }

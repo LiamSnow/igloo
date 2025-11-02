@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
@@ -23,20 +25,60 @@ pub enum PenguinType {
     Color,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Display)]
 pub enum PenguinValue {
+    #[display("{_0}")]
     Int(i64),
+    #[display("{_0}")]
     Real(f64),
+    #[display("{_0}")]
     Text(String),
+    #[display("{_0}")]
     Bool(bool),
+    #[display("{_0}")]
     Color(PenguinColor),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Display, Default)]
+#[display("#{r:02x}{g:02x}{b:02x}")]
 pub struct PenguinColor {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+impl PenguinValue {
+    pub fn default(r#type: &PenguinType) -> Self {
+        match r#type {
+            PenguinType::Int => PenguinValue::Int(0),
+            PenguinType::Real => PenguinValue::Real(0.),
+            PenguinType::Text => PenguinValue::Text(String::default()),
+            PenguinType::Bool => PenguinValue::Bool(false),
+            PenguinType::Color => PenguinValue::Color(PenguinColor::default()),
+        }
+    }
+
+    pub fn set_from_string(&mut self, value: String) -> Result<(), Box<dyn Error>> {
+        match self {
+            PenguinValue::Int(v) => {
+                *v = value.parse()?;
+            }
+            PenguinValue::Real(v) => {
+                *v = value.parse()?;
+            }
+            PenguinValue::Text(v) => {
+                *v = value;
+            }
+            PenguinValue::Bool(v) => {
+                *v = value.parse()?;
+            }
+            PenguinValue::Color(v) => {
+                *v = PenguinColor::from_hex(&value)
+                    .ok_or("Invalid PenguinColor hex value".to_string())?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl PenguinPinType {

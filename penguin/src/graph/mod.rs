@@ -234,7 +234,13 @@ impl WebGraph {
 
         for id in &self.selection.wires {
             if let Some(wire) = self.wires.get(id) {
-                res.wires.insert(*id, wire.inner().clone());
+                let inner = wire.inner();
+                // dont copy wires linking outside selection
+                if self.selection.nodes.contains(&inner.from_node)
+                    && self.selection.nodes.contains(&inner.to_node)
+                {
+                    res.wires.insert(*id, inner.clone());
+                }
             }
         }
 
@@ -431,6 +437,14 @@ impl WebGraph {
         }
 
         Ok(())
+    }
+
+    /// WARN: Use with caution. Only use from WebNode
+    pub fn node_mut(&mut self, node_id: &PenguinNodeID) -> Result<&mut WebNode, JsValue> {
+        let Some(node) = self.nodes.get_mut(node_id) else {
+            return Err(JsValue::from_str("Unknown Node"));
+        };
+        Ok(node)
     }
 
     pub fn select_node(&mut self, node_id: PenguinNodeID, append: bool) {

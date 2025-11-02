@@ -45,7 +45,7 @@
 .penguin-node {
   color: white;
   background: rgba(0, 0, 0, 0.8);
-  min-width: 120px;
+  min-width: 60px;
   border-radius: 10px;
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
   user-select: none;
@@ -56,6 +56,22 @@
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-rows: auto 1fr auto;
+  border: 2px solid #333;
+}
+
+.penguin-node:has(.penguin-node-inputs > .penguin-pin-wrapper:nth-child(2)),
+.penguin-node:has(.penguin-node-outputs > .penguin-pin-wrapper:nth-child(2)) {
+  min-width: 80px;
+}
+
+.penguin-node:has(.penguin-node-inputs > .penguin-pin-wrapper:nth-child(3)),
+.penguin-node:has(.penguin-node-outputs > .penguin-pin-wrapper:nth-child(3)) {
+  min-width: 100px;
+}
+
+.penguin-node:has(.penguin-node-inputs > .penguin-pin-wrapper:nth-child(4)),
+.penguin-node:has(.penguin-node-outputs > .penguin-pin-wrapper:nth-child(4)) {
+  min-width: 140px;
 }
 
 .penguin-node.selected {
@@ -65,14 +81,14 @@
 }
 
 .penguin-node.selected>.penguin-node-title {
-  border: 2px solid #2196F3;
-  border-bottom: none;
+  /* border: 2px solid #2196F3; */
+  /* border-bottom: none; */
 }
 
 .penguin-node-title {
-  border: 2px solid #191919;
-  border-bottom: none;
-  margin: -2px -2px 0 -2px;
+  /* border: 2px solid #191919; */
+  /* border-bottom: none; */
+  /* margin: -2px -2px 0 -2px; */
   grid-column: 1 / -1;
   grid-row: 1;
   text-align: center;
@@ -115,8 +131,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 0 8px 0;
+  padding: 0;
+  padding: 4px 0 4px 0;
   justify-content: center;
+  margin-left: -12px;
 }
 
 .penguin-node-outputs {
@@ -125,17 +143,19 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 0 8px 0;
+  padding: 0;
+  padding: 4px 0 4px 0;
   justify-content: center;
+  margin-right: -12px;
 }
 
-.penguin-node-inputs:not(:empty) {
-  padding-right: 20px;
-}
+/* .penguin-node-inputs:not(:empty) { */
+/* padding-right: 20px; */
+/* } */
 
-.penguin-node-outputs:not(:empty) {
-  padding-left: 20px;
-}
+/* .penguin-node-outputs:not(:empty) { */
+/* padding-left: 20px; */
+/* } */
 
 .penguin-vari-controls {
   position: absolute;
@@ -203,10 +223,36 @@
   flex-direction: row-reverse;
 }
 
+.penguin-pin-wrapper.input:has(.penguin-pin-name),
+.penguin-pin-wrapper.input:has(.penguin-input:not([style*="display: none"])) {
+  margin-right: 10px;
+}
+
+.penguin-pin-wrapper.output:has(.penguin-pin-name),
+.penguin-pin-wrapper.output:has(.penguin-input:not([style*="display: none"])) {
+  margin-left: 10px;
+}
+
 .penguin-pin-name {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.8);
   white-space: nowrap;
+}
+
+.penguin-pin-wrapper.input .penguin-pin-name {
+  margin-right: 10px;
+}
+
+.penguin-pin-wrapper.input .penguin-input {
+  margin-right: 15px;
+}
+
+.penguin-pin-wrapper.output .penguin-pin-name {
+  margin-left: 10px;
+}
+
+.penguin-pin-wrapper.output .penguin-input {
+  margin-left: 15px;
 }
 
 .penguin-pin {
@@ -219,7 +265,6 @@
   border-radius: 50%;
   margin: 5px;
   border: 2px solid white;
-  background-color: transparent;
   transition: background-color 0.2s ease;
 }
 
@@ -339,8 +384,6 @@
 
 .penguin-input[type="number"] {
   width: 40px;
-  -moz-appearance: textfield;
-  appearance: textfield;
 }
 
 .penguin-input[type="number"]::-webkit-inner-spin-button,

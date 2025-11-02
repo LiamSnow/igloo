@@ -93,6 +93,9 @@ impl WebWire {
         })
     }
 
+    // TODO FIXME calculation is slightly off.
+    // Change function to take in client -> world transform
+    // and use the from_hitbox bounding client rect
     pub fn redraw_from(&mut self, from_node_pos: WorldPoint) -> Result<(), JsValue> {
         self.from_pos.0 = from_node_pos.x
             + self.from_hitbox.offset_left() as f64

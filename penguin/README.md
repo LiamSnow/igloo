@@ -11,8 +11,9 @@
 - [x] copy paste
 - [ ] reroute nodes
 - [ ] sections
-- [ ] save inputs (pin + node cfgs)
+- [x] save inputs (pin + node cfgs)
 - [ ] node context menu
-- [ ] node alignment and distrbute
+- [ ] node alignment and distribute
 - [ ] wire context menu
+- [ ] variadic controls
 

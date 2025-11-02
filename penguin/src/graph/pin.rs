@@ -1,11 +1,14 @@
-use std::mem;
+use std::{any::Any, mem};
 
 use igloo_interface::{
     PenguinPinDefn, PenguinPinID, PenguinPinType, PenguinType,
-    graph::{PenguinNodeID, PenguinWireID},
+    graph::{PenguinNode, PenguinNodeID, PenguinWireID},
 };
 use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
-use web_sys::{Element, HtmlElement, MouseEvent, ResizeObserver, SvgElement};
+use web_sys::{
+    Element, Event, HtmlElement, HtmlInputElement, HtmlTextAreaElement, InputEvent, MouseEvent,
+    ResizeObserver, SvgElement,
+};
 
 use crate::{
     app::APP,
@@ -25,7 +28,7 @@ pub struct WebPin {
     pin_el: Element,
     input_el: Option<Element>,
     connections: Vec<PenguinWireID>,
-    closures: Vec<Closure<dyn FnMut(MouseEvent)>>,
+    closures: Vec<Box<dyn Any>>,
 }
 
 impl Drop for WebPin {
@@ -38,6 +41,7 @@ impl WebPin {
     pub fn new(
         parent: &Element,
         node_id: PenguinNodeID,
+        node: &mut PenguinNode,
         id: PenguinPinID,
         defn: PenguinPinDefn,
         is_output: bool,
@@ -78,7 +82,7 @@ impl WebPin {
                     document.create_element_ns(Some("http://www.w3.org/2000/svg"), "polygon")?;
 
                 polygon.set_attribute("points", "1,1 12,1 15,8 12,15 1,15")?;
-                polygon.set_attribute("fill", "transparent")?;
+                polygon.set_attribute("fill", "#111")?;
                 polygon.set_attribute("stroke", "white")?;
                 polygon.set_attribute("strokeWidth", "2")?;
 
@@ -107,7 +111,7 @@ impl WebPin {
             wrapper.append_child(&name)?;
         }
 
-        let mut closures = Vec::with_capacity(4);
+        let mut closures: Vec<Box<dyn Any>> = Vec::with_capacity(4);
         let id_1 = id.clone();
         let id_2 = id.clone();
         let hitbox_1 = hitbox.clone();
@@ -137,7 +141,7 @@ impl WebPin {
         }) as Box<dyn FnMut(_)>);
 
         hitbox.add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref())?;
-        closures.push(mousedown);
+        closures.push(Box::new(mousedown));
 
         let mouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
             if e.button() != 0 {
@@ -164,7 +168,7 @@ impl WebPin {
         }) as Box<dyn FnMut(_)>);
 
         hitbox.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref())?;
-        closures.push(mouseup);
+        closures.push(Box::new(mouseup));
 
         let mut input_el = None;
 
@@ -178,37 +182,70 @@ impl WebPin {
             };
 
             let input = document.create_element(el_type)?;
-
             input.set_class_name("penguin-input");
-
             input.set_attribute("onmousedown", "event.stopPropagation()")?;
-            // TODO set inner value
+            node.ensure_input_pin_value(&id, &vt);
+            let pin_value = node.input_pin_values.get(&id).unwrap();
+            input.set_attribute("value", &pin_value.value.to_string())?;
 
             match vt {
                 PenguinType::Int => {
                     input.set_attribute("type", "number")?;
                     input.set_attribute("step", "1")?;
-                    // input.set_inner_text()
                 }
                 PenguinType::Real => {
                     input.set_attribute("type", "number")?;
                     input.set_attribute("step", "any")?;
                 }
                 PenguinType::Text => {
-                    let onresize = Closure::wrap(Box::new(move |_| {
+                    let textarea = input.dyn_ref::<HtmlTextAreaElement>().unwrap().clone();
+                    textarea.set_value(&pin_value.value.to_string());
+                    let (width, height) = pin_value.size.unwrap();
+
+                    textarea.set_attribute(
+                        "style",
+                        &format!("width: {width}px; height: {height}px; resize: both;"),
+                    )?;
+
+                    let id_1 = id.clone();
+                    let onresize = Closure::wrap(Box::new(move |_: Event| {
                         APP.with(|app| {
                             let mut b = app.borrow_mut();
                             let Some(app) = b.as_mut() else {
                                 return;
                             };
 
-                            app.graph.redraw_node_wires(&node_id);
+                            if let Err(e) = app.graph.redraw_node_wires(&node_id) {
+                                log::error!("Error redrawing node wires: {e:?}");
+                            }
+
+                            let size = (textarea.offset_width(), textarea.offset_height());
+                            if size == (0, 0) {
+                                // occurs when textarea is not visible
+                                return;
+                            }
+
+                            match app.graph.node_mut(&node_id) {
+                                Ok(node) => {
+                                    let Some(cfg_value) =
+                                        node.inner.input_pin_values.get_mut(&id_1)
+                                    else {
+                                        // TODO log
+                                        return;
+                                    };
+
+                                    cfg_value.size = Some(size);
+                                }
+                                Err(e) => {
+                                    log::error!("Error getting node: {e:?}");
+                                }
+                            }
                         });
                     }) as Box<dyn FnMut(_)>);
 
                     let observer = ResizeObserver::new(onresize.as_ref().unchecked_ref())?;
                     observer.observe(&input);
-                    closures.push(onresize);
+                    closures.push(Box::new(onresize));
                 }
                 PenguinType::Bool => {
                     input.set_attribute("type", "checkbox")?;
@@ -217,6 +254,45 @@ impl WebPin {
                     input.set_attribute("type", "color")?;
                 }
             }
+
+            let input_1 = input.clone();
+            let id_1 = id.clone();
+            let oninput = Closure::wrap(Box::new(move |e: InputEvent| {
+                APP.with(|app| {
+                    let mut b = app.borrow_mut();
+                    let Some(app) = b.as_mut() else {
+                        return;
+                    };
+
+                    match app.graph.node_mut(&node_id) {
+                        Ok(node) => {
+                            let Some(cfg_value) = node.inner.input_pin_values.get_mut(&id_1) else {
+                                // TODO log
+                                return;
+                            };
+
+                            match vt {
+                                PenguinType::Text => {
+                                    // FIXME unwrap
+                                    let el = input_1.dyn_ref::<HtmlTextAreaElement>().unwrap();
+                                    cfg_value.set_from_string(el.value());
+                                }
+                                _ => {
+                                    // FIXME unwrap
+                                    let el = input_1.dyn_ref::<HtmlInputElement>().unwrap();
+                                    cfg_value.set_from_string(el.value());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Error getting node: {e:?}");
+                        }
+                    }
+                });
+            }) as Box<dyn FnMut(_)>);
+
+            input.add_event_listener_with_callback("input", oninput.as_ref().unchecked_ref())?;
+            closures.push(Box::new(oninput));
 
             wrapper.append_child(&input)?;
 
@@ -270,14 +346,14 @@ impl WebPin {
         match self.defn.r#type {
             PenguinPinType::Flow => self
                 .pin_el
-                .set_attribute("fill", if connected { "white" } else { "transparent" })?,
+                .set_attribute("fill", if connected { "white" } else { "#111" })?,
             PenguinPinType::Value(vt) => {
                 self.pin_el.set_attribute(
                     "style",
                     &format!(
                         "border-color: {}; background-color: {};",
                         vt.color(),
-                        if connected { vt.color() } else { "transparent" },
+                        if connected { vt.color() } else { "#111" },
                     ),
                 )?;
             }
