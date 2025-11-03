@@ -18,7 +18,7 @@ pub struct PenguinNodeDefn {
     pub style: NodeStyle,
     pub inputs: IndexMap<PenguinPinID, PenguinPinDefn>,
     pub outputs: IndexMap<PenguinPinID, PenguinPinDefn>,
-    pub cfg: Vec<NodeConfig>,
+    pub features: Vec<NodeFeature>,
     pub version: u8,
     pub hide_search: bool,
 }
@@ -33,33 +33,33 @@ pub enum NodeStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeConfig {
+pub enum NodeFeature {
     /// Expandable I/O with +/- buttons
-    Variadic(VariadicConfig),
+    Variadic(NodeVariadicFeature),
     /// Adds a Query Input
-    Query(QueryConfig),
+    Query(NodeQueryFeature),
     /// Arbitrary Input
-    Input(InputConfig),
+    Input(NodeInputFeature),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VariadicConfig {
+pub struct NodeVariadicFeature {
     pub prev: Option<String>,
     pub next: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
-pub struct InputID(pub String);
+pub struct NodeInputFeatureID(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InputConfig {
+pub struct NodeInputFeature {
     pub r#type: PenguinType,
     /// Value is saved under this ID
-    pub id: InputID,
+    pub id: NodeInputFeatureID,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QueryConfig {
+pub struct NodeQueryFeature {
     /// Base Name of NodeDefn
     /// For query config you need "base_int", "base_text", ..
     /// Then this will automatically switch between them
@@ -97,9 +97,9 @@ impl PenguinNodeDefnRef {
 }
 
 impl PenguinNodeDefn {
-    pub fn get_variadic_config(&self) -> Option<&VariadicConfig> {
-        self.cfg.iter().find_map(|cfg| {
-            if let NodeConfig::Variadic(config) = cfg {
+    pub fn variadic_feature(&self) -> Option<&NodeVariadicFeature> {
+        self.features.iter().find_map(|cfg| {
+            if let NodeFeature::Variadic(config) = cfg {
                 Some(config)
             } else {
                 None
@@ -107,18 +107,31 @@ impl PenguinNodeDefn {
         })
     }
 
-    pub fn num_input_configs(&self) -> usize {
+    pub fn num_input_features(&self) -> usize {
         let mut count = 0;
-        for cfg in &self.cfg {
-            if matches!(cfg, NodeConfig::Input(_)) {
+        for cfg in &self.features {
+            if matches!(cfg, NodeFeature::Input(_)) {
                 count += 1;
             }
         }
         count
     }
+
+    pub fn input_features(&self) -> Vec<&NodeInputFeature> {
+        self.features
+            .iter()
+            .filter_map(|cfg| {
+                if let NodeFeature::Input(config) = cfg {
+                    Some(config)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
-impl InputID {
+impl NodeInputFeatureID {
     pub fn from_str(s: &str) -> Self {
         Self(s.to_string())
     }

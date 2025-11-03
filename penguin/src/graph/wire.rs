@@ -1,4 +1,9 @@
-use crate::{app::APP, ffi};
+use std::any::Any;
+
+use crate::{
+    app::APP,
+    ffi::{self, add_app_event_listener},
+};
 
 use super::*;
 use euclid::Box2D;
@@ -19,7 +24,7 @@ pub struct WebWire {
     from_pos: (f64, f64),
     to_pos: (f64, f64),
 
-    closure: Closure<dyn FnMut(MouseEvent)>,
+    closures: Vec<Box<dyn Any>>,
 }
 
 #[derive(Debug)]
@@ -57,29 +62,28 @@ impl WebWire {
     ) -> Result<Self, JsValue> {
         let (svg, path) = make_els(parent, inner.r#type)?;
 
-        let closure = Closure::wrap(Box::new(move |e: MouseEvent| {
-            if e.button() != 0 {
-                return;
-            }
-
-            e.prevent_default();
-            e.stop_propagation();
-
-            APP.with(|app| {
-                let mut b = app.borrow_mut();
-                let Some(app) = b.as_mut() else {
+        let mut closures = Vec::with_capacity(1);
+        add_app_event_listener(
+            &path,
+            "mousedown",
+            &mut closures,
+            move |app, e: MouseEvent| {
+                if e.button() != 0 {
                     return;
-                };
+                }
+
+                e.prevent_default();
+                e.stop_propagation();
+
+                app.focus();
 
                 if e.alt_key() {
                     app.graph.delete_wire(id);
                 } else {
                     app.graph.select_wire(id, e.ctrl_key() || e.shift_key());
                 }
-            });
-        }) as Box<dyn FnMut(_)>);
-
-        path.add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())?;
+            },
+        )?;
 
         Ok(Self {
             inner,
@@ -89,7 +93,7 @@ impl WebWire {
             path,
             from_pos: (0., 0.),
             to_pos: (0., 0.),
-            closure,
+            closures,
         })
     }
 

@@ -26,8 +26,8 @@ pub struct PenguinNode {
     pub defn_ref: PenguinNodeDefnRef,
     pub x: f64,
     pub y: f64,
-    /// values for nodes with NodeConfig::Input
-    pub input_cfg_values: HashMap<InputID, PenguinInputValue>,
+    /// values for each NodeFeature::Input
+    pub input_feature_values: HashMap<NodeInputFeatureID, PenguinInputValue>,
     // TODO also track size of textareas
     /// values of pins which are unconnected
     pub input_pin_values: HashMap<PenguinPinID, PenguinInputValue>,
@@ -63,11 +63,11 @@ impl PenguinNode {
         }
     }
 
-    pub fn ensure_input_cfg_value(&mut self, cfg: &InputConfig) {
-        if !self.input_cfg_values.contains_key(&cfg.id) {
-            self.input_cfg_values.insert(
-                cfg.id.clone(),
-                PenguinInputValue::new(PenguinValue::default(&cfg.r#type)),
+    pub fn ensure_input_feature_value(&mut self, feature: &NodeInputFeature) {
+        if !self.input_feature_values.contains_key(&feature.id) {
+            self.input_feature_values.insert(
+                feature.id.clone(),
+                PenguinInputValue::new(PenguinValue::default(&feature.r#type)),
             );
         }
     }

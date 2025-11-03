@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use igloo_interface::{
-    InputID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinType, PenguinValue,
+    NodeInputFeatureID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinType,
+    PenguinValue,
     graph::{
         PenguinGraph, PenguinInputValue, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID,
     },
@@ -31,11 +32,10 @@ fn init() {
 pub fn penguin_start() -> Result<(), JsValue> {
     log::info!("Starting Penguin");
 
-    let app = PenguinApp::new()?;
+    PenguinApp::init()?;
 
     APP.with(|a| {
         let mut b = a.borrow_mut();
-        *b = Some(app);
         if let Err(e) = b.as_mut().unwrap().load(test_graph()) {
             log::error!("Error loading graph: {e:?}");
         }
@@ -208,8 +208,8 @@ fn test_graph() -> PenguinGraph {
             defn_ref: PenguinNodeDefnRef::new("std", "comment", 1),
             x: 700.,
             y: 500.,
-            input_cfg_values: HashMap::from([(
-                InputID("Value".to_string()),
+            input_feature_values: HashMap::from([(
+                NodeInputFeatureID("Value".to_string()),
                 PenguinInputValue::new(PenguinValue::Text("Example Comment".to_string())),
             )]),
             ..Default::default()

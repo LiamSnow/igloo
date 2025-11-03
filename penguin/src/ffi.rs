@@ -1,167 +1,68 @@
 use std::any::Any;
 
-use crate::app::APP;
-use wasm_bindgen::prelude::*;
-use web_sys::{ClipboardEvent, Document, HtmlElement, KeyboardEvent, MouseEvent, WheelEvent};
+use crate::app::{APP, PenguinApp};
+use wasm_bindgen::{convert::FromWasmAbi, prelude::*};
+use web_sys::{Document, EventTarget, HtmlElement};
 
 pub fn init(penguin_el: &HtmlElement) -> [Box<dyn Any>; 9] {
     let document = document();
-    [
-        attach_onmousemove(&document),
-        attach_onmouseup(&document),
-        attach_onmousedown(penguin_el),
-        attach_oncontextmenu(penguin_el),
-        attach_onwheel(penguin_el),
-        attach_onkeydown(penguin_el),
-        attach_oncopy(penguin_el),
-        attach_onpaste(penguin_el),
-        attach_oncut(penguin_el),
-    ]
+    let mut closures = Vec::with_capacity(9);
+
+    add_app_event_listener(
+        &document,
+        "mousemove",
+        &mut closures,
+        PenguinApp::onmousemove,
+    )
+    .unwrap();
+    add_app_event_listener(&document, "mouseup", &mut closures, PenguinApp::onmouseup).unwrap();
+    add_app_event_listener(
+        penguin_el,
+        "mousedown",
+        &mut closures,
+        PenguinApp::onmousedown,
+    )
+    .unwrap();
+    add_app_event_listener(
+        penguin_el,
+        "contextmenu",
+        &mut closures,
+        PenguinApp::oncontextmenu,
+    )
+    .unwrap();
+
+    add_app_event_listener(penguin_el, "wheel", &mut closures, PenguinApp::onwheel).unwrap();
+
+    add_app_event_listener(penguin_el, "keydown", &mut closures, PenguinApp::onkeydown).unwrap();
+    add_app_event_listener(penguin_el, "copy", &mut closures, PenguinApp::oncopy).unwrap();
+    add_app_event_listener(penguin_el, "paste", &mut closures, PenguinApp::onpaste).unwrap();
+    add_app_event_listener(penguin_el, "cut", &mut closures, PenguinApp::oncut).unwrap();
+
+    closures.try_into().unwrap()
 }
 
-fn attach_onmousemove(document: &Document) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: MouseEvent| {
+pub fn add_app_event_listener<E, F>(
+    element: &impl AsRef<EventTarget>,
+    event_name: &str,
+    closures: &mut Vec<Box<dyn Any>>,
+    handler: F,
+) -> Result<(), JsValue>
+where
+    E: FromWasmAbi + 'static,
+    F: Fn(&mut PenguinApp, E) + 'static,
+{
+    let closure = Closure::wrap(Box::new(move |e: E| {
         APP.with(|app| {
             if let Some(app) = app.borrow_mut().as_mut() {
-                app.onmousemove(e);
+                handler(app, e);
             }
         });
-    }) as Box<dyn FnMut(_)>);
-
-    document
-        .add_event_listener_with_callback("mousemove", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_onmouseup(document: &Document) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: MouseEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.onmouseup(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    document
-        .add_event_listener_with_callback("mouseup", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_onmousedown(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: MouseEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.onmousedown(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("mousedown", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_oncontextmenu(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: MouseEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.oncontextmenu(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("contextmenu", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_onwheel(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: WheelEvent| {
-        e.prevent_default();
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.onwheel(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("wheel", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_onkeydown(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: KeyboardEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.onkeydown(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("keydown", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_oncopy(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: ClipboardEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.oncopy(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("copy", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_onpaste(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: ClipboardEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.onpaste(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("paste", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
-}
-
-fn attach_oncut(penguin_el: &HtmlElement) -> Box<dyn Any> {
-    let c = Closure::wrap(Box::new(move |e: ClipboardEvent| {
-        APP.with(|app| {
-            if let Some(app) = app.borrow_mut().as_mut() {
-                app.oncut(e);
-            }
-        });
-    }) as Box<dyn FnMut(_)>);
-
-    penguin_el
-        .add_event_listener_with_callback("cut", c.as_ref().unchecked_ref())
-        .unwrap();
-
-    Box::new(c)
+    }) as Box<dyn FnMut(E)>);
+    element
+        .as_ref()
+        .add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref())?;
+    closures.push(Box::new(closure));
+    Ok(())
 }
 
 pub fn document() -> Document {

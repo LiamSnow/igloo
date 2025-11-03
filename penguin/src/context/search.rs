@@ -1,8 +1,13 @@
+use std::any::Any;
+
 use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinRegistry};
-use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlInputElement, MouseEvent};
 
-use crate::{app::APP, ffi, interaction::WiringState};
+use crate::{
+    ffi::{self, add_app_event_listener},
+    interaction::WiringState,
+};
 
 #[derive(Debug)]
 pub struct ContextSearch {
@@ -100,8 +105,8 @@ impl ContextSearch {
 #[derive(Debug)]
 pub struct ContextSearchItem {
     el: Element,
-    closure: Closure<dyn FnMut(MouseEvent)>,
     defn: PenguinNodeDefn,
+    closures: Vec<Box<dyn Any>>,
 }
 
 impl Drop for ContextSearchItem {
@@ -133,27 +138,25 @@ impl ContextSearchItem {
         path.set_inner_html(&format!("{lib_path}.{node_path}"));
         el.append_child(&path)?;
 
+        let mut closures = Vec::with_capacity(1);
+
         let defn_1 = defn.clone();
-        let closure = Closure::wrap(Box::new(move |e: MouseEvent| {
+        add_app_event_listener(&el, "click", &mut closures, move |app, e: MouseEvent| {
             e.prevent_default();
             e.stop_propagation();
 
-            APP.with(|app| {
-                let mut b = app.borrow_mut();
-                let Some(app) = b.as_mut() else {
-                    return;
-                };
+            let res = app.context_add_node(
+                defn_1.clone(),
+                PenguinNodeDefnRef::new(&lib_path, &node_path, defn_1.version),
+                !e.shift_key(),
+            );
 
-                app.context_add_node(
-                    defn_1.clone(),
-                    PenguinNodeDefnRef::new(&lib_path, &node_path, defn.version),
-                    !e.shift_key(),
-                );
-            });
-        }) as Box<dyn FnMut(_)>);
-        el.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
+            if let Err(e) = res {
+                log::error!("Error adding node: {e:?}");
+            }
+        })?;
 
-        Ok(Self { el, closure, defn })
+        Ok(Self { el, closures, defn })
     }
 
     // pub fn hide(&self) -> Result<(), JsValue> {

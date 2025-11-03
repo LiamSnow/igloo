@@ -1,13 +1,14 @@
+use std::any::Any;
+
 use igloo_interface::PenguinRegistry;
-use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
+use wasm_bindgen::JsValue;
 use web_sys::{Element, MouseEvent};
 
 use crate::{
-    app::APP,
     context::search::ContextSearch,
-    ffi,
+    ffi::{self, add_app_event_listener},
     interaction::{Interaction, WiringState},
-    viewport::{ClientPoint, WorldPoint},
+    viewport::ClientPoint,
 };
 
 mod search;
@@ -16,7 +17,7 @@ mod search;
 pub struct ContextMenu {
     backdrop: Element,
     menu: Element,
-    closures: [Closure<dyn FnMut(MouseEvent)>; 2],
+    closures: Vec<Box<dyn Any>>,
     search: ContextSearch,
 }
 
@@ -42,45 +43,35 @@ impl ContextMenu {
         menu.set_attribute("onmouseup", "event.stopPropagation();")?;
         menu.set_attribute("onwheel", "event.stopPropagation();")?;
 
-        let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
-            e.prevent_default();
-            e.stop_propagation();
+        let mut closures = Vec::with_capacity(2);
 
-            APP.with(|app| {
-                let mut b = app.borrow_mut();
-                let Some(app) = b.as_mut() else {
-                    return;
-                };
-
+        add_app_event_listener(
+            &backdrop,
+            "mousedown",
+            &mut closures,
+            |app, e: MouseEvent| {
+                e.prevent_default();
+                e.stop_propagation();
                 app.set_interaction(Interaction::Idle);
-            });
-        }) as Box<dyn FnMut(_)>);
-        backdrop
-            .add_event_listener_with_callback("mousedown", onmousedown.as_ref().unchecked_ref())?;
+            },
+        )?;
 
-        let oncontextmenu = Closure::wrap(Box::new(move |e: MouseEvent| {
-            e.prevent_default();
-            e.stop_propagation();
-
-            APP.with(|app| {
-                let mut b = app.borrow_mut();
-                let Some(app) = b.as_mut() else {
-                    return;
-                };
-
-                app.set_interaction(Interaction::Idle);
-            });
-        }) as Box<dyn FnMut(_)>);
-        backdrop.add_event_listener_with_callback(
+        add_app_event_listener(
+            &backdrop,
             "contextmenu",
-            oncontextmenu.as_ref().unchecked_ref(),
+            &mut closures,
+            |app, e: MouseEvent| {
+                e.prevent_default();
+                e.stop_propagation();
+                app.set_interaction(Interaction::Idle);
+            },
         )?;
 
         Ok(Self {
             backdrop,
             search: ContextSearch::new(registry, &menu)?,
             menu,
-            closures: [onmousedown, oncontextmenu],
+            closures,
         })
     }
 

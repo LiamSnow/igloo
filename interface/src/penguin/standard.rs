@@ -11,9 +11,9 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             title: "Comment".to_string(),
             desc: "Comment".to_string(),
-            cfg: vec![NodeConfig::Input(InputConfig {
+            features: vec![NodeFeature::Input(NodeInputFeature {
                 r#type: PenguinType::Text,
-                id: InputID::from_str("Value"),
+                id: NodeInputFeatureID::from_str("Value"),
             })],
             ..Default::default()
         },
@@ -125,9 +125,9 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Text),
             )]),
-            cfg: vec![NodeConfig::Input(InputConfig {
+            features: vec![NodeFeature::Input(NodeInputFeature {
                 r#type: PenguinType::Text,
-                id: InputID::from_str("value"),
+                id: NodeInputFeatureID::from_str("value"),
             })],
             ..Default::default()
         },
@@ -143,9 +143,9 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Bool),
             )]),
-            cfg: vec![NodeConfig::Input(InputConfig {
+            features: vec![NodeFeature::Input(NodeInputFeature {
                 r#type: PenguinType::Bool,
-                id: InputID::from_str("value"),
+                id: NodeInputFeatureID::from_str("value"),
             })],
             ..Default::default()
         },
@@ -161,9 +161,9 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Int),
             )]),
-            cfg: vec![NodeConfig::Input(InputConfig {
+            features: vec![NodeFeature::Input(NodeInputFeature {
                 r#type: PenguinType::Int,
-                id: InputID::from_str("value"),
+                id: NodeInputFeatureID::from_str("value"),
             })],
             ..Default::default()
         },
@@ -179,9 +179,9 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Real),
             )]),
-            cfg: vec![NodeConfig::Input(InputConfig {
+            features: vec![NodeFeature::Input(NodeInputFeature {
                 r#type: PenguinType::Real,
-                id: InputID::from_str("value"),
+                id: NodeInputFeatureID::from_str("value"),
             })],
             ..Default::default()
         },
@@ -197,9 +197,9 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Color),
             )]),
-            cfg: vec![NodeConfig::Input(InputConfig {
+            features: vec![NodeFeature::Input(NodeInputFeature {
                 r#type: PenguinType::Color,
-                id: InputID::from_str("value"),
+                id: NodeInputFeatureID::from_str("value"),
             })],
             ..Default::default()
         },
@@ -1184,7 +1184,7 @@ fn add_variadic(
                 style: style.clone(),
                 inputs,
                 outputs,
-                cfg: vec![NodeConfig::Variadic(VariadicConfig { prev, next })],
+                features: vec![NodeFeature::Variadic(NodeVariadicFeature { prev, next })],
                 hide_search: count != min,
             },
         );

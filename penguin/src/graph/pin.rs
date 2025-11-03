@@ -1,18 +1,15 @@
 use std::{any::Any, mem};
 
 use igloo_interface::{
-    PenguinPinDefn, PenguinPinID, PenguinPinType, PenguinType,
+    PenguinPinDefn, PenguinPinID, PenguinPinType,
     graph::{PenguinNode, PenguinNodeID, PenguinWireID},
 };
-use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
-use web_sys::{
-    Element, Event, HtmlElement, HtmlInputElement, HtmlTextAreaElement, InputEvent, MouseEvent,
-    ResizeObserver, SvgElement,
-};
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{Element, HtmlElement, MouseEvent, SvgElement};
 
 use crate::{
-    app::APP,
-    ffi,
+    ffi::{self, add_app_event_listener},
+    graph::input::{WebInput, WebInputMode},
     interaction::{Interaction, WiringState},
 };
 
@@ -26,7 +23,7 @@ pub struct WebPin {
     pub hitbox: HtmlElement,
     /// flow=polygon, value=div
     pin_el: Element,
-    input_el: Option<Element>,
+    input_el: Option<WebInput>,
     connections: Vec<PenguinWireID>,
     closures: Vec<Box<dyn Any>>,
 }
@@ -112,23 +109,21 @@ impl WebPin {
         }
 
         let mut closures: Vec<Box<dyn Any>> = Vec::with_capacity(4);
+
         let id_1 = id.clone();
         let id_2 = id.clone();
         let hitbox_1 = hitbox.clone();
-
-        let mousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
-            if e.button() != 0 {
-                return;
-            }
-
-            e.prevent_default();
-            e.stop_propagation();
-
-            APP.with(|app| {
-                let mut b = app.borrow_mut();
-                let Some(app) = b.as_mut() else {
+        add_app_event_listener(
+            &hitbox,
+            "mousedown",
+            &mut closures,
+            move |app, e: MouseEvent| {
+                if e.button() != 0 {
                     return;
-                };
+                }
+
+                e.prevent_default();
+                e.stop_propagation();
 
                 if e.shift_key() {
                     app.graph.select_pin_wires(&node_id, &id_1, is_output);
@@ -137,25 +132,20 @@ impl WebPin {
                 } else {
                     app.start_wiring(e, &hitbox_1, node_id, id_1.clone(), is_output, defn.r#type);
                 }
-            });
-        }) as Box<dyn FnMut(_)>);
+            },
+        )?;
 
-        hitbox.add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref())?;
-        closures.push(Box::new(mousedown));
-
-        let mouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
-            if e.button() != 0 {
-                return;
-            }
-
-            e.prevent_default();
-            e.stop_propagation();
-
-            APP.with(|app| {
-                let mut b = app.borrow_mut();
-                let Some(app) = b.as_mut() else {
+        add_app_event_listener(
+            &hitbox,
+            "mouseup",
+            &mut closures,
+            move |app, e: MouseEvent| {
+                if e.button() != 0 {
                     return;
-                };
+                }
+
+                e.prevent_default();
+                e.stop_propagation();
 
                 if let Interaction::Wiring(ws) = app.interaction() {
                     let ws = ws.clone();
@@ -164,139 +154,23 @@ impl WebPin {
                         log::error!("Failed to place wire: {e:?}");
                     }
                 }
-            });
-        }) as Box<dyn FnMut(_)>);
-
-        hitbox.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref())?;
-        closures.push(Box::new(mouseup));
+            },
+        )?;
 
         let mut input_el = None;
 
         if !is_output && let PenguinPinType::Value(vt) = defn.r#type {
-            // TODO on input -> save to undo tree?
-
-            let el_type = if matches!(vt, PenguinType::Text) {
-                "textarea"
-            } else {
-                "input"
-            };
-
-            let input = document.create_element(el_type)?;
-            input.set_class_name("penguin-input");
-            input.set_attribute("onmousedown", "event.stopPropagation()")?;
             node.ensure_input_pin_value(&id, &vt);
             let pin_value = node.input_pin_values.get(&id).unwrap();
-            input.set_attribute("value", &pin_value.value.to_string())?;
 
-            match vt {
-                PenguinType::Int => {
-                    input.set_attribute("type", "number")?;
-                    input.set_attribute("step", "1")?;
-                }
-                PenguinType::Real => {
-                    input.set_attribute("type", "number")?;
-                    input.set_attribute("step", "any")?;
-                }
-                PenguinType::Text => {
-                    let textarea = input.dyn_ref::<HtmlTextAreaElement>().unwrap().clone();
-                    textarea.set_value(&pin_value.value.to_string());
-                    let (width, height) = pin_value.size.unwrap();
-
-                    textarea.set_attribute(
-                        "style",
-                        &format!("width: {width}px; height: {height}px; resize: both;"),
-                    )?;
-
-                    let id_1 = id.clone();
-                    let onresize = Closure::wrap(Box::new(move |_: Event| {
-                        APP.with(|app| {
-                            let mut b = app.borrow_mut();
-                            let Some(app) = b.as_mut() else {
-                                return;
-                            };
-
-                            if let Err(e) = app.graph.redraw_node_wires(&node_id) {
-                                log::error!("Error redrawing node wires: {e:?}");
-                            }
-
-                            let size = (textarea.offset_width(), textarea.offset_height());
-                            if size == (0, 0) {
-                                // occurs when textarea is not visible
-                                return;
-                            }
-
-                            match app.graph.node_mut(&node_id) {
-                                Ok(node) => {
-                                    let Some(cfg_value) =
-                                        node.inner.input_pin_values.get_mut(&id_1)
-                                    else {
-                                        // TODO log
-                                        return;
-                                    };
-
-                                    cfg_value.size = Some(size);
-                                }
-                                Err(e) => {
-                                    log::error!("Error getting node: {e:?}");
-                                }
-                            }
-                        });
-                    }) as Box<dyn FnMut(_)>);
-
-                    let observer = ResizeObserver::new(onresize.as_ref().unchecked_ref())?;
-                    observer.observe(&input);
-                    closures.push(Box::new(onresize));
-                }
-                PenguinType::Bool => {
-                    input.set_attribute("type", "checkbox")?;
-                }
-                PenguinType::Color => {
-                    input.set_attribute("type", "color")?;
-                }
-            }
-
-            let input_1 = input.clone();
-            let id_1 = id.clone();
-            let oninput = Closure::wrap(Box::new(move |e: InputEvent| {
-                APP.with(|app| {
-                    let mut b = app.borrow_mut();
-                    let Some(app) = b.as_mut() else {
-                        return;
-                    };
-
-                    match app.graph.node_mut(&node_id) {
-                        Ok(node) => {
-                            let Some(cfg_value) = node.inner.input_pin_values.get_mut(&id_1) else {
-                                // TODO log
-                                return;
-                            };
-
-                            match vt {
-                                PenguinType::Text => {
-                                    // FIXME unwrap
-                                    let el = input_1.dyn_ref::<HtmlTextAreaElement>().unwrap();
-                                    cfg_value.set_from_string(el.value());
-                                }
-                                _ => {
-                                    // FIXME unwrap
-                                    let el = input_1.dyn_ref::<HtmlInputElement>().unwrap();
-                                    cfg_value.set_from_string(el.value());
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Error getting node: {e:?}");
-                        }
-                    }
-                });
-            }) as Box<dyn FnMut(_)>);
-
-            input.add_event_listener_with_callback("input", oninput.as_ref().unchecked_ref())?;
-            closures.push(Box::new(oninput));
-
-            wrapper.append_child(&input)?;
-
-            input_el = Some(input);
+            input_el = Some(WebInput::new(
+                &wrapper,
+                node_id,
+                WebInputMode::Pin(id.clone()),
+                vt,
+                &pin_value.value.to_string(),
+                pin_value.size,
+            )?);
         }
 
         let me = Self {
@@ -359,12 +233,8 @@ impl WebPin {
             }
         }
 
-        if let Some(el) = &self.input_el {
-            if connected {
-                el.set_attribute("style", "display: none;")?;
-            } else {
-                el.remove_attribute("style")?;
-            }
+        if let Some(input) = &self.input_el {
+            input.set_visible(!connected)?;
         }
 
         Ok(())

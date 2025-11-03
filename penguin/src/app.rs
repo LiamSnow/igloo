@@ -30,7 +30,7 @@ pub struct PenguinApp {
 }
 
 impl PenguinApp {
-    pub fn new() -> Result<Self, JsValue> {
+    pub fn init() -> Result<(), JsValue> {
         let document = ffi::document();
 
         let penguin_el = document
@@ -55,7 +55,7 @@ impl PenguinApp {
 
         let registry = PenguinRegistry::default();
 
-        Ok(PenguinApp {
+        let me = PenguinApp {
             closures: ffi::init(&penguin_el),
             context: ContextMenu::new(&registry, &penguin_el)?,
             registry,
@@ -65,7 +65,14 @@ impl PenguinApp {
             interaction: Interaction::default(),
             box_el,
             mouse_pos: ClientPoint::default(),
-        })
+        };
+
+        APP.with(|a| {
+            let mut b = a.borrow_mut();
+            *b = Some(me);
+        });
+
+        Ok(())
     }
 
     pub fn load(&mut self, graph: PenguinGraph) -> Result<(), JsValue> {
@@ -199,8 +206,12 @@ impl PenguinApp {
         Ok(())
     }
 
-    pub fn onmousedown(&mut self, e: MouseEvent) {
+    pub fn focus(&self) {
         self.penguin_el.focus();
+    }
+
+    pub fn onmousedown(&mut self, e: MouseEvent) {
+        self.focus();
 
         if e.button() == 0 {
             let client_pos = mouse_client_pos(&e);
@@ -310,16 +321,16 @@ impl PenguinApp {
         }
     }
 
-    pub fn onwheel(&mut self, e: WheelEvent) -> Result<(), JsValue> {
+    pub fn onwheel(&mut self, e: WheelEvent) {
         e.prevent_default();
 
-        self.penguin_el.focus()?;
+        self.focus();
 
         let client_pos = mouse_client_pos(&e);
         let penguin_pos = self.viewport.client_to_penguin(client_pos);
 
         let delta = if e.delta_y() > 0.0 { 0.9 } else { 1.1 };
-        self.viewport.zoom_at(penguin_pos, delta)
+        self.viewport.zoom_at(penguin_pos, delta);
     }
 
     pub fn onkeydown(&mut self, e: KeyboardEvent) {
@@ -352,7 +363,7 @@ impl PenguinApp {
                 defn_ref,
                 x: wpos.x,
                 y: wpos.y,
-                input_cfg_values: HashMap::with_capacity(defn.num_input_configs()),
+                input_feature_values: HashMap::with_capacity(defn.num_input_features()),
                 input_pin_values: HashMap::with_capacity(defn.inputs.len()),
             },
         )?;
