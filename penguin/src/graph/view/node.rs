@@ -22,7 +22,7 @@ pub struct WebNode {
     id: PenguinNodeID,
     defn: PenguinNodeDefn,
     el: Element,
-    listeners: Listeners,
+    listeners: Vec<Listeners>,
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
     input_feature_els: IndexMap<NodeInputFeatureID, WebInput>,
@@ -92,6 +92,8 @@ impl WebNode {
         mut inner: PenguinNode,
         id: PenguinNodeID,
     ) -> Result<Self, JsValue> {
+        let document = document();
+
         let defn = registry
             .get_defn(&inner.defn_ref)
             .cloned()
@@ -178,7 +180,6 @@ impl WebNode {
         let input_features = defn.input_features();
         let mut input_feature_els = IndexMap::with_capacity(input_features.len());
         if !input_features.is_empty() {
-            let document = document();
             let content_el = document.create_element("div")?;
             content_el.set_class_name("penguin-node-content");
             el.append_child(&content_el)?;
@@ -200,12 +201,48 @@ impl WebNode {
             }
         }
 
-        // TODO Variadic controls
+        let mut listeners = Vec::with_capacity(3);
 
-        let listeners = ListenerBuilder::new(&el, EventTarget::Node(id))
-            .add_mousedown()?
-            .add_contextmenu()?
-            .build();
+        if let Some(vf) = defn.variadic_feature() {
+            let controls = document.create_element("div")?;
+            controls.set_class_name("penguin-variadic-controls");
+            el.append_child(&controls)?;
+
+            if let Some(prev) = &vf.prev {
+                let btn = document.create_element("button")?;
+                btn.set_class_name("penguin-variadic-button");
+                btn.set_inner_html("-");
+                controls.append_child(&btn)?;
+                listeners.push(
+                    ListenerBuilder::new(&btn, EventTarget::NodeVariadic(id, prev.clone()))
+                        .add_mousedown()?
+                        .add_mouseclick()?
+                        .build(),
+                );
+            }
+
+            if let Some(next) = &vf.next {
+                let btn = document.create_element("button")?;
+                btn.set_class_name("penguin-variadic-button");
+                btn.set_inner_html("+");
+                controls.append_child(&btn)?;
+                listeners.push(
+                    ListenerBuilder::new(&btn, EventTarget::NodeVariadic(id, next.clone()))
+                        .add_mousedown()?
+                        .add_mouseclick()?
+                        .build(),
+                );
+            }
+        }
+
+        listeners.push(
+            ListenerBuilder::new(&el, EventTarget::Node(id))
+                .add_mousedown()?
+                .add_contextmenu()?
+                .build(),
+        );
+
+        // TODO Variadic controls
 
         let me = WebNode {
             inner,

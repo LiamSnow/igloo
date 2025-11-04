@@ -159,6 +159,15 @@ impl App {
             };
         }
 
+        // node variadic
+        if matches!(event.target, EventTarget::NodeVariadic(..)) {
+            let EventTarget::NodeVariadic(node_id, new_node_path) = event.target else {
+                unreachable!()
+            };
+
+            return self.graph.swap_node_variant(node_id, new_node_path);
+        }
+
         // focus #penguin so keyboard input works
         if matches!(event.target, EventTarget::Global)
             && !matches!(

@@ -47,6 +47,7 @@ pub enum EventTarget {
     MenuSearchItem(PenguinNodeDefnRef),
     ToolbarButton(ToolbarButton),
     NodeInput(PenguinNodeID, WebInputType),
+    NodeVariadic(PenguinNodeID, String),
 }
 
 #[derive(Debug, Default)]

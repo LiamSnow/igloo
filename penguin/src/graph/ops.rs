@@ -311,4 +311,80 @@ impl WebGraph {
 
         self.execute(tx)
     }
+
+    pub fn swap_node_variant(
+        &mut self,
+        node_id: PenguinNodeID,
+        new_node_path: String,
+    ) -> Result<(), JsValue> {
+        let Some(cur_web_node) = self.nodes.get(&node_id) else {
+            return Err(JsValue::from_str("Node not found"));
+        };
+
+        let mut new_node_inner = cur_web_node.inner().clone();
+        new_node_inner.defn_ref.node_path = new_node_path;
+
+        let new_defn = self
+            .registry
+            .get_defn(&new_node_inner.defn_ref)
+            .ok_or(JsValue::from_str("New node definition not found"))?;
+
+        // collect wires
+        let mut wires_to_remove = Vec::new();
+        let mut wires_to_readd = Vec::new();
+        for (pin_id, pin) in &cur_web_node.inputs {
+            for wire_id in pin.connections() {
+                if let Some(wire) = self.wires.get(wire_id) {
+                    let wire_inner = wire.inner().clone();
+                    wires_to_remove.push((*wire_id, wire_inner.clone()));
+
+                    // only readd if still exists
+                    if new_defn.inputs.contains_key(pin_id) {
+                        wires_to_readd.push(wire_inner);
+                    }
+                }
+            }
+        }
+        for (pin_id, pin) in &cur_web_node.outputs {
+            for wire_id in pin.connections() {
+                if let Some(wire) = self.wires.get(wire_id) {
+                    let wire_inner = wire.inner().clone();
+                    wires_to_remove.push((*wire_id, wire_inner.clone()));
+
+                    // only readd if still exists
+                    if new_defn.outputs.contains_key(pin_id) {
+                        wires_to_readd.push(wire_inner);
+                    }
+                }
+            }
+        }
+
+        let mut tx = Transaction::with_capacity(wires_to_remove.len() + 2 + wires_to_readd.len());
+
+        for (wire_id, wire) in wires_to_remove {
+            tx.push(Command::DeleteWire { id: wire_id, wire });
+        }
+
+        tx.push(Command::DeleteNode {
+            id: node_id,
+            node: cur_web_node.inner().clone(),
+        });
+
+        tx.push(Command::AddNode {
+            id: node_id,
+            node: new_node_inner,
+        });
+
+        // readd wires
+        let next_wire_id_base = self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+        for (i, wire) in wires_to_readd.into_iter().enumerate() {
+            let new_wire_id = PenguinWireID(next_wire_id_base + i as u16);
+            tx.push(Command::AddWire {
+                id: new_wire_id,
+                wire,
+            });
+        }
+
+        self.execute(tx)
+    }
 }

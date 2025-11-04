@@ -166,29 +166,23 @@
 /* padding-left: 20px; */
 /* } */
 
-.penguin-vari-controls {
+.penguin-variadic-controls {
   position: absolute;
   bottom: 8px;
   right: 8px;
   display: flex;
-  flex-direction: column;
   gap: 4px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
 
-.penguin-node:hover .penguin-vari-controls {
+.penguin-node:hover .penguin-variadic-controls {
   opacity: 1;
   pointer-events: auto;
 }
 
-.penguin-vari-control-group {
-  display: flex;
-  gap: 4px;
-}
-
-.penguin-vari-button {
+.penguin-variadic-button {
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -204,16 +198,16 @@
   transition: all 0.1s ease;
 }
 
-.penguin-vari-button:hover:not(:disabled) {
+.penguin-variadic-button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.2);
   border-color: #2196F3;
 }
 
-.penguin-vari-button:active:not(:disabled) {
+.penguin-variadic-button:active:not(:disabled) {
   transform: scale(0.95);
 }
 
-.penguin-vari-button:disabled {
+.penguin-variadic-button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }

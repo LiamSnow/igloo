@@ -15,5 +15,6 @@
 - [ ] node context menu
 - [ ] node alignment and distribute
 - [ ] wire context menu
-- [ ] variadic controls
-
+- [x] variadic controls
+- [ ] query types
+- [ ] icons
