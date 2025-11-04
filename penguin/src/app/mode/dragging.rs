@@ -44,7 +44,20 @@ impl App {
     }
 
     pub fn finish_dragging_mode(&mut self) -> Result<(), JsValue> {
-        // TODO call self.graph.complete_moves which saves to history
+        if let Mode::Dragging(dm) = &self.mode {
+            let mut moves = Vec::with_capacity(dm.node_poses.len());
+
+            for (node_id, initial_pos) in &dm.node_poses {
+                let final_pos = self.graph.get_node_pos(node_id)?;
+
+                if initial_pos != &final_pos {
+                    moves.push((*node_id, *initial_pos, final_pos));
+                }
+            }
+
+            self.graph.finish_moves(moves)?;
+        }
+
         Ok(())
     }
 }

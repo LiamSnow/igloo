@@ -47,19 +47,19 @@ impl Toolbar {
                 &grid_enable_el,
                 EventTarget::ToolbarButton(ToolbarButton::GridEnable),
             )
-            .add_mouseclick(true)?
+            .add_mouseclick()?
             .build(),
             ListenerBuilder::new(
                 &grid_snap_el,
                 EventTarget::ToolbarButton(ToolbarButton::GridSnap),
             )
-            .add_mouseclick(true)?
+            .add_mouseclick()?
             .build(),
             ListenerBuilder::new(
                 &grid_size_el,
                 EventTarget::ToolbarButton(ToolbarButton::GridSize),
             )
-            .add_mouseclick(true)?
+            .add_mouseclick()?
             .build(),
         ];
 

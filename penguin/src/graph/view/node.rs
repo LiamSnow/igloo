@@ -10,8 +10,8 @@ use web_sys::Element;
 use crate::{
     app::event::{EventTarget, ListenerBuilder, Listeners, document},
     graph::{
-        WebPin,
         input::{WebInput, WebInputType},
+        pin::WebPin,
     },
     viewport::{ClientBox, ClientPoint, WorldPoint},
 };
@@ -178,8 +178,8 @@ impl WebNode {
         // TODO Variadic controls
 
         let listeners = ListenerBuilder::new(&el, EventTarget::Node(id))
-            .add_mousedown(true)?
-            .add_contextmenu(true)?
+            .add_mousedown()?
+            .add_contextmenu()?
             .build();
 
         let me = WebNode {
@@ -245,5 +245,45 @@ impl WebNode {
         } else {
             self.inputs.get(&pref.id)
         }
+    }
+
+    pub fn update_input_value(&self, r#type: &WebInputType, value: &str) -> Result<(), JsValue> {
+        match r#type {
+            WebInputType::Pin(pin_id) => {
+                if let Some(pin) = self.inputs.get(pin_id)
+                    && let Some(input) = &pin.input_el
+                {
+                    input.update_value(value)?;
+                }
+            }
+            WebInputType::NodeFeature(feature_id) => {
+                if let Some(input) = self.input_feature_els.get(feature_id) {
+                    input.update_value(value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn update_input_size(
+        &self,
+        r#type: &WebInputType,
+        size: (i32, i32),
+    ) -> Result<(), JsValue> {
+        match r#type {
+            WebInputType::Pin(pin_id) => {
+                if let Some(pin) = self.inputs.get(pin_id)
+                    && let Some(input) = &pin.input_el
+                {
+                    input.update_size(size)?;
+                }
+            }
+            WebInputType::NodeFeature(feature_id) => {
+                if let Some(input) = self.input_feature_els.get(feature_id) {
+                    input.update_size(size)?;
+                }
+            }
+        }
+        Ok(())
     }
 }

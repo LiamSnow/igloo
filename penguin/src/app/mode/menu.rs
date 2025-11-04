@@ -24,8 +24,9 @@ impl App {
         };
 
         match (event.target, event.value) {
-            (EventTarget::ContextSearchItem(defn_ref), EventValue::MouseClick(e)) => {
+            (EventTarget::MenuSearchItem(defn_ref), EventValue::MouseClick(e)) => {
                 let defn = self
+                    .graph
                     .registry
                     .get_defn(&defn_ref)
                     .ok_or(JsValue::from_str("Unknown node definition"))?
@@ -39,7 +40,7 @@ impl App {
                     input_pin_values: HashMap::with_capacity(defn.inputs.len()),
                 };
 
-                let node_id = self.graph.place_node(&self.registry, node)?;
+                let node_id = self.graph.place_node(node)?;
 
                 // auto wire
                 if let Some(start_pin) = &mm.from_pin {
@@ -56,7 +57,7 @@ impl App {
                 }
 
                 // close menu
-                if !e.shift_key {
+                if !e.shift_key() {
                     self.set_mode(Mode::Idle)?;
                 }
 
@@ -67,6 +68,6 @@ impl App {
     }
 
     pub fn finish_menu_mode(&mut self) -> Result<(), JsValue> {
-        self.context_menu.hide()
+        self.menu.hide()
     }
 }

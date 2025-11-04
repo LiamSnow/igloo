@@ -4,33 +4,33 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlInputElement};
 
 #[derive(Debug)]
-pub struct ContextSearch {
+pub struct MenuSearch {
     input: HtmlInputElement,
     results: Element,
-    items: Vec<ContextSearchItem>,
+    items: Vec<MenuSearchItem>,
 }
 
-impl Drop for ContextSearch {
+impl Drop for MenuSearch {
     fn drop(&mut self) {
         self.input.remove();
         self.results.remove();
     }
 }
 
-impl ContextSearch {
+impl MenuSearch {
     pub fn new(registry: &PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
         let document = document();
 
         let input = document
             .create_element("input")?
             .dyn_into::<HtmlInputElement>()?;
-        input.set_id("penguin-context-search-input");
+        input.set_id("penguin-menu-search-input");
         input.set_attribute("type", "text")?;
         input.set_attribute("placeholder", "Search nodes...")?;
         // TODO replace with Rust listener
         input.set_attribute(
             "oninput", 
-            r#"document.querySelectorAll('#penguin-context-search-results > .penguin-context-search-item[data-compatible]').forEach(item => {
+            r#"document.querySelectorAll('#penguin-menu-search-results > .penguin-menu-search-item[data-compatible]').forEach(item => {
                  item.style.display = item.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none';
             })"#
         )?;
@@ -38,7 +38,7 @@ impl ContextSearch {
         input.focus()?;
 
         let results = document.create_element("div")?;
-        results.set_id("penguin-context-search-results");
+        results.set_id("penguin-menu-search-results");
         parent.append_child(&results)?;
 
         let mut items = Vec::with_capacity(1000);
@@ -49,7 +49,7 @@ impl ContextSearch {
                     continue;
                 }
 
-                items.push(ContextSearchItem::new(
+                items.push(MenuSearchItem::new(
                     &results,
                     lib_path.clone(),
                     node_path.clone(),
@@ -99,19 +99,19 @@ impl ContextSearch {
 }
 
 #[derive(Debug)]
-pub struct ContextSearchItem {
+pub struct MenuSearchItem {
     el: Element,
     defn: PenguinNodeDefn,
     listeners: Listeners,
 }
 
-impl Drop for ContextSearchItem {
+impl Drop for MenuSearchItem {
     fn drop(&mut self) {
         self.el.remove();
     }
 }
 
-impl ContextSearchItem {
+impl MenuSearchItem {
     pub fn new(
         parent: &Element,
         lib_path: String,
@@ -121,28 +121,28 @@ impl ContextSearchItem {
         let document = document();
 
         let el = document.create_element("button")?;
-        el.set_class_name("penguin-context-search-item");
+        el.set_class_name("penguin-menu-search-item");
         parent.append_child(&el)?;
 
         let title = document.create_element("div")?;
-        title.set_class_name("penguin-context-search-item-title");
+        title.set_class_name("penguin-menu-search-item-title");
         title.set_inner_html(&defn.title);
         el.append_child(&title)?;
 
         let path = document.create_element("div")?;
-        path.set_class_name("penguin-context-search-item-path");
+        path.set_class_name("penguin-menu-search-item-path");
         path.set_inner_html(&format!("{lib_path}.{node_path}"));
         el.append_child(&path)?;
 
         let listeners = ListenerBuilder::new(
             &el,
-            EventTarget::ContextSearchItem(PenguinNodeDefnRef::new(
+            EventTarget::MenuSearchItem(PenguinNodeDefnRef::new(
                 &lib_path,
                 &node_path,
                 defn.version,
             )),
         )
-        .add_mouseclick(true)?
+        .add_mouseclick()?
         .build();
 
         Ok(Self {

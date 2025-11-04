@@ -15,8 +15,8 @@ use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use crate::app::APP;
 
 mod app;
-mod context;
 mod graph;
+mod menu;
 mod viewport;
 
 #[wasm_bindgen(start)]

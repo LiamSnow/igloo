@@ -63,8 +63,8 @@ impl WebWire {
         let (svg, path) = make_els(parent, inner.r#type)?;
 
         let listeners = ListenerBuilder::new(&path, EventTarget::Wire(id))
-            .add_mousedown(true)?
-            .add_contextmenu(true)?
+            .add_mousedown()?
+            .add_contextmenu()?
             .build();
 
         Ok(Self {

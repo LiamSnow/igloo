@@ -3,7 +3,7 @@ use igloo_interface::{NodeInputFeatureID, PenguinPinID, PenguinType, graph::Peng
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlElement, HtmlInputElement, HtmlTextAreaElement};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WebInputType {
     Pin(PenguinPinID),
     NodeFeature(NodeInputFeatureID),
@@ -45,25 +45,25 @@ impl WebInput {
         el.set_class_name("penguin-input");
 
         let el_clone = el.clone();
-        let mut listeners = ListenerBuilder::new(&el, EventTarget::Input(node_id, mode.clone()))
-            .add_input(false, move || match value_type {
-                PenguinType::Text => el_clone.dyn_ref::<HtmlTextAreaElement>().unwrap().value(),
-                PenguinType::Bool => el_clone
-                    .dyn_ref::<HtmlInputElement>()
-                    .unwrap()
-                    .checked()
-                    .to_string(),
-                _ => el_clone.dyn_ref::<HtmlInputElement>().unwrap().value(),
-            })?
-            .add_mousemove(false)?
-            .add_mouseup(false)?
-            .add_mousedown(false)?
-            .add_contextmenu(false)?
-            .add_keydown(false)?
-            .add_copy(false)?
-            .add_paste(false)?
-            .add_cut(false)?
-            .build();
+        let mut listeners =
+            ListenerBuilder::new(&el, EventTarget::NodeInput(node_id, mode.clone()))
+                .add_input(move || match value_type {
+                    PenguinType::Text => el_clone.dyn_ref::<HtmlTextAreaElement>().unwrap().value(),
+                    PenguinType::Bool => el_clone
+                        .dyn_ref::<HtmlInputElement>()
+                        .unwrap()
+                        .checked()
+                        .to_string(),
+                    _ => el_clone.dyn_ref::<HtmlInputElement>().unwrap().value(),
+                })?
+                .add_mousedown()?
+                .add_mousemove()?
+                .add_contextmenu()?
+                .add_keydown()?
+                .add_copy()?
+                .add_paste()?
+                .add_cut()?
+                .build();
 
         match value_type {
             PenguinType::Int => {
@@ -80,18 +80,16 @@ impl WebInput {
                 let textarea = el.dyn_ref::<HtmlTextAreaElement>().unwrap().clone();
                 textarea.set_value(initial_value);
                 let (width, height) = initial_size.unwrap();
-                textarea
-                    .style()
-                    .set_property("width", &format!("{width}px"))?;
-                textarea
-                    .style()
-                    .set_property("height", &format!("{height}px"))?;
-                textarea.style().set_property("resize", "both")?;
+
+                textarea.set_attribute(
+                    "style",
+                    &format!("width: {width}px; height: {height}px; resize: both;",),
+                )?;
 
                 listeners.add_resize(
                     &el,
                     textarea.dyn_into::<HtmlElement>().unwrap(),
-                    EventTarget::Input(node_id, mode.clone()),
+                    EventTarget::NodeInput(node_id, mode.clone()),
                 )?;
             }
             PenguinType::Bool => {
@@ -121,6 +119,41 @@ impl WebInput {
             self.el.remove_attribute("style")?;
         } else {
             self.el.set_attribute("style", "display: none;")?;
+        }
+        Ok(())
+    }
+
+    pub fn update_value(&self, value: &str) -> Result<(), JsValue> {
+        match self.value_type {
+            PenguinType::Text => {
+                self.el
+                    .dyn_ref::<HtmlTextAreaElement>()
+                    .unwrap()
+                    .set_value(value);
+            }
+            PenguinType::Bool => {
+                self.el
+                    .dyn_ref::<HtmlInputElement>()
+                    .unwrap()
+                    .set_checked(value == "true");
+            }
+            _ => {
+                self.el
+                    .dyn_ref::<HtmlInputElement>()
+                    .unwrap()
+                    .set_value(value);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn update_size(&self, size: (i32, i32)) -> Result<(), JsValue> {
+        if let PenguinType::Text = self.value_type {
+            let (width, height) = size;
+            self.el.set_attribute(
+                "style",
+                &format!("width: {width}px; height: {height}px; resize: both;",),
+            )?;
         }
         Ok(())
     }

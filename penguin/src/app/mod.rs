@@ -1,18 +1,16 @@
-use std::cell::RefCell;
-
-use igloo_interface::{PenguinRegistry, graph::PenguinGraph};
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement};
-
 use crate::{
     app::{
-        event::{Event, EventTarget, EventValue, Key, ListenerBuilder, Listeners, document},
+        event::{Clientable, Event, EventTarget, EventValue, ListenerBuilder, Listeners, document},
         mode::Mode,
     },
-    context::ContextMenu,
     graph::WebGraph,
+    menu::Menu,
     viewport::{ClientPoint, Viewport},
 };
+use igloo_interface::{PenguinRegistry, graph::PenguinGraph};
+use std::cell::RefCell;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{Element, HtmlElement};
 
 pub mod event;
 pub mod mode;
@@ -23,14 +21,13 @@ thread_local! {
 
 #[derive(Debug)]
 pub struct App {
-    pub(self) registry: PenguinRegistry,
     pub(self) el: HtmlElement,
 
     pub(self) mode: Mode,
 
     pub(self) graph: WebGraph,
     pub(self) viewport: Viewport,
-    pub(self) context_menu: ContextMenu,
+    pub(self) menu: Menu,
     pub(self) box_el: Element,
 
     pub(self) mouse_pos: ClientPoint,
@@ -50,17 +47,17 @@ impl App {
 
         let listeners = [
             ListenerBuilder::new(&document, EventTarget::Global)
-                .add_mousemove(true)?
-                .add_mouseup(true)?
+                .add_mousemove()?
+                .add_mouseup()?
                 .build(),
             ListenerBuilder::new(&el, EventTarget::Global)
-                .add_mousedown(true)?
-                .add_contextmenu(true)?
-                .add_wheel(true)?
-                .add_keydown(false)?
-                .add_copy(false)?
-                .add_paste(false)?
-                .add_cut(false)?
+                .add_mousedown()?
+                .add_contextmenu()?
+                .add_wheel()?
+                .add_keydown()?
+                .add_copy()?
+                .add_paste()?
+                .add_cut()?
                 .build(),
         ];
 
@@ -81,13 +78,12 @@ impl App {
 
         let me = App {
             mode: Mode::Idle,
-            graph: WebGraph::new(&viewport_el)?,
-            context_menu: ContextMenu::new(&registry, &el)?,
+            menu: Menu::new(&registry, &el)?,
+            graph: WebGraph::new(registry, &viewport_el)?,
             viewport: Viewport::new(el.clone(), viewport_el, grid_svg)?,
             box_el,
             listeners,
             mouse_pos: ClientPoint::default(),
-            registry,
             el,
         };
 
@@ -100,7 +96,7 @@ impl App {
     }
 
     pub fn load(&mut self, graph: PenguinGraph) -> Result<(), JsValue> {
-        self.graph.load(&self.registry, graph)
+        self.graph.load(graph)
     }
 
     pub fn handle(&mut self, event: Event) -> Result<(), JsValue> {
@@ -110,11 +106,38 @@ impl App {
         | EventValue::MouseClick(e)
         | EventValue::ContextMenu(e) = &event.value
         {
-            self.mouse_pos = e.pos;
+            self.mouse_pos = e.client_pos();
         }
 
-        if matches!(event.target, EventTarget::Input(..)) {
-            let EventTarget::Input(node_id, r#type) = event.target else {
+        if let EventValue::KeyDown(e) = &event.value
+            && (e.key() == "z" || e.key() == "Z")
+            && (e.ctrl_key() || e.meta_key())
+        {
+            return if e.shift_key() {
+                self.graph.redo()
+            } else {
+                self.graph.undo()
+            };
+        }
+
+        // menu
+        if matches!(event.target, EventTarget::MenuBackdrop) {
+            return if matches!(
+                event.value,
+                EventValue::MouseDown(_) | EventValue::ContextMenu(_)
+            ) {
+                self.set_mode(Mode::Idle)
+            } else {
+                Ok(())
+            };
+        }
+
+        // node inputs
+        if matches!(event.target, EventTarget::NodeInput(..)) &&
+            // ignore textarea resizes while in other modes
+            (!matches!(event.value, EventValue::MouseMove(_)) || matches!(self.mode, Mode::Idle))
+        {
+            let EventTarget::NodeInput(node_id, r#type) = event.target else {
                 unreachable!()
             };
 
@@ -130,19 +153,18 @@ impl App {
             };
 
             return match event.value {
-                EventValue::Input(value) => {
-                    return self.graph.handle_input_change(node_id, r#type, value);
-                }
-                EventValue::Resize(size) => {
-                    return self.graph.handle_input_resize(node_id, r#type, size);
-                }
+                EventValue::Input(value) => self.graph.handle_input_change(node_id, r#type, value),
+                EventValue::Resize(size) => self.graph.handle_input_resize(node_id, r#type, size),
                 _ => Ok(()),
             };
         }
 
         // focus #penguin so keyboard input works
         if matches!(event.target, EventTarget::Global)
-            && !matches!(event.value, EventValue::MouseMove(_))
+            && !matches!(
+                event.value,
+                EventValue::MouseMove(_) | EventValue::MouseUp(_)
+            )
         {
             self.focus();
         }
@@ -150,55 +172,44 @@ impl App {
         // mode agnostic
         match (&event.target, &event.value) {
             (EventTarget::Global, EventValue::Wheel(e)) => {
+                e.prevent_default();
+
                 return self.viewport.handle_wheel(e);
             }
 
-            (EventTarget::Global, EventValue::KeyDown(e)) => {
-                match e.key {
-                    Key::Escape => {
-                        if self.mode.is_passive() {
-                            self.graph.clear_selection();
-                        }
+            (EventTarget::Global, EventValue::KeyDown(e)) => match e.key().as_str() {
+                "Escape" => {
+                    e.prevent_default();
 
-                        self.set_mode(Mode::Idle);
+                    if self.mode.is_passive() {
+                        self.graph.clear_selection();
                     }
-                    Key::Backspace | Key::Delete => {
-                        if self.mode.is_passive() {
-                            self.graph.delete_selection()
-                        }
-                    }
-                    Key::Z if e.ctrl_key || e.meta_key => {
-                        if e.shift_key {
-                            // TODO redo
-                        } else {
-                            // TODO undo
-                        }
-                    }
-                    _ => {}
+
+                    self.set_mode(Mode::Idle);
                 }
-            }
+                "Backspace" | "Delete" => {
+                    e.prevent_default();
+
+                    if self.mode.is_passive() {
+                        self.graph.delete_selection();
+                    }
+                }
+                _ => {}
+            },
 
             (EventTarget::Global, EventValue::Copy(e)) => {
                 return self.graph.handle_copy(e);
             }
             (EventTarget::Global, EventValue::Paste(e)) => {
-                return self.graph.handle_paste(
-                    e,
-                    &self.registry,
-                    self.viewport.client_to_world(self.mouse_pos),
-                );
+                return self
+                    .graph
+                    .handle_paste(e, self.viewport.client_to_world(self.mouse_pos));
             }
             (EventTarget::Global, EventValue::Cut(e)) => {
                 return self.graph.handle_cut(e);
             }
 
-            (
-                EventTarget::ContextBackdrop,
-                EventValue::MouseDown(_) | EventValue::ContextMenu(_),
-            ) => {
-                return self.set_mode(Mode::Idle);
-            }
-
+            // toolbar
             (EventTarget::ToolbarButton(btn), EventValue::MouseClick(_)) => {
                 return self.viewport.handle_toolbar_button(*btn);
             }

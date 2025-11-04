@@ -1,6 +1,6 @@
 use euclid::{Box2D, Point2D, Transform2D, Vector2D};
 use wasm_bindgen::JsValue;
-use web_sys::{Element, HtmlElement};
+use web_sys::{Element, HtmlElement, WheelEvent};
 
 pub mod grid;
 pub mod toolbar;
@@ -8,7 +8,7 @@ pub mod toolbar;
 use grid::*;
 
 use crate::{
-    app::event::WheelEvent,
+    app::event::Clientable,
     viewport::toolbar::{Toolbar, ToolbarButton},
 };
 
@@ -146,8 +146,8 @@ impl Viewport {
     }
 
     pub fn handle_wheel(&mut self, e: &WheelEvent) -> Result<(), JsValue> {
-        let pos = self.client_to_penguin(e.pos);
-        let delta = if e.delta > 0.0 { 0.9 } else { 1.1 };
+        let pos = self.client_to_penguin(e.client_pos());
+        let delta = if e.delta_y() > 0.0 { 0.9 } else { 1.1 };
         self.zoom_at(pos, delta)
     }
 

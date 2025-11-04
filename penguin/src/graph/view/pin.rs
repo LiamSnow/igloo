@@ -20,7 +20,7 @@ pub struct WebPin {
     pub hitbox: HtmlElement,
     /// flow=polygon, value=div
     pin_el: Element,
-    input_el: Option<WebInput>,
+    pub(super) input_el: Option<WebInput>,
     connections: Vec<PenguinWireID>,
     listeners: Listeners,
 }
@@ -122,9 +122,9 @@ impl WebPin {
         }
 
         let listeners = ListenerBuilder::new(&hitbox, EventTarget::Pin(pref.clone()))
-            .add_mousedown(true)?
-            .add_contextmenu(true)?
-            .add_mouseup(true)?
+            .add_mousedown()?
+            .add_contextmenu()?
+            .add_mouseup()?
             .build();
 
         let me = Self {
@@ -147,7 +147,7 @@ impl WebPin {
         &self.connections
     }
 
-    /// Make sure to update node wires
+    /// WARN: make sure to update node wires
     pub fn remove_connection(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
         self.connections.retain(|&id| id != wire_id);
         self.update_fill()?;

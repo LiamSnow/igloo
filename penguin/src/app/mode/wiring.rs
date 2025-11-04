@@ -40,8 +40,7 @@ impl App {
 
                 let ws = Some(start_pin.clone());
 
-                self.context_menu
-                    .show_search(&self.registry, &self.mouse_pos, &ws)?;
+                self.menu.show_search(&self.mouse_pos, &ws)?;
                 self.set_mode(Mode::Menu(MenuMode {
                     pos: wpos,
                     from_pin: ws,

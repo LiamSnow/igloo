@@ -4,57 +4,57 @@ use web_sys::Element;
 
 use crate::{
     app::event::{EventTarget, ListenerBuilder, Listeners, document},
-    context::search::ContextSearch,
+    menu::search::MenuSearch,
     viewport::ClientPoint,
 };
 
 mod search;
 
 #[derive(Debug)]
-pub struct ContextMenu {
+pub struct Menu {
     backdrop: Element,
     menu: Element,
-    search: ContextSearch,
+    search: MenuSearch,
     listeners: Listeners,
 }
 
-impl Drop for ContextMenu {
+impl Drop for Menu {
     fn drop(&mut self) {
         self.backdrop.remove();
     }
 }
 
-impl ContextMenu {
+impl Menu {
     pub fn new(registry: &PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
         let document = document();
 
         let backdrop = document.create_element("div")?;
-        backdrop.set_id("penguin-context-backdrop");
+        backdrop.set_id("penguin-menu-backdrop");
         backdrop.set_attribute("style", "display: none;")?;
         parent.append_child(&backdrop)?;
 
         let menu = document.create_element("div")?;
-        menu.set_id("penguin-context-menu");
+        menu.set_id("penguin-menu-menu");
         backdrop.append_child(&menu)?;
         menu.set_attribute("onmousedown", "event.stopPropagation();")?;
         menu.set_attribute("onmouseup", "event.stopPropagation();")?;
         menu.set_attribute("onwheel", "event.stopPropagation();")?;
 
-        let listeners = ListenerBuilder::new(&backdrop, EventTarget::ContextBackdrop)
-            .add_mousedown(false)?
-            .add_mouseup(true)?
-            .add_mousemove(false)?
-            .add_contextmenu(true)?
-            .add_wheel(false)?
-            .add_keydown(false)?
-            .add_copy(false)?
-            .add_paste(false)?
-            .add_cut(false)?
+        let listeners = ListenerBuilder::new(&backdrop, EventTarget::MenuBackdrop)
+            .add_mousedown()?
+            .add_mouseup()?
+            .add_mousemove()?
+            .add_contextmenu()?
+            .add_wheel()?
+            .add_keydown()?
+            .add_copy()?
+            .add_paste()?
+            .add_cut()?
             .build();
 
         Ok(Self {
             backdrop,
-            search: ContextSearch::new(registry, &menu)?,
+            search: MenuSearch::new(registry, &menu)?,
             menu,
             listeners,
         })
@@ -78,7 +78,6 @@ impl ContextMenu {
 
     pub fn show_search(
         &mut self,
-        registry: &PenguinRegistry,
         cpos: &ClientPoint,
         from_pin: &Option<PenguinPinRef>,
     ) -> Result<(), JsValue> {
