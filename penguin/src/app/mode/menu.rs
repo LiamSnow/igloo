@@ -36,7 +36,7 @@ impl App {
                     defn_ref,
                     x: mm.pos.x,
                     y: mm.pos.y,
-                    input_feature_values: HashMap::with_capacity(defn.num_input_features()),
+                    input_feature_values: HashMap::with_capacity(defn.input_features.len()),
                     input_pin_values: HashMap::with_capacity(defn.inputs.len()),
                 };
 

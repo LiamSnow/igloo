@@ -5,6 +5,7 @@ use crate::{
         node::WebNode,
         wire::{WebTempWire, WebWire},
     },
+    viewport::ClientToWorld,
 };
 use igloo_interface::{
     PenguinRegistry,
@@ -33,6 +34,7 @@ pub struct WebGraph {
     pub(self) selection: Selection,
     pub(self) past: Vec<Transaction>,
     pub(self) future: Vec<Transaction>,
+    pub ctw: ClientToWorld,
 }
 
 impl WebGraph {
@@ -57,6 +59,7 @@ impl WebGraph {
             selection: Selection::default(),
             past: Vec::new(),
             future: Vec::new(),
+            ctw: ClientToWorld::default(),
         })
     }
 

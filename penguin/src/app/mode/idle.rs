@@ -44,7 +44,7 @@ impl App {
                 }))
             }
 
-            (EventTarget::Wire(wire_id), EventValue::MouseDown(e)) if e.button() == 0 => {
+            (EventTarget::Wire(wire_id), EventValue::MouseClick(e)) if e.button() == 0 => {
                 if e.alt_key() {
                     self.graph.delete_wire(wire_id)?;
                 } else {
@@ -54,13 +54,19 @@ impl App {
                 Ok(())
             }
 
+            (EventTarget::Wire(wire_id), EventValue::MouseDoubleClick(e)) if e.button() == 0 => {
+                let cpos = e.client_pos();
+                let wpos = self.viewport.client_to_world(cpos);
+                self.graph.split_wire_with_reroute(wire_id, wpos)
+            }
+
             (EventTarget::Pin(pin), EventValue::MouseDown(e)) if e.button() == 0 => {
                 if e.shift_key() {
                     self.graph.select_pin_wires(&pin);
                 } else if e.alt_key() {
-                    self.graph.delete_pin_wires(&pin);
+                    self.graph.delete_pin_wires(&pin)?;
                 } else {
-                    super::start_wiring(self, pin)?;
+                    self.start_wiring_mode(pin)?;
                 }
                 Ok(())
             }

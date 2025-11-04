@@ -3,11 +3,13 @@ use std::error::Error;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize, Display)]
 pub enum PenguinPinType {
     /// execution flow
+    #[display("Flow")]
     Flow,
     /// holds value
+    #[display("Value({_0})")]
     Value(PenguinType),
 }
 
@@ -113,6 +115,13 @@ impl PenguinPinType {
             PenguinPinType::Value(_) => 2,
         }
     }
+
+    pub fn color(&self) -> &'static str {
+        match self {
+            PenguinPinType::Flow => "#ffffff",
+            PenguinPinType::Value(vt) => vt.color(),
+        }
+    }
 }
 
 impl PenguinType {
@@ -140,11 +149,7 @@ impl PenguinType {
         if !self.can_cast(to) {
             return None;
         }
-        Some(format!(
-            "cast_{}_to_{}",
-            self.to_string().to_lowercase(),
-            to.to_string().to_lowercase()
-        ))
+        Some(format!("Cast {self} to {to}"))
     }
 }
 

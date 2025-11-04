@@ -583,3 +583,25 @@
   font-size: 11px;
   opacity: 0.6;
 }
+
+.penguin-node[data-is-reroute="true"] {
+  margin-left: -6px;
+  margin-top: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  min-width: 12px !important;
+}
+
+.penguin-node[data-is-reroute="true"] .penguin-node-inputs,
+.penguin-node[data-is-reroute="true"] .penguin-node-outputs {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+}
+
+.penguin-node[data-is-reroute="true"] .penguin-pin {
+  opacity: 0;
+}

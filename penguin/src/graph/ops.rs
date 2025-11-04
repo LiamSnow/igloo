@@ -1,7 +1,7 @@
 use super::cmds::*;
 use crate::{
     graph::{WebGraph, input::WebInputType},
-    viewport::WorldPoint,
+    viewport::{ClientToWorld, WorldPoint},
 };
 use igloo_interface::{
     PenguinNodeDefnRef, PenguinPinID, PenguinPinRef,
@@ -162,7 +162,11 @@ impl WebGraph {
 
         self.execute(tx)
     }
-    pub fn start_wiring(&mut self, start: &PenguinPinRef) -> Result<(), JsValue> {
+    pub fn start_wiring(
+        &mut self,
+        start: &PenguinPinRef,
+        ctw: &ClientToWorld,
+    ) -> Result<(), JsValue> {
         let Some(node) = self.nodes.get(&start.node_id) else {
             return Err(JsValue::from_str("Unknown Node"));
         };
@@ -172,7 +176,7 @@ impl WebGraph {
         };
 
         self.temp_wire
-            .show(&pin.hitbox, node.pos(), start.r#type, start.is_output)?;
+            .show(&pin.hitbox, start.r#type, start.is_output, ctw)?;
 
         for node in self.nodes.values_mut() {
             for pin in node.inputs.values_mut() {
@@ -384,6 +388,68 @@ impl WebGraph {
                 wire,
             });
         }
+
+        self.execute(tx)
+    }
+
+    pub fn split_wire_with_reroute(
+        &mut self,
+        wire_id: PenguinWireID,
+        wpos: WorldPoint,
+    ) -> Result<(), JsValue> {
+        let Some(wire) = self.wires.get(&wire_id) else {
+            return Ok(());
+        };
+        let original_wire = wire.inner().clone();
+
+        let node_name = format!("Reroute {}", original_wire.r#type);
+        let defn_Ref = PenguinNodeDefnRef::new("Standard Library", &node_name, 1);
+        if self.registry.get_defn(&defn_Ref).is_none() {
+            return Err(JsValue::from_str("Reroute node definition not found"));
+        }
+
+        let node_id = PenguinNodeID(self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1);
+        let wire_id_1 = PenguinWireID(self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1);
+        let wire_id_2 = PenguinWireID(wire_id_1.0 + 1);
+
+        let mut tx = Transaction::with_capacity(4);
+
+        tx.push(Command::DeleteWire {
+            id: wire_id,
+            wire: original_wire.clone(),
+        });
+
+        tx.push(Command::AddNode {
+            id: node_id,
+            node: PenguinNode {
+                defn_ref: defn_Ref,
+                x: wpos.x,
+                y: wpos.y,
+                ..Default::default()
+            },
+        });
+
+        tx.push(Command::AddWire {
+            id: wire_id_1,
+            wire: PenguinWire {
+                from_node: original_wire.from_node,
+                from_pin: original_wire.from_pin.clone(),
+                to_node: node_id,
+                to_pin: PenguinPinID::from_str("Input"),
+                r#type: original_wire.r#type,
+            },
+        });
+
+        tx.push(Command::AddWire {
+            id: wire_id_2,
+            wire: PenguinWire {
+                from_node: node_id,
+                from_pin: PenguinPinID::from_str("Output"),
+                to_node: original_wire.to_node,
+                to_pin: original_wire.to_pin,
+                r#type: original_wire.r#type,
+            },
+        });
 
         self.execute(tx)
     }

@@ -135,7 +135,7 @@ impl WebGraph {
             }
 
             Command::AddWire { id, wire } => {
-                let (from_hitbox, from_pos) = {
+                let from_hitbox = {
                     let from_node = self
                         .nodes
                         .get_mut(&wire.from_node)
@@ -145,10 +145,10 @@ impl WebGraph {
                         .get_mut(&wire.from_pin)
                         .ok_or(JsValue::from_str("Missing from_pin"))?;
                     from_pin.add_connection(*id)?;
-                    (from_pin.hitbox.clone(), from_node.pos())
+                    from_pin.hitbox.clone()
                 };
 
-                let (to_hitbox, to_pos) = {
+                let to_hitbox = {
                     let to_node = self
                         .nodes
                         .get_mut(&wire.to_node)
@@ -158,14 +158,14 @@ impl WebGraph {
                         .get_mut(&wire.to_pin)
                         .ok_or(JsValue::from_str("Missing to_pin"))?;
                     to_pin.add_connection(*id)?;
-                    (to_pin.hitbox.clone(), to_node.pos())
+                    to_pin.hitbox.clone()
                 };
 
                 let mut web_wire =
                     WebWire::new(&self.wires_el, *id, wire.clone(), from_hitbox, to_hitbox)?;
 
-                web_wire.redraw_from(from_pos)?;
-                web_wire.redraw_to(to_pos)?;
+                web_wire.redraw_from(&self.ctw)?;
+                web_wire.redraw_to(&self.ctw)?;
 
                 self.redraw_node_wires(&wire.to_node)?;
                 self.redraw_node_wires(&wire.from_node)?;
@@ -255,7 +255,6 @@ impl WebGraph {
         let Some(node) = self.nodes.get(node_id) else {
             return Ok(());
         };
-        let pos = node.pos();
 
         let mut wire_ids = Vec::new();
         for pin in node.outputs.values() {
@@ -268,10 +267,10 @@ impl WebGraph {
         for wire_id in wire_ids {
             if let Some(wire) = self.wires.get_mut(&wire_id) {
                 if wire.inner().from_node == *node_id {
-                    wire.redraw_from(pos)?;
+                    wire.redraw_from(&self.ctw)?;
                 }
                 if wire.inner().to_node == *node_id {
-                    wire.redraw_to(pos)?;
+                    wire.redraw_to(&self.ctw)?;
                 }
             }
         }

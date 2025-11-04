@@ -172,3 +172,10 @@ impl Viewport {
         Ok(())
     }
 }
+
+pub fn rect_center(rect: &DomRect) -> ClientPoint {
+    ClientPoint::new(
+        (rect.x() + rect.width() / 2.0) as i32,
+        (rect.y() + rect.height() / 2.0) as i32,
+    )
+}

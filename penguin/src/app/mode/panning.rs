@@ -25,6 +25,7 @@ impl App {
             EventValue::MouseMove(_) => {
                 let delta = (self.mouse_pos - pm.last_pos).cast::<f64>();
                 self.viewport.pan_by(PenguinVector::new(delta.x, delta.y))?;
+                self.graph.ctw = self.viewport.client_to_world_transform();
 
                 pm.last_pos = self.mouse_pos;
 

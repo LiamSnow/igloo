@@ -5,7 +5,7 @@ use crate::{
     },
     graph::WebGraph,
     menu::Menu,
-    viewport::{ClientPoint, Viewport},
+    viewport::{ClientPoint, ClientToWorld, Viewport},
 };
 use igloo_interface::{PenguinRegistry, graph::PenguinGraph};
 use std::cell::RefCell;
@@ -75,12 +75,16 @@ impl App {
         el.append_child(&box_el)?;
 
         let registry = PenguinRegistry::default();
+        let menu = Menu::new(&registry, &el)?;
+        let mut graph = WebGraph::new(registry, &viewport_el)?;
+        let viewport = Viewport::new(el.clone(), viewport_el, grid_svg)?;
+        graph.ctw = viewport.client_to_world_transform();
 
         let me = App {
             mode: Mode::Idle,
-            menu: Menu::new(&registry, &el)?,
-            graph: WebGraph::new(registry, &viewport_el)?,
-            viewport: Viewport::new(el.clone(), viewport_el, grid_svg)?,
+            menu,
+            graph,
+            viewport,
             box_el,
             listeners,
             mouse_pos: ClientPoint::default(),
@@ -182,8 +186,9 @@ impl App {
         match (&event.target, &event.value) {
             (EventTarget::Global, EventValue::Wheel(e)) => {
                 e.prevent_default();
-
-                return self.viewport.handle_wheel(e);
+                self.viewport.handle_wheel(e)?;
+                self.graph.ctw = self.viewport.client_to_world_transform();
+                return Ok(());
             }
 
             (EventTarget::Global, EventValue::KeyDown(e)) => match e.key().as_str() {

@@ -8,14 +8,13 @@ pub struct PenguinRegistry {
 
 #[derive(Debug, Clone, Default)]
 pub struct PenguinLibrary {
-    pub display_name: String,
     pub nodes: HashMap<String, PenguinNodeDefn>,
 }
 
 impl PenguinRegistry {
     pub fn new() -> Self {
         let mut libraries = HashMap::new();
-        libraries.insert("std".to_string(), std_library());
+        libraries.insert("Standard Library".to_string(), std_library());
 
         Self { libraries }
     }

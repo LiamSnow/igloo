@@ -140,7 +140,7 @@ impl MenuSearchItem {
 
         let title = document.create_element("div")?;
         title.set_class_name("penguin-menu-search-item-title");
-        title.set_inner_html(&defn.title);
+        title.set_inner_html(&node_path);
         el.append_child(&title)?;
 
         // let content = document.create_element("div")?;

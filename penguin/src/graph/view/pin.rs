@@ -31,6 +31,8 @@ impl Drop for WebPin {
     }
 }
 
+const UNCONNECTED_COLOR: &str = "#111";
+
 pub fn make(
     parent: &Element,
     defn: &PenguinPinDefn,
@@ -68,8 +70,8 @@ pub fn make(
                 document.create_element_ns(Some("http://www.w3.org/2000/svg"), "polygon")?;
 
             polygon.set_attribute("points", "1,1 12,1 15,8 12,15 1,15")?;
-            polygon.set_attribute("fill", "#111")?;
-            polygon.set_attribute("stroke", "white")?;
+            polygon.set_attribute("fill", UNCONNECTED_COLOR)?;
+            polygon.set_attribute("stroke", defn.r#type.color())?;
             polygon.set_attribute("strokeWidth", "2")?;
 
             svg.append_child(&polygon)?;
@@ -107,6 +109,7 @@ impl WebPin {
         pref: PenguinPinRef,
         defn: PenguinPinDefn,
         connections: Vec<PenguinWireID>,
+        is_reroute: bool,
     ) -> Result<Self, JsValue> {
         let (wrapper, hitbox, pin_el) = make(parent, &defn, &pref.id, pref.is_output)?;
 
@@ -128,11 +131,12 @@ impl WebPin {
             )?);
         }
 
-        let listeners = ListenerBuilder::new(&hitbox, EventTarget::Pin(pref.clone()))
-            .add_mousedown()?
-            .add_contextmenu()?
-            .add_mouseup()?
-            .build();
+        let mut builder =
+            ListenerBuilder::new(&hitbox, EventTarget::Pin(pref.clone())).add_mouseup()?;
+        if !is_reroute {
+            builder = builder.add_mousedown()?.add_contextmenu()?;
+        }
+        let listeners = builder.build();
 
         let me = Self {
             pref,
@@ -177,16 +181,25 @@ impl WebPin {
         let connected = !self.connections.is_empty();
 
         match self.defn.r#type {
-            PenguinPinType::Flow => self
-                .pin_el
-                .set_attribute("fill", if connected { "white" } else { "#111" })?,
+            PenguinPinType::Flow => self.pin_el.set_attribute(
+                "fill",
+                if connected {
+                    self.defn.r#type.color()
+                } else {
+                    UNCONNECTED_COLOR
+                },
+            )?,
             PenguinPinType::Value(vt) => {
                 self.pin_el.set_attribute(
                     "style",
                     &format!(
                         "border-color: {}; background-color: {};",
                         vt.color(),
-                        if connected { vt.color() } else { "#111" },
+                        if connected {
+                            vt.color()
+                        } else {
+                            UNCONNECTED_COLOR
+                        },
                     ),
                 )?;
             }

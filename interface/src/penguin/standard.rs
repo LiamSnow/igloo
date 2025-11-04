@@ -6,25 +6,22 @@ pub fn std_library() -> PenguinLibrary {
     let mut nodes = HashMap::new();
 
     nodes.insert(
-        "comment".to_string(),
+        "Comment".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Comment".to_string(),
-            desc: "Comment".to_string(),
-            features: vec![NodeFeature::Input(NodeInputFeature {
+            input_features: vec![NodeInputFeature {
                 r#type: PenguinType::Text,
                 id: NodeInputFeatureID::from_str("Value"),
-            })],
+            }],
             ..Default::default()
         },
     );
 
     nodes.insert(
-        "on_start".to_string(),
+        "On Start".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "On Start".to_string(),
-            style: NodeStyle::normal(""),
+            title_bar: Some("On Start".to_string()),
             desc: "Triggers when program starts".to_string(),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("On Trigger"),
@@ -35,11 +32,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "print".to_string(),
+        "Print".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Print".to_string(),
-            style: NodeStyle::normal(""),
+            title_bar: Some("Print".to_string()),
             desc: "Prints text to console".to_string(),
             inputs: IndexMap::from([
                 (
@@ -60,11 +56,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "branch".to_string(),
+        "Branch".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Branch".to_string(),
-            style: NodeStyle::normal(""),
+            title_bar: Some("Branch".to_string()),
             desc: "Conditionally split flow".to_string(),
             inputs: IndexMap::from([
                 (
@@ -89,157 +84,168 @@ pub fn std_library() -> PenguinLibrary {
 
     add_variadic(
         &mut nodes,
-        "merge",
         "Merge",
-        "Execute once all branches have completed",
-        NodeStyle::normal(""),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Flow,
-        true,
-        "Output_",
-        PenguinPinDefn::unnamed_flow(),
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Merge".to_string()),
+            desc: "Execute once all branches have completed".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            ..Default::default()
+        },
     );
 
     add_variadic(
         &mut nodes,
-        "either",
         "Either",
-        "Execute if either branch triggers",
-        NodeStyle::normal(""),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Flow,
-        true,
-        "Output_",
-        PenguinPinDefn::unnamed_flow(),
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Either".to_string()),
+            desc: "Execute if either branch triggers".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            ..Default::default()
+        },
     );
 
     nodes.insert(
-        "const_text".to_string(),
+        "Text Constant".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Text Constant".to_string(),
-            desc: "Text constant".to_string(),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Text),
             )]),
-            features: vec![NodeFeature::Input(NodeInputFeature {
+            input_features: vec![NodeInputFeature {
                 r#type: PenguinType::Text,
                 id: NodeInputFeatureID::from_str("value"),
-            })],
+            }],
             ..Default::default()
         },
     );
 
     nodes.insert(
-        "const_bool".to_string(),
+        "Boolean Constant".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Boolean Constant".to_string(),
-            desc: "Boolean constant".to_string(),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Bool),
             )]),
-            features: vec![NodeFeature::Input(NodeInputFeature {
+            input_features: vec![NodeInputFeature {
                 r#type: PenguinType::Bool,
                 id: NodeInputFeatureID::from_str("value"),
-            })],
+            }],
             ..Default::default()
         },
     );
 
     nodes.insert(
-        "const_int".to_string(),
+        "Integer Constant".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Constant".to_string(),
-            desc: "Integer constant".to_string(),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Int),
             )]),
-            features: vec![NodeFeature::Input(NodeInputFeature {
+            input_features: vec![NodeInputFeature {
                 r#type: PenguinType::Int,
                 id: NodeInputFeatureID::from_str("value"),
-            })],
+            }],
             ..Default::default()
         },
     );
 
     nodes.insert(
-        "const_real".to_string(),
+        "Real Constant".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Constant".to_string(),
-            desc: "Real number constant".to_string(),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Real),
             )]),
-            features: vec![NodeFeature::Input(NodeInputFeature {
+            input_features: vec![NodeInputFeature {
                 r#type: PenguinType::Real,
                 id: NodeInputFeatureID::from_str("value"),
-            })],
+            }],
             ..Default::default()
         },
     );
 
     nodes.insert(
-        "const_color".to_string(),
+        "Color Constant".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Color Constant".to_string(),
-            desc: "Color constant".to_string(),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
                 PenguinPinDefn::unnamed_val(PenguinType::Color),
             )]),
-            features: vec![NodeFeature::Input(NodeInputFeature {
+            input_features: vec![NodeInputFeature {
                 r#type: PenguinType::Color,
                 id: NodeInputFeatureID::from_str("value"),
-            })],
+            }],
             ..Default::default()
         },
     );
 
     add_variadic(
         &mut nodes,
-        "and",
-        "AND",
-        "Logical AND",
-        NodeStyle::background("AND"),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Value(PenguinType::Bool),
-        true,
-        "Output_",
-        PenguinPinDefn::unnamed_val(PenguinType::Bool),
+        "And",
+        PenguinNodeDefn {
+            version: 1,
+            icon: "AND".to_string(),
+            icon_bg: true,
+            desc: "Logical AND".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+            )]),
+            ..Default::default()
+        },
     );
 
     add_variadic(
         &mut nodes,
-        "or",
-        "OR",
-        "Logical OR",
-        NodeStyle::background("OR"),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Value(PenguinType::Bool),
-        true,
-        "Output_",
-        PenguinPinDefn::unnamed_val(PenguinType::Bool),
+        "Or",
+        PenguinNodeDefn {
+            version: 1,
+            icon: "OR".to_string(),
+            icon_bg: true,
+            desc: "Logical OR".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+            )]),
+            ..Default::default()
+        },
     );
 
     nodes.insert(
-        "not".to_string(),
+        "Not Boolean".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "NOT".to_string(),
-            style: NodeStyle::background("NOT"),
-            desc: "Logical NOT".to_string(),
+            icon: "NOT".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Bool),
@@ -253,12 +259,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "xor".to_string(),
+        "Xor Booleans".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "XOR".to_string(),
-            style: NodeStyle::background("XOR"),
-            desc: "Logical XOR".to_string(),
+            icon: "XOR".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -278,12 +283,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "bool_equal".to_string(),
+        "Booleans Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Boolean Equal".to_string(),
-            style: NodeStyle::background("=="),
-            desc: "Boolean equality".to_string(),
+            icon: "==".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -304,25 +308,30 @@ pub fn std_library() -> PenguinLibrary {
 
     add_variadic(
         &mut nodes,
-        "int_add",
         "Add Integers",
-        "Add integers",
-        NodeStyle::background("+"),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Value(PenguinType::Int),
-        true,
-        "Output",
-        PenguinPinDefn::unnamed_val(PenguinType::Int),
+        PenguinNodeDefn {
+            version: 1,
+            icon: "+".to_string(),
+            icon_bg: true,
+            desc: "Add integers".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_val(PenguinType::Int),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_val(PenguinType::Int),
+            )]),
+            ..Default::default()
+        },
     );
 
     nodes.insert(
-        "int_sub".to_string(),
+        "Subtract Integers".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Subtract Integers".to_string(),
-            style: NodeStyle::background("-"),
-            desc: "Subtract integers".to_string(),
+            icon: "-".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -343,25 +352,30 @@ pub fn std_library() -> PenguinLibrary {
 
     add_variadic(
         &mut nodes,
-        "int_mul",
         "Multiply Integers",
-        "Multiply integers",
-        NodeStyle::background("*"),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Value(PenguinType::Int),
-        true,
-        "Output",
-        PenguinPinDefn::unnamed_val(PenguinType::Int),
+        PenguinNodeDefn {
+            version: 1,
+            icon: "*".to_string(),
+            icon_bg: true,
+            desc: "Multiply integers".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_val(PenguinType::Int),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_val(PenguinType::Int),
+            )]),
+            ..Default::default()
+        },
     );
 
     nodes.insert(
-        "int_div".to_string(),
+        "Divide Integers".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Divide Integers".to_string(),
-            style: NodeStyle::background("/"),
-            desc: "Divide integers".to_string(),
+            icon: "/".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -381,12 +395,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_mod".to_string(),
+        "Integer Modulo".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Modulo".to_string(),
-            style: NodeStyle::background("MOD"),
-            desc: "Integer remainder".to_string(),
+            icon: "MOD".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -406,12 +419,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_lt".to_string(),
+        "Integer Less Than".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Less Than".to_string(),
-            style: NodeStyle::background("<"),
-            desc: "A < B".to_string(),
+            icon: "<".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -431,12 +443,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_gt".to_string(),
+        "Integer Greater Than".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Greater Than".to_string(),
-            style: NodeStyle::background(">"),
-            desc: "A > B".to_string(),
+            icon: ">".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -456,12 +467,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_lte".to_string(),
+        "Integer Less Than or Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Less Than or Equal".to_string(),
-            style: NodeStyle::background("<="),
-            desc: "A <= B".to_string(),
+            icon: "<=".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -481,12 +491,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_gte".to_string(),
+        "Integer Greater Than or Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Greater Than or Equal".to_string(),
-            style: NodeStyle::background(">="),
-            desc: "A >= B".to_string(),
+            icon: ">=".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -506,12 +515,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_eq".to_string(),
+        "Integer Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Equal".to_string(),
-            style: NodeStyle::background("=="),
-            desc: "A == B".to_string(),
+            icon: "==".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -531,12 +539,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "int_neq".to_string(),
+        "Integer Not Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Integer Not Equal".to_string(),
-            style: NodeStyle::background("!="),
-            desc: "A != B".to_string(),
+            icon: "!=".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -557,25 +564,30 @@ pub fn std_library() -> PenguinLibrary {
 
     add_variadic(
         &mut nodes,
-        "real_add",
         "Add Reals",
-        "Add reals",
-        NodeStyle::background("+"),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Value(PenguinType::Real),
-        true,
-        "Output",
-        PenguinPinDefn::unnamed_val(PenguinType::Real),
+        PenguinNodeDefn {
+            version: 1,
+            icon: "+".to_string(),
+            icon_bg: true,
+            desc: "Add reals".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_val(PenguinType::Real),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_val(PenguinType::Real),
+            )]),
+            ..Default::default()
+        },
     );
 
     nodes.insert(
-        "real_sub".to_string(),
+        "Subtract Reals".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Subtract Reals".to_string(),
-            style: NodeStyle::background("-"),
-            desc: "Subtract reals".to_string(),
+            icon: "-".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -596,25 +608,30 @@ pub fn std_library() -> PenguinLibrary {
 
     add_variadic(
         &mut nodes,
-        "real_mul",
         "Multiply Reals",
-        "Multiply reals",
-        NodeStyle::background("*"),
-        (2, 10),
-        "Input_",
-        PenguinPinType::Value(PenguinType::Real),
-        true,
-        "Output",
-        PenguinPinDefn::unnamed_val(PenguinType::Real),
+        PenguinNodeDefn {
+            version: 1,
+            icon: "*".to_string(),
+            icon_bg: true,
+            desc: "Multiply reals".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input {{2..10}}"),
+                PenguinPinDefn::unnamed_val(PenguinType::Real),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed_val(PenguinType::Real),
+            )]),
+            ..Default::default()
+        },
     );
 
     nodes.insert(
-        "real_div".to_string(),
+        "Divide Reals".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Divide Reals".to_string(),
-            style: NodeStyle::background("/"),
-            desc: "Divide reals".to_string(),
+            icon: "/".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -634,12 +651,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "real_lt".to_string(),
+        "Real Less Than".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Less Than".to_string(),
-            style: NodeStyle::background("<"),
-            desc: "A < B".to_string(),
+            icon: "<".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -659,12 +675,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "real_gt".to_string(),
+        "Real Greater Than".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Greater Than".to_string(),
-            style: NodeStyle::background(">"),
-            desc: "A > B".to_string(),
+            icon: ">".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -684,12 +699,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "real_lte".to_string(),
+        "Real Less Than or Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Less Than or Equal".to_string(),
-            style: NodeStyle::background("<="),
-            desc: "A <= B".to_string(),
+            icon: "<=".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -709,12 +723,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "real_gte".to_string(),
+        "Real Greater Than or Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Greater Than or Equal".to_string(),
-            style: NodeStyle::background(">="),
-            desc: "A >= B".to_string(),
+            icon: ">=".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -734,12 +747,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "real_eq".to_string(),
+        "Real Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Equal".to_string(),
-            style: NodeStyle::background("=="),
-            desc: "A == B".to_string(),
+            icon: "==".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -759,12 +771,11 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "real_neq".to_string(),
+        "Real Not Equal".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Real Not Equal".to_string(),
-            style: NodeStyle::background("!="),
-            desc: "A != B".to_string(),
+            icon: "!=".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
@@ -784,11 +795,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_mix".to_string(),
+        "Color Mix".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Mix".to_string(),
-            style: NodeStyle::normal(""),
+            title_bar: Some("Mix".to_string()),
             desc: "Blend two colors".to_string(),
             inputs: IndexMap::from([
                 (
@@ -813,12 +823,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_from_rgb".to_string(),
+        "Color from RGB".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "From RGB".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Create from RGB".to_string(),
+            title_bar: Some("From RGB".to_string()),
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("R"),
@@ -842,12 +850,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_to_rgb".to_string(),
+        "Color to RGB".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "To RGB".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Extract RGB".to_string(),
+            title_bar: Some("To RGB".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Color),
@@ -871,12 +877,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_from_hsl".to_string(),
+        "Color from HSL".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "From HSL".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Create from HSL".to_string(),
+            title_bar: Some("From HSL".to_string()),
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("H"),
@@ -900,12 +904,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_to_hsl".to_string(),
+        "Color to HSL".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "To HSL".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Extract HSL".to_string(),
+            title_bar: Some("To HSL".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Color),
@@ -929,12 +931,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_from_hsv".to_string(),
+        "Color from HSV".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "From HSV".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Create from HSV".to_string(),
+            title_bar: Some("From HSV".to_string()),
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("H"),
@@ -958,12 +958,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "color_to_hsv".to_string(),
+        "Color to HSV".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "To HSV".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Extract HSV".to_string(),
+            title_bar: Some("To HSV".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Color),
@@ -987,12 +985,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "text_length".to_string(),
+        "Text Length".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Length".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Text length".to_string(),
+            title_bar: Some("Length".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Text),
@@ -1006,12 +1002,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "text_to_upper".to_string(),
+        "Text to Uppercase".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "To Uppercase".to_string(),
-            style: NodeStyle::background("→"),
-            desc: "Convert to uppercase".to_string(),
+            title_bar: Some("To Uppercase".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Text),
@@ -1025,12 +1019,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "text_to_lower".to_string(),
+        "Text to Lowercase".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "To Lowercase".to_string(),
-            style: NodeStyle::background("→"),
-            desc: "Convert to lowercase".to_string(),
+            title_bar: Some("To Lowercase".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed_val(PenguinType::Text),
@@ -1044,12 +1036,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "text_replace".to_string(),
+        "Text Replace".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Replace".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Replace text".to_string(),
+            title_bar: Some("Replace".to_string()),
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("Text"),
@@ -1073,12 +1063,10 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
-        "text_regex_match".to_string(),
+        "Text Regex Match".to_string(),
         PenguinNodeDefn {
             version: 1,
-            title: "Regex Match".to_string(),
-            style: NodeStyle::normal(""),
-            desc: "Match regex pattern".to_string(),
+            title_bar: Some("Regex Match".to_string()),
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("Text"),
@@ -1114,10 +1102,34 @@ pub fn std_library() -> PenguinLibrary {
     add_cast(&mut nodes, PenguinType::Bool, PenguinType::Text);
     add_cast(&mut nodes, PenguinType::Color, PenguinType::Text);
 
-    PenguinLibrary {
-        display_name: "std".to_string(),
-        nodes,
-    }
+    add_reroute(&mut nodes, PenguinPinType::Flow);
+    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Int));
+    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Real));
+    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Text));
+    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Bool));
+    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Color));
+
+    PenguinLibrary { nodes }
+}
+
+fn add_reroute(nodes: &mut HashMap<String, PenguinNodeDefn>, pin_type: PenguinPinType) {
+    nodes.insert(
+        format!("Reroute {pin_type}"),
+        PenguinNodeDefn {
+            version: 1,
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Input"),
+                PenguinPinDefn::unnamed(pin_type),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Output"),
+                PenguinPinDefn::unnamed(pin_type),
+            )]),
+            hide_search: true,
+            is_reroute: true,
+            ..Default::default()
+        },
+    );
 }
 
 fn add_cast(nodes: &mut HashMap<String, PenguinNodeDefn>, from: PenguinType, to: PenguinType) {
@@ -1125,9 +1137,8 @@ fn add_cast(nodes: &mut HashMap<String, PenguinNodeDefn>, from: PenguinType, to:
         from.cast_name(to).unwrap(),
         PenguinNodeDefn {
             version: 1,
-            title: format!("Cast {from} to {to}"),
-            style: NodeStyle::background("→"),
-            desc: "Casting will TODO".to_string(),
+            icon: "→".to_string(),
+            icon_bg: true,
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
                 PenguinPinDefn::unnamed(PenguinPinType::Value(from)),
@@ -1144,49 +1155,54 @@ fn add_cast(nodes: &mut HashMap<String, PenguinNodeDefn>, from: PenguinType, to:
 fn add_variadic(
     nodes: &mut HashMap<String, PenguinNodeDefn>,
     base_name: &str,
-    title: &str,
-    desc: &str,
-    style: NodeStyle,
-    range: (u8, u8),
-    input_base_id: &str,
-    input_type: PenguinPinType,
-    input_hide_name: bool,
-    output_id: &str,
-    output_defn: PenguinPinDefn,
+    template: PenguinNodeDefn,
 ) {
-    let (min, max) = range;
+    let mut variadic_info = None;
+    let mut variadic_key = None;
+
+    for (key, _) in &template.inputs {
+        let key_str = key.0.to_string();
+        if let Some(start) = key_str.find("{{")
+            && let Some(end) = key_str.find("}}")
+        {
+            let pattern = &key_str[start + 2..end];
+            if let Some((min_str, max_str)) = pattern.split_once("..")
+                && let (Ok(min), Ok(max)) = (min_str.parse::<u8>(), max_str.parse::<u8>())
+            {
+                variadic_info = Some((min, max, key_str[..start].to_string()));
+                variadic_key = Some(key.clone());
+                break;
+            }
+        }
+    }
+
+    let Some((min, max, input_base_id)) = variadic_info else {
+        panic!("Invalid variadic config for {base_name}")
+    };
+
+    let Some(variadic_key) = variadic_key else {
+        return;
+    };
+
+    let input_defn = template.inputs.get(&variadic_key).unwrap().clone();
 
     for count in min..=max {
-        let name = format!("{}_{}", base_name, count);
+        let name = format!("{} {}", base_name, count);
 
         let mut inputs = IndexMap::new();
         for i in 0..count {
             let pin_id = PenguinPinID::from_str(&format!("{}{}", input_base_id, i));
-            let pin_defn = if input_hide_name {
-                PenguinPinDefn::unnamed(input_type)
-            } else {
-                PenguinPinDefn::named(input_type)
-            };
-            inputs.insert(pin_id, pin_defn);
+            inputs.insert(pin_id, input_defn.clone());
         }
 
-        let outputs = IndexMap::from([(PenguinPinID::from_str(output_id), output_defn.clone())]);
+        let prev = (count > min).then(|| format!("{} {}", base_name, count - 1));
+        let next = (count < max).then(|| format!("{} {}", base_name, count + 1));
 
-        let prev = (count > min).then(|| format!("{}_{}", base_name, count - 1));
-        let next = (count < max).then(|| format!("{}_{}", base_name, count + 1));
+        let mut node_defn = template.clone();
+        node_defn.inputs = inputs;
+        node_defn.variadic_feature = Some(NodeVariadicFeature { prev, next });
+        node_defn.hide_search = count != min;
 
-        nodes.insert(
-            name,
-            PenguinNodeDefn {
-                version: 1,
-                title: title.to_string(),
-                desc: desc.to_string(),
-                style: style.clone(),
-                inputs,
-                outputs,
-                features: vec![NodeFeature::Variadic(NodeVariadicFeature { prev, next })],
-                hide_search: count != min,
-            },
-        );
+        nodes.insert(name, node_defn);
     }
 }

@@ -1,3 +1,7 @@
+use crate::{
+    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    viewport::{ClientBox, ClientToWorld, WorldPoint, rect_center},
+};
 use euclid::Box2D;
 use igloo_interface::{
     PenguinPinType,
@@ -6,24 +10,15 @@ use igloo_interface::{
 use wasm_bindgen::JsValue;
 use web_sys::{Element, HtmlElement};
 
-use crate::{
-    app::event::{EventTarget, ListenerBuilder, Listeners, document},
-    viewport::{ClientBox, ClientToWorld, WorldPoint},
-};
-
 #[derive(Debug)]
 pub struct WebWire {
     pub inner: PenguinWire,
-
     from_hitbox: HtmlElement,
     to_hitbox: HtmlElement,
-
     svg: Element,
     path: Element,
-
     from_pos: (f64, f64),
     to_pos: (f64, f64),
-
     listeners: Listeners,
 }
 
@@ -63,7 +58,8 @@ impl WebWire {
         let (svg, path) = make_els(parent, inner.r#type)?;
 
         let listeners = ListenerBuilder::new(&path, EventTarget::Wire(id))
-            .add_mousedown()?
+            .add_mouseclick()?
+            .add_mousedoubleclick()?
             .add_contextmenu()?
             .build();
 
@@ -79,28 +75,19 @@ impl WebWire {
         })
     }
 
-    // TODO FIXME calculation is slightly off.
-    // Change function to take in client -> world transform
-    // and use the from_hitbox bounding client rect
-    pub fn redraw_from(&mut self, from_node_pos: WorldPoint) -> Result<(), JsValue> {
-        self.from_pos.0 = from_node_pos.x
-            + self.from_hitbox.offset_left() as f64
-            + self.from_hitbox.offset_width() as f64 / 2.0;
-        self.from_pos.1 = from_node_pos.y
-            + self.from_hitbox.offset_top() as f64
-            + self.from_hitbox.offset_height() as f64 / 2.0;
-
+    pub fn redraw_from(&mut self, ctw: &ClientToWorld) -> Result<(), JsValue> {
+        let rect = self.from_hitbox.get_bounding_client_rect();
+        let client_pos = rect_center(&rect);
+        let world_pos = ctw.transform_point(client_pos.cast());
+        self.from_pos = (world_pos.x, world_pos.y);
         self.update_path()
     }
 
-    pub fn redraw_to(&mut self, to_node_pos: WorldPoint) -> Result<(), JsValue> {
-        self.to_pos.0 = to_node_pos.x
-            + self.to_hitbox.offset_left() as f64
-            + self.to_hitbox.offset_width() as f64 / 2.0;
-        self.to_pos.1 = to_node_pos.y
-            + self.to_hitbox.offset_top() as f64
-            + self.to_hitbox.offset_height() as f64 / 2.0;
-
+    pub fn redraw_to(&mut self, ctw: &ClientToWorld) -> Result<(), JsValue> {
+        let rect = self.to_hitbox.get_bounding_client_rect();
+        let client_pos = rect_center(&rect);
+        let world_pos = ctw.transform_point(client_pos.cast());
+        self.to_pos = (world_pos.x, world_pos.y);
         self.update_path()
     }
 
@@ -196,25 +183,21 @@ impl WebTempWire {
     pub fn show(
         &mut self,
         start_hitbox: &HtmlElement,
-        start_node_pos: WorldPoint,
         r#type: PenguinPinType,
         is_output: bool,
+        ctw: &ClientToWorld,
     ) -> Result<(), JsValue> {
         self.path.set_attribute("stroke", r#type.stroke())?;
         self.path
             .set_attribute("stroke-width", &r#type.stroke_width().to_string())?;
 
-        self.start_pos.0 = start_node_pos.x
-            + start_hitbox.offset_left() as f64
-            + start_hitbox.offset_width() as f64 / 2.0;
-        self.start_pos.1 = start_node_pos.y
-            + start_hitbox.offset_top() as f64
-            + start_hitbox.offset_height() as f64 / 2.0;
+        let rect = start_hitbox.get_bounding_client_rect();
+        let client_pos = rect_center(&rect);
+        let world_pos = ctw.transform_point(client_pos.cast());
+        self.start_pos = (world_pos.x, world_pos.y);
 
         self.is_output = is_output;
-
         self.svg.remove_attribute("style")?;
-
         Ok(())
     }
 

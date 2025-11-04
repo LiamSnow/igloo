@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Display, Serialize, Deserialize)]
-#[display("{lib_path}.{node_path}")]
+#[display("{lib_path}/{node_path}")]
 pub struct PenguinNodeDefnRef {
     pub lib_path: String,
     pub node_path: String,
@@ -13,33 +13,17 @@ pub struct PenguinNodeDefnRef {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PenguinNodeDefn {
-    pub title: String,
+    pub icon: String,
     pub desc: String,
-    pub style: NodeStyle,
+    pub title_bar: Option<String>,
+    pub icon_bg: bool,
+    pub is_reroute: bool,
     pub inputs: IndexMap<PenguinPinID, PenguinPinDefn>,
     pub outputs: IndexMap<PenguinPinID, PenguinPinDefn>,
-    pub features: Vec<NodeFeature>,
     pub version: u8,
     pub hide_search: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeStyle {
-    /// icon
-    Normal(String),
-    /// background
-    Background(String),
-    None,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeFeature {
-    /// Expandable I/O with +/- buttons
-    Variadic(NodeVariadicFeature),
-    /// Adds a Query Input
-    Query(NodeQueryFeature),
-    /// Arbitrary Input
-    Input(NodeInputFeature),
+    pub variadic_feature: Option<NodeVariadicFeature>,
+    pub input_features: Vec<NodeInputFeature>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,34 +42,6 @@ pub struct NodeInputFeature {
     pub id: NodeInputFeatureID,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NodeQueryFeature {
-    /// Base Name of NodeDefn
-    /// For query config you need "base_int", "base_text", ..
-    /// Then this will automatically switch between them
-    pub base_name: String,
-}
-
-impl NodeStyle {
-    pub fn normal(icon: &str) -> Self {
-        Self::Normal(icon.to_string())
-    }
-
-    pub fn background(background: &str) -> Self {
-        Self::Background(background.to_string())
-    }
-
-    pub fn none() -> Self {
-        Self::None
-    }
-}
-
-impl Default for NodeStyle {
-    fn default() -> Self {
-        Self::none()
-    }
-}
-
 impl PenguinNodeDefnRef {
     pub fn new(lib_path: &str, node_path: &str, version: u8) -> Self {
         Self {
@@ -93,41 +49,6 @@ impl PenguinNodeDefnRef {
             node_path: node_path.to_string(),
             version,
         }
-    }
-}
-
-impl PenguinNodeDefn {
-    pub fn variadic_feature(&self) -> Option<&NodeVariadicFeature> {
-        self.features.iter().find_map(|cfg| {
-            if let NodeFeature::Variadic(config) = cfg {
-                Some(config)
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn num_input_features(&self) -> usize {
-        let mut count = 0;
-        for cfg in &self.features {
-            if matches!(cfg, NodeFeature::Input(_)) {
-                count += 1;
-            }
-        }
-        count
-    }
-
-    pub fn input_features(&self) -> Vec<&NodeInputFeature> {
-        self.features
-            .iter()
-            .filter_map(|cfg| {
-                if let NodeFeature::Input(config) = cfg {
-                    Some(config)
-                } else {
-                    None
-                }
-            })
-            .collect()
     }
 }
 

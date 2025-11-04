@@ -1,11 +1,11 @@
 use igloo_interface::{
-    NodeInputFeatureID, NodeStyle, PenguinNodeDefn, PenguinPinID, PenguinPinRef, PenguinRegistry,
+    NodeInputFeatureID, PenguinNodeDefn, PenguinPinID, PenguinPinRef, PenguinRegistry,
     graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 use indexmap::IndexMap;
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
-use web_sys::Element;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{Element, HtmlElement};
 
 use crate::{
     app::event::{EventTarget, ListenerBuilder, Listeners, document},
@@ -21,7 +21,7 @@ pub struct WebNode {
     pub inner: PenguinNode,
     id: PenguinNodeID,
     defn: PenguinNodeDefn,
-    el: Element,
+    el: HtmlElement,
     listeners: Vec<Listeners>,
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
@@ -34,27 +34,35 @@ impl Drop for WebNode {
     }
 }
 
-fn make(parent: &Element, defn: &PenguinNodeDefn) -> Result<(Element, Element, Element), JsValue> {
+fn make(
+    parent: &Element,
+    defn: &PenguinNodeDefn,
+) -> Result<(HtmlElement, Element, Element), JsValue> {
     let document = document();
 
-    let el = document.create_element("div")?;
+    let el = document.create_element("div")?.dyn_into::<HtmlElement>()?;
     el.set_class_name("penguin-node");
     parent.append_child(&el)?;
 
-    // style
-    match &defn.style {
-        NodeStyle::Normal(icon) => {
-            el.set_inner_html(&format!(
-                r#"<div class="penguin-node-title">{}</div>"#,
-                defn.title
-            ));
-        }
-        NodeStyle::Background(bg) => {
-            el.set_inner_html(&format!(r#"<div class="penguin-node-bg">{}</div>"#, bg));
-        }
-        NodeStyle::None => {
-            el.set_inner_html("");
-        }
+    if let Some(title_bar) = &defn.title_bar {
+        let title_el = document.create_element("div")?;
+        title_el.set_class_name("penguin-node-title");
+        title_el.set_inner_html(title_bar);
+        el.append_child(&title_el)?;
+    }
+
+    if defn.icon_bg {
+        let icon_el = document.create_element("div")?;
+        icon_el.set_class_name("penguin-node-bg");
+        icon_el.set_inner_html(&defn.icon);
+        el.append_child(&icon_el)?;
+    }
+
+    if defn.is_reroute {
+        el.set_attribute("data-is-reroute", "true")?;
+        let circle = document.create_element("div")?;
+        circle.set_class_name("penguin-reroute-circle");
+        el.append_child(&circle)?;
     }
 
     let inputs_el = document.create_element("div")?;
@@ -136,8 +144,17 @@ impl WebNode {
                     pref,
                     pin_defn.clone(),
                     connections.unwrap_or_default(),
+                    defn.is_reroute,
                 )?,
             );
+        }
+
+        if defn.is_reroute {
+            let s = el.style();
+            let defn = &defn.outputs[0];
+            let color = defn.r#type.color();
+            s.set_property("background-color", color)?;
+            s.set_property("border-color", color)?;
         }
 
         // output pins
@@ -172,19 +189,19 @@ impl WebNode {
                     pref,
                     pin_defn.clone(),
                     connections.unwrap_or_default(),
+                    defn.is_reroute,
                 )?,
             );
         }
 
         // input feature
-        let input_features = defn.input_features();
-        let mut input_feature_els = IndexMap::with_capacity(input_features.len());
-        if !input_features.is_empty() {
+        let mut input_feature_els = IndexMap::with_capacity(defn.input_features.len());
+        if !defn.input_features.is_empty() {
             let content_el = document.create_element("div")?;
             content_el.set_class_name("penguin-node-content");
             el.append_child(&content_el)?;
 
-            for feature in input_features {
+            for feature in &defn.input_features {
                 inner.ensure_input_feature_value(feature);
                 let feature_value = inner.input_feature_values.get(&feature.id).unwrap();
 
@@ -203,7 +220,7 @@ impl WebNode {
 
         let mut listeners = Vec::with_capacity(3);
 
-        if let Some(vf) = defn.variadic_feature() {
+        if let Some(vf) = &defn.variadic_feature {
             let controls = document.create_element("div")?;
             controls.set_class_name("penguin-variadic-controls");
             el.append_child(&controls)?;
@@ -242,8 +259,6 @@ impl WebNode {
                 .build(),
         );
 
-        // TODO Variadic controls
-
         let me = WebNode {
             inner,
             id,
@@ -261,11 +276,8 @@ impl WebNode {
     }
 
     pub fn update_transform(&self) -> Result<(), JsValue> {
-        let transform = format!(
-            "transform: translate({}px, {}px);",
-            self.inner.x, self.inner.y
-        );
-        self.el.set_attribute("style", &transform)
+        let translate = format!("translate({}px, {}px)", self.inner.x, self.inner.y);
+        self.el.style().set_property("transform", &translate)
     }
 
     pub fn set_pos(&mut self, pos: WorldPoint) -> Result<(), JsValue> {

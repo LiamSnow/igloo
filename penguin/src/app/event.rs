@@ -27,6 +27,7 @@ pub enum EventValue {
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseClick(MouseEvent),
+    MouseDoubleClick(MouseEvent),
     ContextMenu(MouseEvent),
     Wheel(WheelEvent),
     KeyDown(KeyboardEvent),
@@ -197,6 +198,16 @@ impl<'a, E: AsRef<web_sys::EventTarget>> ListenerBuilder<'a, E> {
             "click",
             self.target.clone(),
             |e: MouseEvent| EventValue::MouseClick(e),
+        )?;
+        Ok(self)
+    }
+
+    pub fn add_mousedoubleclick(mut self) -> Result<Self, JsValue> {
+        self.listeners.add(
+            self.element,
+            "dblclick",
+            self.target.clone(),
+            |e: MouseEvent| EventValue::MouseDoubleClick(e),
         )?;
         Ok(self)
     }

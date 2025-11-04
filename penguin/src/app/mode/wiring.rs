@@ -6,12 +6,13 @@ use crate::app::{
 use igloo_interface::PenguinPinRef;
 use wasm_bindgen::JsValue;
 
-pub fn start_wiring(app: &mut App, start_pin: PenguinPinRef) -> Result<(), JsValue> {
-    app.graph.start_wiring(&start_pin);
-    app.set_mode(Mode::Wiring(start_pin))
-}
-
 impl App {
+    pub fn start_wiring_mode(&mut self, start_pin: PenguinPinRef) -> Result<(), JsValue> {
+        let ctw = self.viewport.client_to_world_transform();
+        self.graph.start_wiring(&start_pin, &ctw);
+        self.set_mode(Mode::Wiring(start_pin))
+    }
+
     pub fn handle_wiring_mode(&mut self, event: Event) -> Result<(), JsValue> {
         let Mode::Wiring(ref mut start_pin) = self.mode else {
             unreachable!();

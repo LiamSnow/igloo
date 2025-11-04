@@ -1,7 +1,5 @@
-#![allow(non_snake_case)]
-
-use std::collections::HashMap;
-
+extern crate console_error_panic_hook;
+use crate::app::APP;
 use igloo_interface::{
     NodeInputFeatureID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinType,
     PenguinValue,
@@ -10,9 +8,8 @@ use igloo_interface::{
     },
 };
 use log::Level;
+use std::{collections::HashMap, panic};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
-
-use crate::app::APP;
 
 mod app;
 mod graph;
@@ -21,6 +18,7 @@ mod viewport;
 
 #[wasm_bindgen(start)]
 fn init() {
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(Level::Debug).unwrap();
     log::info!("Penguin Initialized");
 }
@@ -55,114 +53,178 @@ fn test_graph() -> PenguinGraph {
 
     g.nodes.insert(
         PenguinNodeID(0),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "on_start", 1), 180., 900.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "On Start", 1),
+            180.,
+            900.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(1),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "const_int", 1), -200., 1200.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Integer Constant", 1),
+            -200.,
+            1200.,
+        ),
     );
     g.nodes.insert(
         PenguinNodeID(2),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "const_int", 1), -200., 1300.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Integer Constant", 1),
+            -200.,
+            1300.,
+        ),
     );
     g.nodes.insert(
         PenguinNodeID(3),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "const_int", 1), 100., 1340.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Integer Constant", 1),
+            100.,
+            1340.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(4),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "int_add_2", 1), 20., 1240.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Add Integers 2", 1),
+            20.,
+            1240.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(5),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "int_mul_2", 1), 300., 1220.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Multiply Integers 2", 1),
+            300.,
+            1220.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(6),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "const_int", 1), 160., 1020.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Integer Constant", 1),
+            160.,
+            1020.,
+        ),
     );
     g.nodes.insert(
         PenguinNodeID(7),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "int_gt", 1), 340., 1020.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Integer Greater Than", 1),
+            340.,
+            1020.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(8),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "branch", 1), 500., 900.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Branch", 1),
+            500.,
+            900.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(9),
         PenguinNode::new(
-            PenguinNodeDefnRef::new("std", "cast_integer_to_text", 1),
+            PenguinNodeDefnRef::new("Standard Library", "Cast Integer to Text", 1),
             640.,
             1200.,
         ),
     );
     g.nodes.insert(
         PenguinNodeID(10),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "const_text", 1), 420., 1380.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Text Constant", 1),
+            420.,
+            1380.,
+        ),
     );
     g.nodes.insert(
         PenguinNodeID(11),
         PenguinNode::new(
-            PenguinNodeDefnRef::new("std", "text_to_upper", 1),
+            PenguinNodeDefnRef::new("Standard Library", "Text to Uppercase", 1),
             640.,
             1260.,
         ),
     );
     g.nodes.insert(
         PenguinNodeID(12),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "print", 1), 1020., 800.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Print", 1),
+            1020.,
+            800.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(13),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "const_int", 1), 640., 1260.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Integer Constant", 1),
+            640.,
+            1260.,
+        ),
     );
     g.nodes.insert(
         PenguinNodeID(14),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "int_sub", 1), 640., 1260.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Subtract Integers", 1),
+            640.,
+            1260.,
+        ),
     );
     g.nodes.insert(
         PenguinNodeID(15),
         PenguinNode::new(
-            PenguinNodeDefnRef::new("std", "cast_integer_to_text", 1),
+            PenguinNodeDefnRef::new("Standard Library", "Cast Integer to Text", 1),
             840.,
             1260.,
         ),
     );
     g.nodes.insert(
         PenguinNodeID(16),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "print", 1), 1020., 1140.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Print", 1),
+            1020.,
+            1140.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(17),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "merge_2", 1), 1360., 920.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Merge 2", 1),
+            1360.,
+            920.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(18),
         PenguinNode::new(
-            PenguinNodeDefnRef::new("std", "const_text", 1),
+            PenguinNodeDefnRef::new("Standard Library", "Text Constant", 1),
             1260.,
             1240.,
         ),
     );
     g.nodes.insert(
         PenguinNodeID(19),
-        PenguinNode::new(PenguinNodeDefnRef::new("std", "print", 1), 1680., 940.),
+        PenguinNode::new(
+            PenguinNodeDefnRef::new("Standard Library", "Print", 1),
+            1680.,
+            940.,
+        ),
     );
 
     g.nodes.insert(
         PenguinNodeID(19),
         PenguinNode {
-            defn_ref: PenguinNodeDefnRef::new("std", "comment", 1),
+            defn_ref: PenguinNodeDefnRef::new("Standard Library", "Comment", 1),
             x: 700.,
             y: 500.,
             input_feature_values: HashMap::from([(
@@ -179,7 +241,7 @@ fn test_graph() -> PenguinGraph {
             from_node: PenguinNodeID(1),
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(4),
-            to_pin: PenguinPinID::from_str("Input_0"),
+            to_pin: PenguinPinID::from_str("Input 0"),
             r#type: PenguinPinType::Value(PenguinType::Int),
         },
     );
@@ -189,7 +251,7 @@ fn test_graph() -> PenguinGraph {
             from_node: PenguinNodeID(2),
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(4),
-            to_pin: PenguinPinID::from_str("Input_1"),
+            to_pin: PenguinPinID::from_str("Input 1"),
             r#type: PenguinPinType::Value(PenguinType::Int),
         },
     );
@@ -199,7 +261,7 @@ fn test_graph() -> PenguinGraph {
             from_node: PenguinNodeID(4),
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(5),
-            to_pin: PenguinPinID::from_str("Input_0"),
+            to_pin: PenguinPinID::from_str("Input 0"),
             r#type: PenguinPinType::Value(PenguinType::Int),
         },
     );
@@ -209,7 +271,7 @@ fn test_graph() -> PenguinGraph {
             from_node: PenguinNodeID(3),
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(5),
-            to_pin: PenguinPinID::from_str("Input_1"),
+            to_pin: PenguinPinID::from_str("Input 1"),
             r#type: PenguinPinType::Value(PenguinType::Int),
         },
     );
@@ -349,7 +411,7 @@ fn test_graph() -> PenguinGraph {
             from_node: PenguinNodeID(12),
             from_pin: PenguinPinID::from_str("Done"),
             to_node: PenguinNodeID(17),
-            to_pin: PenguinPinID::from_str("Input_0"),
+            to_pin: PenguinPinID::from_str("Input 0"),
             r#type: PenguinPinType::Flow,
         },
     );
@@ -359,7 +421,7 @@ fn test_graph() -> PenguinGraph {
             from_node: PenguinNodeID(16),
             from_pin: PenguinPinID::from_str("Done"),
             to_node: PenguinNodeID(17),
-            to_pin: PenguinPinID::from_str("Input_1"),
+            to_pin: PenguinPinID::from_str("Input 1"),
             r#type: PenguinPinType::Flow,
         },
     );
