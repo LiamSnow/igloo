@@ -60,28 +60,84 @@ impl Menu {
         })
     }
 
+    pub fn show_options(&mut self, pos: ClientPoint) -> Result<(), JsValue> {
+        self.show()?;
+
+        todo!()
+    }
+
+    pub fn show_search(
+        &mut self,
+        cpos: ClientPoint,
+        from_pin: &Option<PenguinPinRef>,
+    ) -> Result<(), JsValue> {
+        self.show()?;
+        self.search.show(from_pin)?;
+        self.set_pos(cpos)
+    }
+
     pub fn hide(&mut self) -> Result<(), JsValue> {
         self.backdrop.set_attribute("style", "display: none;")?;
         self.search.hide()?;
         Ok(())
     }
 
-    fn show(&self, cpos: &ClientPoint) -> Result<(), JsValue> {
-        self.backdrop.remove_attribute("style")?;
-        let style = format!("left: {}px; top: {}px;", cpos.x, cpos.y);
+    fn show(&self) -> Result<(), JsValue> {
+        self.backdrop.remove_attribute("style")
+    }
+
+    fn set_pos(&self, cpos: ClientPoint) -> Result<(), JsValue> {
+        let cpos = cpos.cast::<f64>();
+        let (bwidth, bheight) = {
+            let rect = self.backdrop.get_bounding_client_rect();
+            (rect.width(), rect.height())
+        };
+        let (mwidth, mheight) = {
+            let rect = self.menu.get_bounding_client_rect();
+            (rect.width(), rect.height())
+        };
+
+        // try at bottom right
+        let mut x = cpos.x;
+        let mut y = cpos.y;
+        if x + mwidth <= bwidth && y + mheight <= bheight {
+            let style = format!("left: {}px; top: {}px;", x, y);
+            return self.menu.set_attribute("style", &style);
+        }
+
+        // try top right
+        x = cpos.x;
+        y = cpos.y - mheight;
+        if x + mwidth <= bwidth && y >= 0.0 {
+            let style = format!("left: {}px; top: {}px;", x, y);
+            return self.menu.set_attribute("style", &style);
+        }
+
+        // try bottom left
+        x = cpos.x - mwidth;
+        y = cpos.y;
+        if x >= 0.0 && y + mheight <= bheight {
+            let style = format!("left: {}px; top: {}px;", x, y);
+            return self.menu.set_attribute("style", &style);
+        }
+
+        // try top left
+        x = cpos.x - mwidth;
+        y = cpos.y - mheight;
+        if x >= 0.0 && y >= 0.0 {
+            let style = format!("left: {}px; top: {}px;", x, y);
+            return self.menu.set_attribute("style", &style);
+        }
+
+        // clamp
+        const EDGE_PADDING: f64 = 10.0;
+        x = cpos.x.min(bwidth - mwidth - EDGE_PADDING).max(EDGE_PADDING);
+        y = cpos
+            .y
+            .min(bheight - mheight - EDGE_PADDING)
+            .max(EDGE_PADDING);
+
+        let style = format!("left: {}px; top: {}px;", x, y);
         self.menu.set_attribute("style", &style)
-    }
-
-    pub fn show_options(&mut self, pos: ClientPoint) -> Result<(), JsValue> {
-        todo!()
-    }
-
-    pub fn show_search(
-        &mut self,
-        cpos: &ClientPoint,
-        from_pin: &Option<PenguinPinRef>,
-    ) -> Result<(), JsValue> {
-        self.show(cpos)?;
-        self.search.show(from_pin)
     }
 }

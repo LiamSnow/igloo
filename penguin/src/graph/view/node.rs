@@ -11,7 +11,7 @@ use crate::{
     app::event::{EventTarget, ListenerBuilder, Listeners, document},
     graph::{
         input::{WebInput, WebInputType},
-        pin::WebPin,
+        pin::{self, WebPin},
     },
     viewport::{ClientBox, ClientPoint, WorldPoint},
 };
@@ -34,6 +34,56 @@ impl Drop for WebNode {
     }
 }
 
+fn make(parent: &Element, defn: &PenguinNodeDefn) -> Result<(Element, Element, Element), JsValue> {
+    let document = document();
+
+    let el = document.create_element("div")?;
+    el.set_class_name("penguin-node");
+    parent.append_child(&el)?;
+
+    // style
+    match &defn.style {
+        NodeStyle::Normal(icon) => {
+            el.set_inner_html(&format!(
+                r#"<div class="penguin-node-title">{}</div>"#,
+                defn.title
+            ));
+        }
+        NodeStyle::Background(bg) => {
+            el.set_inner_html(&format!(r#"<div class="penguin-node-bg">{}</div>"#, bg));
+        }
+        NodeStyle::None => {
+            el.set_inner_html("");
+        }
+    }
+
+    let inputs_el = document.create_element("div")?;
+    inputs_el.set_class_name("penguin-node-inputs");
+    el.append_child(&inputs_el)?;
+
+    let outputs_el = document.create_element("div")?;
+    outputs_el.set_class_name("penguin-node-outputs");
+    el.append_child(&outputs_el)?;
+
+    Ok((el, inputs_el, outputs_el))
+}
+
+/// used for search
+pub fn make_dummy(parent: &Element, defn: &PenguinNodeDefn) -> Result<(), JsValue> {
+    let (el, inputs_el, outputs_el) = make(parent, defn)?;
+    el.set_class_name("penguin-node penguin-dummy-node");
+
+    for (pin_id, pin_defn) in &defn.inputs {
+        pin::make(&inputs_el, pin_defn, pin_id, false)?;
+    }
+
+    for (pin_id, pin_defn) in &defn.outputs {
+        pin::make(&outputs_el, pin_defn, pin_id, true)?;
+    }
+
+    Ok(())
+}
+
 impl WebNode {
     pub fn new(
         parent: &Element,
@@ -50,57 +100,9 @@ impl WebNode {
                 inner.defn_ref
             )))?;
 
-        let document = document();
-
-        let el = document.create_element("div")?;
-        el.set_class_name("penguin-node");
-        parent.append_child(&el)?;
-
-        // style
-        match &defn.style {
-            NodeStyle::Normal(icon) => {
-                el.set_inner_html(&format!(
-                    r#"<div class="penguin-node-title">{}</div>"#,
-                    defn.title
-                ));
-            }
-            NodeStyle::Background(bg) => {
-                el.set_inner_html(&format!(r#"<div class="penguin-node-bg">{}</div>"#, bg));
-            }
-            NodeStyle::None => {
-                el.set_inner_html("");
-            }
-        }
-
-        // input configs
-        let input_features = defn.input_features();
-        let mut input_feature_els = IndexMap::with_capacity(input_features.len());
-        if !input_features.is_empty() {
-            let content_el = document.create_element("div")?;
-            content_el.set_class_name("penguin-node-content");
-            el.append_child(&content_el)?;
-
-            for feature in input_features {
-                inner.ensure_input_feature_value(feature);
-                let feature_value = inner.input_feature_values.get(&feature.id).unwrap();
-
-                let input = WebInput::new(
-                    &content_el,
-                    id,
-                    WebInputType::NodeFeature(feature.id.clone()),
-                    feature.r#type,
-                    &feature_value.value.to_string(),
-                    feature_value.size,
-                )?;
-
-                input_feature_els.insert(feature.id.clone(), input);
-            }
-        }
+        let (el, inputs_el, outputs_el) = make(parent, &defn)?;
 
         // input pins
-        let inputs_el = document.create_element("div")?;
-        inputs_el.set_class_name("penguin-node-inputs");
-        el.append_child(&inputs_el)?;
         let mut inputs = IndexMap::with_capacity(defn.inputs.len());
         let fwires: Option<Vec<_>> = wires.map(|wires| {
             wires
@@ -137,9 +139,6 @@ impl WebNode {
         }
 
         // output pins
-        let outputs_el = document.create_element("div")?;
-        outputs_el.set_class_name("penguin-node-outputs");
-        el.append_child(&outputs_el)?;
         let mut outputs = IndexMap::with_capacity(defn.outputs.len());
         let fwires: Option<Vec<_>> = wires.map(|wires| {
             wires
@@ -173,6 +172,32 @@ impl WebNode {
                     connections.unwrap_or_default(),
                 )?,
             );
+        }
+
+        // input feature
+        let input_features = defn.input_features();
+        let mut input_feature_els = IndexMap::with_capacity(input_features.len());
+        if !input_features.is_empty() {
+            let document = document();
+            let content_el = document.create_element("div")?;
+            content_el.set_class_name("penguin-node-content");
+            el.append_child(&content_el)?;
+
+            for feature in input_features {
+                inner.ensure_input_feature_value(feature);
+                let feature_value = inner.input_feature_values.get(&feature.id).unwrap();
+
+                let input = WebInput::new(
+                    &content_el,
+                    id,
+                    WebInputType::NodeFeature(feature.id.clone()),
+                    feature.r#type,
+                    &feature_value.value.to_string(),
+                    feature_value.size,
+                )?;
+
+                input_feature_els.insert(feature.id.clone(), input);
+            }
         }
 
         // TODO Variadic controls

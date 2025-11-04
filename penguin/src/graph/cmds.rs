@@ -5,7 +5,7 @@ use crate::{
 use igloo_interface::graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID};
 use wasm_bindgen::JsValue;
 
-const MAX_HISTORY: usize = 100;
+const MAX_HISTORY: usize = 500;
 
 #[derive(Debug, Clone)]
 pub enum Command {

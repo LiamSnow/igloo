@@ -52,11 +52,20 @@
   cursor: pointer;
   border: 2px solid transparent;
   pointer-events: auto;
-  position: absolute;
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-rows: auto 1fr auto;
   border: 2px solid #333;
+}
+
+.penguin-node:not(.penguin-dummy-node) {
+  position: absolute;
+}
+
+.penguin-node.penguin-dummy-node {
+  pointer-events: none;
+  flex-grow: 0;
+  /* width: 20%; */
 }
 
 .penguin-node:has(.penguin-node-inputs > .penguin-pin-wrapper:nth-child(2)),
@@ -544,11 +553,12 @@
   max-height: 400px;
   overflow-y: auto;
   padding: 4px;
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .penguin-menu-search-item {
   display: block;
-  width: 100%;
   padding: 8px 12px;
   background: transparent;
   border: none;

@@ -46,7 +46,7 @@ impl App {
                 if distance < 10.0 {
                     // just a click -> open context menu
                     let wpos = self.viewport.client_to_world(end_pos);
-                    self.menu.show_search(&end_pos, &None)?;
+                    self.menu.show_search(end_pos, &None)?;
                     self.set_mode(Mode::Menu(MenuMode {
                         pos: wpos,
                         from_pin: None,

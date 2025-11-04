@@ -81,10 +81,10 @@ impl WebInput {
                 textarea.set_value(initial_value);
                 let (width, height) = initial_size.unwrap();
 
-                textarea.set_attribute(
-                    "style",
-                    &format!("width: {width}px; height: {height}px; resize: both;",),
-                )?;
+                let s = textarea.style();
+                s.set_property("width", &format!("{width}px"))?;
+                s.set_property("height", &format!("{height}px"))?;
+                s.set_property("resize", "both")?;
 
                 listeners.add_resize(
                     &el,
@@ -150,10 +150,11 @@ impl WebInput {
     pub fn update_size(&self, size: (i32, i32)) -> Result<(), JsValue> {
         if let PenguinType::Text = self.value_type {
             let (width, height) = size;
-            self.el.set_attribute(
-                "style",
-                &format!("width: {width}px; height: {height}px; resize: both;",),
-            )?;
+            let textarea = self.el.dyn_ref::<HtmlTextAreaElement>().unwrap();
+            let s = textarea.style();
+            s.set_property("width", &format!("{width}px"))?;
+            s.set_property("height", &format!("{height}px"))?;
+            s.set_property("resize", "both")?;
         }
         Ok(())
     }

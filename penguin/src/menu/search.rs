@@ -1,4 +1,7 @@
-use crate::app::event::{EventTarget, ListenerBuilder, Listeners, document};
+use crate::{
+    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    graph::node,
+};
 use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinRef, PenguinRegistry};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlInputElement};
@@ -29,7 +32,7 @@ impl MenuSearch {
         input.set_attribute("placeholder", "Search nodes...")?;
         // TODO replace with Rust listener
         input.set_attribute(
-            "oninput", 
+            "oninput",
             r#"document.querySelectorAll('#penguin-menu-search-results > .penguin-menu-search-item[data-compatible]').forEach(item => {
                  item.style.display = item.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none';
             })"#
@@ -124,16 +127,6 @@ impl MenuSearchItem {
         el.set_class_name("penguin-menu-search-item");
         parent.append_child(&el)?;
 
-        let title = document.create_element("div")?;
-        title.set_class_name("penguin-menu-search-item-title");
-        title.set_inner_html(&defn.title);
-        el.append_child(&title)?;
-
-        let path = document.create_element("div")?;
-        path.set_class_name("penguin-menu-search-item-path");
-        path.set_inner_html(&format!("{lib_path}.{node_path}"));
-        el.append_child(&path)?;
-
         let listeners = ListenerBuilder::new(
             &el,
             EventTarget::MenuSearchItem(PenguinNodeDefnRef::new(
@@ -144,6 +137,21 @@ impl MenuSearchItem {
         )
         .add_mouseclick()?
         .build();
+
+        let title = document.create_element("div")?;
+        title.set_class_name("penguin-menu-search-item-title");
+        title.set_inner_html(&defn.title);
+        el.append_child(&title)?;
+
+        // let content = document.create_element("div")?;
+        // content.set_class_name("penguin-menu-search-item-content");
+        node::make_dummy(&el, &defn)?;
+        // el.append_child(&content)?;
+
+        // let path = document.create_element("div")?;
+        // path.set_class_name("penguin-menu-search-item-path");
+        // path.set_inner_html(&format!("{lib_path}.{node_path}"));
+        // el.append_child(&path)?;
 
         Ok(Self {
             el,

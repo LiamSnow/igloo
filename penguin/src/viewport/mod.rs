@@ -1,6 +1,6 @@
 use euclid::{Box2D, Point2D, Transform2D, Vector2D};
 use wasm_bindgen::JsValue;
-use web_sys::{Element, HtmlElement, WheelEvent};
+use web_sys::{DomRect, Element, HtmlElement, WheelEvent};
 
 pub mod grid;
 pub mod toolbar;
