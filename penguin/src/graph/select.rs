@@ -1,11 +1,13 @@
-use std::collections::HashSet;
-
 use super::cmds::*;
-use crate::{graph::WebGraph, viewport::WorldPoint};
+use crate::{
+    graph::WebGraph,
+    viewport::{ClientBox, ClientToWorld, WorldPoint},
+};
 use igloo_interface::{
     PenguinPinRef,
     graph::{PenguinNodeID, PenguinWireID},
 };
+use std::collections::HashSet;
 use wasm_bindgen::JsValue;
 
 #[derive(Debug, Default)]
@@ -113,12 +115,7 @@ impl WebGraph {
         self.execute(tx)
     }
 
-    pub fn box_select(
-        &mut self,
-        cbox: crate::viewport::ClientBox,
-        ctw: crate::viewport::ClientToWorld,
-        append: bool,
-    ) {
+    pub fn box_select(&mut self, cbox: ClientBox, ctw: ClientToWorld, append: bool) {
         if !append {
             self.clear_selection();
         }

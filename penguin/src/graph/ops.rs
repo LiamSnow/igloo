@@ -4,8 +4,8 @@ use crate::{
     viewport::WorldPoint,
 };
 use igloo_interface::{
-    PenguinPinRef,
-    graph::{PenguinNode, PenguinNodeID, PenguinWireID},
+    PenguinNodeDefnRef, PenguinPinID, PenguinPinRef,
+    graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 use wasm_bindgen::JsValue;
 
@@ -72,8 +72,9 @@ impl WebGraph {
             (pin_b, pin_a)
         };
 
-        let mut tx = Transaction::with_capacity(2);
+        let mut tx = Transaction::with_capacity(4);
 
+        // remove existing wires
         if let Some(to_node) = self.nodes.get(&to.node_id)
             && let Some(to_pin) = to_node.inputs.get(&to.id)
         {
@@ -87,9 +88,10 @@ impl WebGraph {
             }
         }
 
+        // direct connect
         if from.r#type == to.r#type {
             let wire_id = PenguinWireID(self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1);
-            let wire = igloo_interface::graph::PenguinWire {
+            let wire = PenguinWire {
                 from_node: from.node_id,
                 from_pin: from.id,
                 to_node: to.node_id,
@@ -99,10 +101,67 @@ impl WebGraph {
 
             tx.push(Command::AddWire { id: wire_id, wire });
         }
+        // cast connect
+        else if let Some(cast_node_name) = from.cast_name(to.r#type) {
+            let defn_ref = PenguinNodeDefnRef::new("std", &cast_node_name, 1);
+
+            // TODO place between pins NOT nodes
+            let from_node_pos = self
+                .nodes
+                .get(&from.node_id)
+                .ok_or(JsValue::from_str("From node not found"))?
+                .pos();
+            let to_node_pos = self
+                .nodes
+                .get(&to.node_id)
+                .ok_or(JsValue::from_str("To node not found"))?
+                .pos();
+
+            let cast_x = (from_node_pos.x + to_node_pos.x) / 2.0;
+            let cast_y = (from_node_pos.y + to_node_pos.y) / 2.0;
+
+            let cast_node_id =
+                PenguinNodeID(self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1);
+            let wire_id_1 = PenguinWireID(self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1);
+            let wire_id_2 = PenguinWireID(wire_id_1.0 + 1);
+
+            tx.push(Command::AddNode {
+                id: cast_node_id,
+                node: PenguinNode {
+                    defn_ref,
+                    x: cast_x,
+                    y: cast_y,
+                    ..Default::default()
+                },
+            });
+
+            tx.push(Command::AddWire {
+                id: wire_id_1,
+                wire: PenguinWire {
+                    from_node: from.node_id,
+                    from_pin: from.id,
+                    to_node: cast_node_id,
+                    to_pin: PenguinPinID::from_str("Input"),
+                    r#type: from.r#type,
+                },
+            });
+
+            tx.push(Command::AddWire {
+                id: wire_id_2,
+                wire: PenguinWire {
+                    from_node: cast_node_id,
+                    from_pin: PenguinPinID::from_str("Output"),
+                    to_node: to.node_id,
+                    to_pin: to.id,
+                    r#type: to.r#type,
+                },
+            });
+        } else {
+            return Ok(());
+        }
 
         self.execute(tx)
     }
-
     pub fn start_wiring(&mut self, start: &PenguinPinRef) -> Result<(), JsValue> {
         let Some(node) = self.nodes.get(&start.node_id) else {
             return Err(JsValue::from_str("Unknown Node"));
