@@ -3,7 +3,6 @@ use igloo_interface::{
     graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 use indexmap::IndexMap;
-use maud::html;
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 use web_sys::Element;
@@ -60,24 +59,13 @@ impl WebNode {
         // style
         match &defn.style {
             NodeStyle::Normal(icon) => {
-                el.set_inner_html(
-                    &html! {
-                        .penguin-node-title {
-                            (defn.title)
-                        }
-                    }
-                    .into_string(),
-                );
+                el.set_inner_html(&format!(
+                    r#"<div class="penguin-node-title">{}</div>"#,
+                    defn.title
+                ));
             }
             NodeStyle::Background(bg) => {
-                el.set_inner_html(
-                    &html! {
-                        .penguin-node-bg {
-                            (bg)
-                        }
-                    }
-                    .into_string(),
-                );
+                el.set_inner_html(&format!(r#"<div class="penguin-node-bg">{}</div>"#, bg));
             }
             NodeStyle::None => {
                 el.set_inner_html("");
