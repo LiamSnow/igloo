@@ -7,7 +7,7 @@
 - [x] place node context menu
 - [x] place node from wiring
 - [x] drag selection
-- [ ] undo redo
+- [x] undo redo
 - [x] copy paste
 - [ ] reroute nodes
 - [ ] sections
