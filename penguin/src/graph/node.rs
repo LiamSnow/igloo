@@ -1,28 +1,29 @@
-use std::{any::Any, collections::HashMap};
-
 use igloo_interface::{
-    NodeInputFeatureID, NodeStyle, PenguinNodeDefn, PenguinPinID, PenguinRegistry,
+    NodeInputFeatureID, NodeStyle, PenguinNodeDefn, PenguinPinID, PenguinPinRef, PenguinRegistry,
     graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 use indexmap::IndexMap;
 use maud::html;
+use std::collections::HashMap;
 use wasm_bindgen::JsValue;
-use web_sys::{Element, MouseEvent};
+use web_sys::Element;
 
 use crate::{
-    ffi::{self, add_app_event_listener},
-    graph::WebPin,
-    graph::input::{WebInput, WebInputMode},
+    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    graph::{
+        WebPin,
+        input::{WebInput, WebInputType},
+    },
     viewport::{ClientBox, ClientPoint, WorldPoint},
 };
 
 #[derive(Debug)]
 pub struct WebNode {
-    pub(super) inner: PenguinNode,
+    pub inner: PenguinNode,
     id: PenguinNodeID,
     defn: PenguinNodeDefn,
     el: Element,
-    closures: Vec<Box<dyn Any>>,
+    listeners: Listeners,
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
     input_feature_els: IndexMap<NodeInputFeatureID, WebInput>,
@@ -50,37 +51,11 @@ impl WebNode {
                 inner.defn_ref
             )))?;
 
-        let document = ffi::document();
+        let document = document();
 
         let el = document.create_element("div")?;
         el.set_class_name("penguin-node");
-        el.set_attribute(
-            "oncontextmenu",
-            "event.stopPropagation(); event.preventDefault();",
-        )?;
         parent.append_child(&el)?;
-
-        let mut closures = Vec::with_capacity(5);
-        add_app_event_listener(
-            &el,
-            "mousedown",
-            &mut closures,
-            move |app, e: MouseEvent| {
-                if e.button() != 0 {
-                    return;
-                }
-
-                e.prevent_default();
-                e.stop_propagation();
-
-                app.focus();
-
-                app.graph.select_node(id, e.ctrl_key() || e.shift_key());
-
-                let cpos = ClientPoint::new(e.client_x(), e.client_y());
-                app.start_dragging(id, cpos);
-            },
-        )?;
 
         // style
         match &defn.style {
@@ -124,7 +99,7 @@ impl WebNode {
                 let input = WebInput::new(
                     &content_el,
                     id,
-                    WebInputMode::NodeFeature(feature.id.clone()),
+                    WebInputType::NodeFeature(feature.id.clone()),
                     feature.r#type,
                     &feature_value.value.to_string(),
                     feature_value.size,
@@ -154,15 +129,20 @@ impl WebNode {
                     .collect()
             });
 
+            let pref = PenguinPinRef {
+                node_id: id,
+                id: pin_id.clone(),
+                is_output: false,
+                r#type: pin_defn.r#type,
+            };
+
             inputs.insert(
                 pin_id.clone(),
                 WebPin::new(
                     &inputs_el,
-                    id,
                     &mut inner,
-                    pin_id.clone(),
+                    pref,
                     pin_defn.clone(),
-                    false,
                     connections.unwrap_or_default(),
                 )?,
             );
@@ -188,15 +168,20 @@ impl WebNode {
                     .collect()
             });
 
+            let pref = PenguinPinRef {
+                node_id: id,
+                id: pin_id.clone(),
+                is_output: true,
+                r#type: pin_defn.r#type,
+            };
+
             outputs.insert(
                 pin_id.clone(),
                 WebPin::new(
                     &outputs_el,
-                    id,
                     &mut inner,
-                    pin_id.clone(),
+                    pref,
                     pin_defn.clone(),
-                    true,
                     connections.unwrap_or_default(),
                 )?,
             );
@@ -204,12 +189,17 @@ impl WebNode {
 
         // TODO Variadic controls
 
+        let listeners = ListenerBuilder::new(&el, EventTarget::Node(id))
+            .add_mousedown(true)?
+            .add_contextmenu(true)?
+            .build();
+
         let me = WebNode {
             inner,
             id,
             defn,
             el,
-            closures,
+            listeners,
             inputs,
             outputs,
             input_feature_els,
@@ -259,5 +249,13 @@ impl WebNode {
 
     pub fn inner(&self) -> &PenguinNode {
         &self.inner
+    }
+
+    pub fn pin(&self, pref: &PenguinPinRef) -> Option<&WebPin> {
+        if pref.is_output {
+            self.outputs.get(&pref.id)
+        } else {
+            self.inputs.get(&pref.id)
+        }
     }
 }

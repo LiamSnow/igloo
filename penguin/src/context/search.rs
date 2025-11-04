@@ -1,13 +1,7 @@
-use std::any::Any;
-
-use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinRegistry};
+use crate::app::event::{EventTarget, ListenerBuilder, Listeners, document};
+use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinRef, PenguinRegistry};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlInputElement, MouseEvent};
-
-use crate::{
-    ffi::{self, add_app_event_listener},
-    interaction::WiringState,
-};
+use web_sys::{Element, HtmlInputElement};
 
 #[derive(Debug)]
 pub struct ContextSearch {
@@ -25,7 +19,7 @@ impl Drop for ContextSearch {
 
 impl ContextSearch {
     pub fn new(registry: &PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
-        let document = ffi::document();
+        let document = document();
 
         let input = document
             .create_element("input")?
@@ -33,6 +27,7 @@ impl ContextSearch {
         input.set_id("penguin-context-search-input");
         input.set_attribute("type", "text")?;
         input.set_attribute("placeholder", "Search nodes...")?;
+        // TODO replace with Rust listener
         input.set_attribute(
             "oninput", 
             r#"document.querySelectorAll('#penguin-context-search-results > .penguin-context-search-item[data-compatible]').forEach(item => {
@@ -79,9 +74,9 @@ impl ContextSearch {
         self.results.set_attribute("style", "display: none;")
     }
 
-    pub fn show(&mut self, ws: &Option<WiringState>) -> Result<(), JsValue> {
+    pub fn show(&mut self, from_pin: &Option<PenguinPinRef>) -> Result<(), JsValue> {
         for item in &mut self.items {
-            let comp = if let Some(ws) = ws {
+            let comp = if let Some(ws) = from_pin {
                 ws.find_compatible(&item.defn).is_some()
             } else {
                 true
@@ -98,6 +93,7 @@ impl ContextSearch {
 
         self.input.remove_attribute("style")?;
         self.input.set_value("");
+        self.input.focus()?;
         self.results.remove_attribute("style")
     }
 }
@@ -106,7 +102,7 @@ impl ContextSearch {
 pub struct ContextSearchItem {
     el: Element,
     defn: PenguinNodeDefn,
-    closures: Vec<Box<dyn Any>>,
+    listeners: Listeners,
 }
 
 impl Drop for ContextSearchItem {
@@ -122,7 +118,7 @@ impl ContextSearchItem {
         node_path: String,
         defn: PenguinNodeDefn,
     ) -> Result<Self, JsValue> {
-        let document = ffi::document();
+        let document = document();
 
         let el = document.create_element("button")?;
         el.set_class_name("penguin-context-search-item");
@@ -138,25 +134,22 @@ impl ContextSearchItem {
         path.set_inner_html(&format!("{lib_path}.{node_path}"));
         el.append_child(&path)?;
 
-        let mut closures = Vec::with_capacity(1);
+        let listeners = ListenerBuilder::new(
+            &el,
+            EventTarget::ContextSearchItem(PenguinNodeDefnRef::new(
+                &lib_path,
+                &node_path,
+                defn.version,
+            )),
+        )
+        .add_mouseclick(true)?
+        .build();
 
-        let defn_1 = defn.clone();
-        add_app_event_listener(&el, "click", &mut closures, move |app, e: MouseEvent| {
-            e.prevent_default();
-            e.stop_propagation();
-
-            let res = app.context_add_node(
-                defn_1.clone(),
-                PenguinNodeDefnRef::new(&lib_path, &node_path, defn_1.version),
-                !e.shift_key(),
-            );
-
-            if let Err(e) = res {
-                log::error!("Error adding node: {e:?}");
-            }
-        })?;
-
-        Ok(Self { el, closures, defn })
+        Ok(Self {
+            el,
+            defn,
+            listeners,
+        })
     }
 
     // pub fn hide(&self) -> Result<(), JsValue> {

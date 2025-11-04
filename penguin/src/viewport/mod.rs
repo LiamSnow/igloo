@@ -1,8 +1,16 @@
 use euclid::{Box2D, Point2D, Transform2D, Vector2D};
 use wasm_bindgen::JsValue;
-use web_sys::{Element, HtmlElement, MouseEvent};
+use web_sys::{Element, HtmlElement};
 
-use crate::grid::{Grid, GridSettings};
+pub mod grid;
+pub mod toolbar;
+
+use grid::*;
+
+use crate::{
+    app::event::WheelEvent,
+    viewport::toolbar::{Toolbar, ToolbarButton},
+};
 
 // Untransformed Browser viewport space
 pub struct ClientSpace;
@@ -28,7 +36,9 @@ pub struct Viewport {
     penguin_el: HtmlElement,
     /// #penguin-viewport
     viewport_el: Element,
-    pub grid: Grid,
+    grid: Grid,
+    toolbar: Toolbar,
+    grid_settings: GridSettings,
 }
 
 impl Viewport {
@@ -37,10 +47,19 @@ impl Viewport {
         viewport_el: Element,
         grid_svg: Element,
     ) -> Result<Self, JsValue> {
+        let toolbar = Toolbar::new(&penguin_el)?;
+        let grid = Grid::new(grid_svg)?;
+
+        let grid_settings = GridSettings::default();
+        toolbar.update_grid_settings(&grid_settings)?;
+        grid.update_grid_settings(&grid_settings)?;
+
         Ok(Self {
             pan: PenguinVector::zero(),
             zoom: 1.0,
-            grid: Grid::new(&penguin_el, grid_svg, GridSettings::default())?,
+            toolbar,
+            grid,
+            grid_settings,
             penguin_el,
             viewport_el,
         })
@@ -113,8 +132,43 @@ impl Viewport {
         let rect = self.penguin_el.get_bounding_client_rect();
         Transform2D::translation(-rect.left(), -rect.top()).then(&self.penguin_to_world_transform())
     }
-}
 
-pub fn mouse_client_pos(e: &MouseEvent) -> ClientPoint {
-    ClientPoint::new(e.client_x(), e.client_y())
+    pub fn snap(&self, delta: WorldPoint) -> WorldPoint {
+        if !self.grid_settings.snap {
+            return delta;
+        }
+
+        let size = self.grid_settings.size;
+        WorldPoint::new(
+            f64::round(delta.x / size) * size,
+            f64::round(delta.y / size) * size,
+        )
+    }
+
+    pub fn handle_wheel(&mut self, e: &WheelEvent) -> Result<(), JsValue> {
+        let pos = self.client_to_penguin(e.pos);
+        let delta = if e.delta > 0.0 { 0.9 } else { 1.1 };
+        self.zoom_at(pos, delta)
+    }
+
+    pub fn handle_toolbar_button(&mut self, button: ToolbarButton) -> Result<(), JsValue> {
+        match button {
+            ToolbarButton::GridEnable => {
+                self.grid_settings.enabled = !self.grid_settings.enabled;
+            }
+            ToolbarButton::GridSnap => {
+                self.grid_settings.snap = !self.grid_settings.snap;
+            }
+            ToolbarButton::GridSize => {
+                self.grid_settings.size = if self.grid_settings.size >= 40. {
+                    10.
+                } else {
+                    self.grid_settings.size + 10.
+                };
+            }
+        }
+        self.toolbar.update_grid_settings(&self.grid_settings)?;
+        self.grid.update_grid_settings(&self.grid_settings)?;
+        Ok(())
+    }
 }

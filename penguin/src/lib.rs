@@ -12,14 +12,11 @@ use igloo_interface::{
 use log::Level;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
-use crate::app::{APP, PenguinApp};
+use crate::app::APP;
 
 mod app;
 mod context;
-mod ffi;
 mod graph;
-mod grid;
-mod interaction;
 mod viewport;
 
 #[wasm_bindgen(start)]
@@ -32,7 +29,7 @@ fn init() {
 pub fn penguin_start() -> Result<(), JsValue> {
     log::info!("Starting Penguin");
 
-    PenguinApp::init()?;
+    app::App::init()?;
 
     APP.with(|a| {
         let mut b = a.borrow_mut();
@@ -51,46 +48,6 @@ pub fn penguin_stop() -> Result<(), JsValue> {
     });
 
     Ok(())
-}
-
-fn test_graph_2() -> PenguinGraph {
-    let mut g = PenguinGraph::default();
-
-    let mut x = 0.;
-    let mut y = 0.;
-
-    for i in 0..1000 {
-        if i % 50 == 0 {
-            x = 0.;
-            y += 500.;
-        } else {
-            x += 250.;
-        }
-
-        g.nodes.insert(
-            PenguinNodeID(i),
-            PenguinNode::new(PenguinNodeDefnRef::new("std", "int_add_3", 1), x, y),
-        );
-
-        if i == 0 {
-            continue;
-        }
-
-        for w in 0..3 {
-            g.wires.insert(
-                PenguinWireID((w << 8) + i),
-                PenguinWire {
-                    from_node: PenguinNodeID(i - 1),
-                    from_pin: PenguinPinID::from_str("Output"),
-                    to_node: PenguinNodeID(i),
-                    to_pin: PenguinPinID::from_str(&format!("Input_{w}")),
-                    r#type: PenguinPinType::Value(PenguinType::Int),
-                },
-            );
-        }
-    }
-
-    g
 }
 
 fn test_graph() -> PenguinGraph {

@@ -1,31 +1,28 @@
-use std::{any::Any, mem};
+use std::mem;
 
 use igloo_interface::{
-    PenguinPinDefn, PenguinPinID, PenguinPinType,
-    graph::{PenguinNode, PenguinNodeID, PenguinWireID},
+    PenguinPinDefn, PenguinPinRef, PenguinPinType,
+    graph::{PenguinNode, PenguinWireID},
 };
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement, MouseEvent, SvgElement};
+use web_sys::{Element, HtmlElement, SvgElement};
 
 use crate::{
-    ffi::{self, add_app_event_listener},
-    graph::input::{WebInput, WebInputMode},
-    interaction::{Interaction, WiringState},
+    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    graph::input::{WebInput, WebInputType},
 };
 
 #[derive(Debug)]
 pub struct WebPin {
-    node_id: PenguinNodeID,
-    id: PenguinPinID,
+    pref: PenguinPinRef,
     defn: PenguinPinDefn,
-    is_output: bool,
     wrapper: Element,
     pub hitbox: HtmlElement,
     /// flow=polygon, value=div
     pin_el: Element,
     input_el: Option<WebInput>,
     connections: Vec<PenguinWireID>,
-    closures: Vec<Box<dyn Any>>,
+    listeners: Listeners,
 }
 
 impl Drop for WebPin {
@@ -37,18 +34,16 @@ impl Drop for WebPin {
 impl WebPin {
     pub fn new(
         parent: &Element,
-        node_id: PenguinNodeID,
         node: &mut PenguinNode,
-        id: PenguinPinID,
+        pref: PenguinPinRef,
         defn: PenguinPinDefn,
-        is_output: bool,
         connections: Vec<PenguinWireID>,
     ) -> Result<Self, JsValue> {
-        let document = ffi::document();
+        let document = document();
 
         let wrapper = document.create_element("div")?;
 
-        wrapper.set_class_name(if is_output {
+        wrapper.set_class_name(if pref.is_output {
             "penguin-pin-wrapper output"
         } else {
             "penguin-pin-wrapper input"
@@ -103,87 +98,44 @@ impl WebPin {
             let name = document.create_element("span")?.dyn_into::<HtmlElement>()?;
 
             name.set_class_name("penguin-pin-name");
-            name.set_inner_text(&id.0);
+            name.set_inner_text(&pref.id.0);
 
             wrapper.append_child(&name)?;
         }
 
-        let mut closures: Vec<Box<dyn Any>> = Vec::with_capacity(4);
-
-        let id_1 = id.clone();
-        let id_2 = id.clone();
-        let hitbox_1 = hitbox.clone();
-        add_app_event_listener(
-            &hitbox,
-            "mousedown",
-            &mut closures,
-            move |app, e: MouseEvent| {
-                if e.button() != 0 {
-                    return;
-                }
-
-                e.prevent_default();
-                e.stop_propagation();
-
-                if e.shift_key() {
-                    app.graph.select_pin_wires(&node_id, &id_1, is_output);
-                } else if e.alt_key() {
-                    app.graph.delete_pin_wires(&node_id, &id_1, is_output);
-                } else {
-                    app.start_wiring(e, &hitbox_1, node_id, id_1.clone(), is_output, defn.r#type);
-                }
-            },
-        )?;
-
-        add_app_event_listener(
-            &hitbox,
-            "mouseup",
-            &mut closures,
-            move |app, e: MouseEvent| {
-                if e.button() != 0 {
-                    return;
-                }
-
-                e.prevent_default();
-                e.stop_propagation();
-
-                if let Interaction::Wiring(ws) = app.interaction() {
-                    let ws = ws.clone();
-                    let res = app.place_wire(ws, node_id, id_2.clone(), defn.r#type, is_output);
-                    if let Err(e) = res {
-                        log::error!("Failed to place wire: {e:?}");
-                    }
-                }
-            },
-        )?;
-
         let mut input_el = None;
 
-        if !is_output && let PenguinPinType::Value(vt) = defn.r#type {
-            node.ensure_input_pin_value(&id, &vt);
-            let pin_value = node.input_pin_values.get(&id).unwrap();
+        if !pref.is_output
+            && let PenguinPinType::Value(vt) = defn.r#type
+        {
+            node.ensure_input_pin_value(&pref.id, &vt);
+            let pin_value = node.input_pin_values.get(&pref.id).unwrap();
 
             input_el = Some(WebInput::new(
                 &wrapper,
-                node_id,
-                WebInputMode::Pin(id.clone()),
+                pref.node_id,
+                WebInputType::Pin(pref.id.clone()),
                 vt,
                 &pin_value.value.to_string(),
                 pin_value.size,
             )?);
         }
 
+        let listeners = ListenerBuilder::new(&hitbox, EventTarget::Pin(pref.clone()))
+            .add_mousedown(true)?
+            .add_contextmenu(true)?
+            .add_mouseup(true)?
+            .build();
+
         let me = Self {
-            node_id,
-            id,
+            pref,
             defn,
-            is_output,
             wrapper,
             hitbox,
             pin_el,
             input_el,
             connections,
-            closures,
+            listeners,
         };
 
         me.update_fill()?;
@@ -240,9 +192,9 @@ impl WebPin {
         Ok(())
     }
 
-    pub fn show_wiring(&mut self, ws: &WiringState) {
-        let class = if ws.is_valid_end(self.node_id, self.defn.r#type, self.is_output) {
-            if ws.wire_type == self.defn.r#type {
+    pub fn show_wiring(&mut self, start: &PenguinPinRef) {
+        let class = if start.can_connect_to(&self.pref) {
+            if start.r#type == self.defn.r#type {
                 "penguin-pin-hitbox valid-target"
             } else {
                 "penguin-pin-hitbox castable-target"

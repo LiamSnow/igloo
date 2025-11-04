@@ -1,13 +1,10 @@
-use std::any::Any;
-
-use igloo_interface::PenguinRegistry;
+use igloo_interface::{PenguinPinRef, PenguinRegistry};
 use wasm_bindgen::JsValue;
-use web_sys::{Element, MouseEvent};
+use web_sys::Element;
 
 use crate::{
+    app::event::{EventTarget, ListenerBuilder, Listeners, document},
     context::search::ContextSearch,
-    ffi::{self, add_app_event_listener},
-    interaction::{Interaction, WiringState},
     viewport::ClientPoint,
 };
 
@@ -17,8 +14,8 @@ mod search;
 pub struct ContextMenu {
     backdrop: Element,
     menu: Element,
-    closures: Vec<Box<dyn Any>>,
     search: ContextSearch,
+    listeners: Listeners,
 }
 
 impl Drop for ContextMenu {
@@ -28,13 +25,13 @@ impl Drop for ContextMenu {
 }
 
 impl ContextMenu {
-    pub fn new(registry: &PenguinRegistry, penguin_el: &Element) -> Result<Self, JsValue> {
-        let document = ffi::document();
+    pub fn new(registry: &PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
+        let document = document();
 
         let backdrop = document.create_element("div")?;
         backdrop.set_id("penguin-context-backdrop");
         backdrop.set_attribute("style", "display: none;")?;
-        penguin_el.append_child(&backdrop)?;
+        parent.append_child(&backdrop)?;
 
         let menu = document.create_element("div")?;
         menu.set_id("penguin-context-menu");
@@ -43,35 +40,23 @@ impl ContextMenu {
         menu.set_attribute("onmouseup", "event.stopPropagation();")?;
         menu.set_attribute("onwheel", "event.stopPropagation();")?;
 
-        let mut closures = Vec::with_capacity(2);
-
-        add_app_event_listener(
-            &backdrop,
-            "mousedown",
-            &mut closures,
-            |app, e: MouseEvent| {
-                e.prevent_default();
-                e.stop_propagation();
-                app.set_interaction(Interaction::Idle);
-            },
-        )?;
-
-        add_app_event_listener(
-            &backdrop,
-            "contextmenu",
-            &mut closures,
-            |app, e: MouseEvent| {
-                e.prevent_default();
-                e.stop_propagation();
-                app.set_interaction(Interaction::Idle);
-            },
-        )?;
+        let listeners = ListenerBuilder::new(&backdrop, EventTarget::ContextBackdrop)
+            .add_mousedown(false)?
+            .add_mouseup(true)?
+            .add_mousemove(false)?
+            .add_contextmenu(true)?
+            .add_wheel(false)?
+            .add_keydown(false)?
+            .add_copy(false)?
+            .add_paste(false)?
+            .add_cut(false)?
+            .build();
 
         Ok(Self {
             backdrop,
             search: ContextSearch::new(registry, &menu)?,
             menu,
-            closures,
+            listeners,
         })
     }
 
@@ -95,9 +80,9 @@ impl ContextMenu {
         &mut self,
         registry: &PenguinRegistry,
         cpos: &ClientPoint,
-        ws: &Option<WiringState>,
+        from_pin: &Option<PenguinPinRef>,
     ) -> Result<(), JsValue> {
         self.show(cpos)?;
-        self.search.show(ws)
+        self.search.show(from_pin)
     }
 }

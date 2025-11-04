@@ -4,20 +4,20 @@ pub mod pin;
 pub mod wire;
 
 use igloo_interface::{
-    PenguinPinID, PenguinPinType, PenguinRegistry,
+    PenguinPinRef, PenguinRegistry,
     graph::{PenguinGraph, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
 pub use node::*;
 pub use pin::*;
 use wasm_bindgen::JsValue;
-use web_sys::{Element, HtmlElement, MouseEvent};
+use web_sys::{ClipboardEvent, Element};
 pub use wire::*;
 
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ffi,
-    interaction::WiringState,
+    app::event::document,
+    graph::input::WebInputType,
     viewport::{ClientBox, ClientToWorld, WorldPoint},
 };
 
@@ -27,27 +27,27 @@ pub struct WebGraph {
     wires: HashMap<PenguinWireID, WebWire>,
     nodes_el: Element,
     wires_el: Element,
-    pub temp_wire: WebTempWire,
-    pub selection: Selection,
+    temp_wire: WebTempWire,
+    selection: Selection,
 }
 
 #[derive(Debug, Default)]
 pub struct Selection {
-    pub nodes: HashSet<PenguinNodeID>,
-    pub wires: HashSet<PenguinWireID>,
+    nodes: HashSet<PenguinNodeID>,
+    wires: HashSet<PenguinWireID>,
 }
 
 impl WebGraph {
-    pub fn new(viewport_el: &Element) -> Result<Self, JsValue> {
-        let document = ffi::document();
+    pub fn new(parent: &Element) -> Result<Self, JsValue> {
+        let document = document();
 
         let wires_el = document.create_element("div")?;
         wires_el.set_id("penguin-wires");
-        viewport_el.append_child(&wires_el)?;
+        parent.append_child(&wires_el)?;
 
         let nodes_el = document.create_element("div")?;
         nodes_el.set_id("penguin-nodes");
-        viewport_el.append_child(&nodes_el)?;
+        parent.append_child(&nodes_el)?;
 
         Ok(Self {
             nodes: HashMap::with_capacity(100),
@@ -119,88 +119,6 @@ impl WebGraph {
         Ok(())
     }
 
-    pub fn paste(
-        &mut self,
-        registry: &PenguinRegistry,
-        graph: PenguinGraph,
-        origin: WorldPoint,
-    ) -> Result<(), JsValue> {
-        let next_node_id = self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1;
-        let next_wire_id = self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
-
-        let mut node_id_map = HashMap::new();
-        let mut wire_id_map = HashMap::new();
-
-        // give new IDs
-        for (i, old_id) in graph.nodes.keys().enumerate() {
-            node_id_map.insert(*old_id, PenguinNodeID(next_node_id + i as u16));
-        }
-
-        for (i, old_id) in graph.wires.keys().enumerate() {
-            wire_id_map.insert(*old_id, PenguinWireID(next_wire_id + i as u16));
-        }
-
-        // update wires with new IDs
-        let mut transformed_wires = HashMap::new();
-        for (old_id, mut wire) in graph.wires {
-            let new_id = *wire_id_map.get(&old_id).unwrap();
-            wire.from_node = *node_id_map.get(&wire.from_node).unwrap();
-            wire.to_node = *node_id_map.get(&wire.to_node).unwrap();
-            transformed_wires.insert(new_id, wire);
-        }
-
-        for (old_id, mut node) in graph.nodes {
-            let new_id = *node_id_map.get(&old_id).unwrap();
-            node.x += origin.x;
-            node.y += origin.y;
-            self.nodes.insert(
-                new_id,
-                WebNode::new(
-                    &self.nodes_el,
-                    registry,
-                    Some(&transformed_wires),
-                    node,
-                    new_id,
-                )?,
-            );
-        }
-
-        for (new_id, wire) in transformed_wires {
-            let (from_pin_hitbox, from_node_pos) = {
-                let Some(from_node) = self.nodes.get_mut(&wire.from_node) else {
-                    log::error!("Missing from_node during paste. wire={wire:?}");
-                    continue;
-                };
-                let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin) else {
-                    log::error!("Missing from_pin during paste. wire={wire:?}");
-                    continue;
-                };
-                (from_pin.hitbox.clone(), from_node.pos())
-            };
-
-            let (to_pin_hitbox, to_node_pos) = {
-                let Some(to_node) = self.nodes.get_mut(&wire.to_node) else {
-                    log::error!("Missing to_node during paste. wire={wire:?}");
-                    continue;
-                };
-                let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin) else {
-                    log::error!("Missing to_pin during paste. wire={wire:?}");
-                    continue;
-                };
-                (to_pin.hitbox.clone(), to_node.pos())
-            };
-
-            let mut web_wire =
-                WebWire::new(&self.wires_el, new_id, wire, from_pin_hitbox, to_pin_hitbox)?;
-            web_wire.redraw_from(from_node_pos)?;
-            web_wire.redraw_to(to_node_pos)?;
-
-            self.wires.insert(new_id, web_wire);
-        }
-
-        Ok(())
-    }
-
     pub fn penguin(&self) -> PenguinGraph {
         let mut res = PenguinGraph {
             nodes: HashMap::with_capacity(self.nodes.len()),
@@ -213,36 +131,6 @@ impl WebGraph {
 
         for (id, wire) in &self.wires {
             res.wires.insert(*id, wire.inner().clone());
-        }
-
-        res
-    }
-
-    pub fn copy_selection(&self, origin: WorldPoint) -> PenguinGraph {
-        let mut res = PenguinGraph {
-            nodes: HashMap::with_capacity(self.selection.nodes.len()),
-            wires: HashMap::with_capacity(self.selection.wires.len()),
-        };
-
-        for id in &self.selection.nodes {
-            if let Some(node) = self.nodes.get(id) {
-                let mut node = node.inner().clone();
-                node.x -= origin.x;
-                node.y -= origin.y;
-                res.nodes.insert(*id, node);
-            }
-        }
-
-        for id in &self.selection.wires {
-            if let Some(wire) = self.wires.get(id) {
-                let inner = wire.inner();
-                // dont copy wires linking outside selection
-                if self.selection.nodes.contains(&inner.from_node)
-                    && self.selection.nodes.contains(&inner.to_node)
-                {
-                    res.wires.insert(*id, inner.clone());
-                }
-            }
         }
 
         res
@@ -286,17 +174,12 @@ impl WebGraph {
         Ok(())
     }
 
-    pub fn delete_pin_wires(
-        &mut self,
-        node_id: &PenguinNodeID,
-        pin_id: &PenguinPinID,
-        is_out: bool,
-    ) {
-        if let Some(node) = self.nodes.get(node_id) {
-            let pin = if is_out {
-                node.outputs.get(pin_id)
+    pub fn delete_pin_wires(&mut self, pin: &PenguinPinRef) {
+        if let Some(node) = self.nodes.get(&pin.node_id) {
+            let pin = if pin.is_output {
+                node.outputs.get(&pin.id)
             } else {
-                node.inputs.get(pin_id)
+                node.inputs.get(&pin.id)
             };
 
             let Some(pin) = pin else {
@@ -309,18 +192,16 @@ impl WebGraph {
         }
     }
 
-    pub fn add_wire(
-        &mut self,
-        from_node_id: PenguinNodeID,
-        from_pin_id: PenguinPinID,
-        from_type: PenguinPinType,
-        to_node_id: PenguinNodeID,
-        to_pin_id: PenguinPinID,
-        to_type: PenguinPinType,
-    ) -> Result<(), JsValue> {
+    pub fn add_wire(&mut self, pin_a: PenguinPinRef, pin_b: PenguinPinRef) -> Result<(), JsValue> {
+        let (from, to) = if pin_a.is_output {
+            (pin_a, pin_b)
+        } else {
+            (pin_b, pin_a)
+        };
+
         // remove existing wires
-        let to_node = self.nodes.get_mut(&to_node_id).unwrap();
-        let to_pin = to_node.inputs.get_mut(&to_pin_id).unwrap();
+        let to_node = self.nodes.get_mut(&to.node_id).unwrap();
+        let to_pin = to_node.inputs.get_mut(&to.id).unwrap();
         let connections = to_pin.take_connections()?;
 
         for wire_id in connections {
@@ -328,30 +209,28 @@ impl WebGraph {
         }
 
         // normal connections
-        if from_type == to_type {
+        if from.r#type == to.r#type {
             let wire_id = PenguinWireID(self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1);
 
-            let to_node = self.nodes.get_mut(&to_node_id).unwrap();
-            let to_node_pos = to_node.pos();
-            let to_pin = to_node.inputs.get_mut(&to_pin_id).unwrap();
+            let to_node = self.nodes.get_mut(&to.node_id).unwrap();
+            let to_pin = to_node.inputs.get_mut(&to.id).unwrap();
             let to_hitbox = to_pin.hitbox.clone();
             to_pin.add_connection(wire_id)?;
 
-            let from_node = self.nodes.get_mut(&from_node_id).unwrap();
-            let from_node_pos = from_node.pos();
-            let from_pin = from_node.outputs.get_mut(&from_pin_id).unwrap();
+            let from_node = self.nodes.get_mut(&from.node_id).unwrap();
+            let from_pin = from_node.outputs.get_mut(&from.id).unwrap();
             let from_hitbox = from_pin.hitbox.clone();
             from_pin.add_connection(wire_id)?;
 
             let inner = PenguinWire {
-                from_node: from_node_id,
-                from_pin: from_pin_id,
-                to_node: to_node_id,
-                to_pin: to_pin_id,
-                r#type: from_type,
+                from_node: from.node_id,
+                from_pin: from.id,
+                to_node: to.node_id,
+                to_pin: to.id,
+                r#type: from.r#type,
             };
 
-            let mut wire = WebWire::new(&self.wires_el, wire_id, inner, from_hitbox, to_hitbox)?;
+            let wire = WebWire::new(&self.wires_el, wire_id, inner, from_hitbox, to_hitbox)?;
 
             self.wires.insert(wire_id, wire);
         }
@@ -360,26 +239,47 @@ impl WebGraph {
             // TODO
         }
 
-        self.redraw_node_wires(&from_node_id)?;
-        self.redraw_node_wires(&to_node_id)?;
+        self.redraw_node_wires(&from.node_id)?;
+        self.redraw_node_wires(&to.node_id)?;
 
         Ok(())
     }
 
-    pub fn show_wiring(&mut self, ws: &WiringState) {
+    pub fn start_wiring(&mut self, start: &PenguinPinRef) -> Result<(), JsValue> {
+        let Some(node) = self.nodes.get(&start.node_id) else {
+            return Err(JsValue::from_str("Unknown Node"));
+        };
+
+        let Some(pin) = node.pin(start) else {
+            return Err(JsValue::from_str("Unknown Pin"));
+        };
+
+        self.temp_wire
+            .show(&pin.hitbox, node.pos(), start.r#type, start.is_output)?;
+
         for node in self.nodes.values_mut() {
             for pin in node.inputs.values_mut() {
-                pin.show_wiring(ws);
+                pin.show_wiring(start);
             }
         }
+
+        Ok(())
     }
 
-    pub fn hide_wiring(&mut self) {
+    pub fn update_wiring(&self, wpos: WorldPoint) -> Result<(), JsValue> {
+        self.temp_wire.update(wpos)
+    }
+
+    pub fn stop_wiring(&mut self) -> Result<(), JsValue> {
+        self.temp_wire.hide()?;
+
         for node in self.nodes.values_mut() {
             for pin in node.inputs.values_mut() {
                 pin.hide_wiring();
             }
         }
+
+        Ok(())
     }
 
     pub fn move_node(
@@ -406,7 +306,7 @@ impl WebGraph {
         Ok(node.pos())
     }
 
-    pub fn redraw_node_wires(&mut self, node_id: &PenguinNodeID) -> Result<(), JsValue> {
+    fn redraw_node_wires(&mut self, node_id: &PenguinNodeID) -> Result<(), JsValue> {
         let Some(node) = self.nodes.get_mut(node_id) else {
             return Err(JsValue::from_str("Unknown Node"));
         };
@@ -440,8 +340,7 @@ impl WebGraph {
         Ok(())
     }
 
-    /// WARN: Use with caution. Only use from WebNode
-    pub fn node_mut(&mut self, node_id: &PenguinNodeID) -> Result<&mut WebNode, JsValue> {
+    fn node_mut(&mut self, node_id: &PenguinNodeID) -> Result<&mut WebNode, JsValue> {
         let Some(node) = self.nodes.get_mut(node_id) else {
             return Err(JsValue::from_str("Unknown Node"));
         };
@@ -472,17 +371,12 @@ impl WebGraph {
         }
     }
 
-    pub fn select_pin_wires(
-        &mut self,
-        node_id: &PenguinNodeID,
-        pin_id: &PenguinPinID,
-        is_out: bool,
-    ) {
-        if let Some(node) = self.nodes.get(node_id) {
-            let pin = if is_out {
-                node.outputs.get(pin_id)
+    pub fn select_pin_wires(&mut self, pin: &PenguinPinRef) {
+        if let Some(node) = self.nodes.get(&pin.node_id) {
+            let pin = if pin.is_output {
+                node.outputs.get(&pin.id)
             } else {
-                node.inputs.get(pin_id)
+                node.inputs.get(&pin.id)
             };
 
             let Some(pin) = pin else {
@@ -575,5 +469,210 @@ impl WebGraph {
             res.push((*node_id, self.get_node_pos(node_id)?));
         }
         Ok(res)
+    }
+
+    pub fn handle_input_change(
+        &mut self,
+        node_id: PenguinNodeID,
+        r#type: input::WebInputType,
+        new_value: String,
+    ) -> Result<(), JsValue> {
+        let node = self.node_mut(&node_id)?;
+
+        let iv = match r#type {
+            WebInputType::Pin(pin_id) => node.inner.input_pin_values.get_mut(&pin_id),
+            WebInputType::NodeFeature(feature_id) => {
+                node.inner.input_feature_values.get_mut(&feature_id)
+            }
+        };
+
+        if let Some(iv) = iv {
+            iv.set_from_string(new_value);
+        }
+
+        Ok(())
+    }
+
+    pub fn handle_input_resize(
+        &mut self,
+        node_id: PenguinNodeID,
+        r#type: input::WebInputType,
+        size: (i32, i32),
+    ) -> Result<(), JsValue> {
+        let node = self.node_mut(&node_id)?;
+
+        let iv = match r#type {
+            WebInputType::Pin(pin_id) => node.inner.input_pin_values.get_mut(&pin_id),
+            WebInputType::NodeFeature(feature_id) => {
+                node.inner.input_feature_values.get_mut(&feature_id)
+            }
+        };
+
+        if let Some(iv) = iv {
+            iv.size = Some(size);
+        }
+
+        self.redraw_node_wires(&node_id)?;
+
+        Ok(())
+    }
+
+    pub fn handle_copy(&self, e: &ClipboardEvent) -> Result<(), JsValue> {
+        log::info!("COPY");
+
+        if self.selection.nodes.is_empty() {
+            return Ok(());
+        }
+
+        let mut graph = PenguinGraph {
+            nodes: HashMap::with_capacity(self.selection.nodes.len()),
+            wires: HashMap::with_capacity(self.selection.wires.len()),
+        };
+
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut count = 0;
+
+        for id in &self.selection.nodes {
+            if let Some(node) = self.nodes.get(id) {
+                let inner = node.inner();
+                sum_x += inner.x;
+                sum_y += inner.y;
+                count += 1;
+            }
+        }
+
+        let center = WorldPoint::new(sum_x / count as f64, sum_y / count as f64);
+
+        for id in &self.selection.nodes {
+            if let Some(node) = self.nodes.get(id) {
+                let mut node = node.inner().clone();
+                node.x -= center.x;
+                node.y -= center.y;
+                graph.nodes.insert(*id, node);
+            }
+        }
+
+        for id in &self.selection.wires {
+            if let Some(wire) = self.wires.get(id) {
+                let inner = wire.inner();
+                if self.selection.nodes.contains(&inner.from_node)
+                    && self.selection.nodes.contains(&inner.to_node)
+                {
+                    graph.wires.insert(*id, inner.clone());
+                }
+            }
+        }
+
+        let json = serde_json::to_string(&graph)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+
+        if let Some(clipboard) = e.clipboard_data() {
+            clipboard.set_data("application/x-penguin", &json)?;
+            clipboard.set_data("text/plain", &json)?;
+            e.prevent_default();
+        }
+
+        Ok(())
+    }
+
+    pub fn handle_paste(
+        &mut self,
+        e: &ClipboardEvent,
+        registry: &PenguinRegistry,
+        mouse_pos: WorldPoint,
+    ) -> Result<(), JsValue> {
+        let Some(clipboard) = e.clipboard_data() else {
+            return Ok(());
+        };
+
+        let Ok(json) = clipboard.get_data("application/x-penguin") else {
+            return Ok(());
+        };
+
+        let graph: PenguinGraph = serde_json::from_str(&json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+
+        let next_node_id = self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+        let next_wire_id = self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
+
+        let mut node_id_map = HashMap::new();
+        let mut wire_id_map = HashMap::new();
+
+        // give new IDs
+        for (i, old_id) in graph.nodes.keys().enumerate() {
+            node_id_map.insert(*old_id, PenguinNodeID(next_node_id + i as u16));
+        }
+
+        for (i, old_id) in graph.wires.keys().enumerate() {
+            wire_id_map.insert(*old_id, PenguinWireID(next_wire_id + i as u16));
+        }
+
+        // update wires with new IDs
+        let mut transformed_wires = HashMap::new();
+        for (old_id, mut wire) in graph.wires {
+            let new_id = *wire_id_map.get(&old_id).unwrap();
+            wire.from_node = *node_id_map.get(&wire.from_node).unwrap();
+            wire.to_node = *node_id_map.get(&wire.to_node).unwrap();
+            transformed_wires.insert(new_id, wire);
+        }
+
+        for (old_id, mut node) in graph.nodes {
+            let new_id = *node_id_map.get(&old_id).unwrap();
+            node.x += mouse_pos.x;
+            node.y += mouse_pos.y;
+            self.nodes.insert(
+                new_id,
+                WebNode::new(
+                    &self.nodes_el,
+                    registry,
+                    Some(&transformed_wires),
+                    node,
+                    new_id,
+                )?,
+            );
+        }
+
+        for (new_id, wire) in transformed_wires {
+            let (from_pin_hitbox, from_node_pos) = {
+                let Some(from_node) = self.nodes.get_mut(&wire.from_node) else {
+                    log::error!("Missing from_node during paste. wire={wire:?}");
+                    continue;
+                };
+                let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin) else {
+                    log::error!("Missing from_pin during paste. wire={wire:?}");
+                    continue;
+                };
+                (from_pin.hitbox.clone(), from_node.pos())
+            };
+
+            let (to_pin_hitbox, to_node_pos) = {
+                let Some(to_node) = self.nodes.get_mut(&wire.to_node) else {
+                    log::error!("Missing to_node during paste. wire={wire:?}");
+                    continue;
+                };
+                let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin) else {
+                    log::error!("Missing to_pin during paste. wire={wire:?}");
+                    continue;
+                };
+                (to_pin.hitbox.clone(), to_node.pos())
+            };
+
+            let mut web_wire =
+                WebWire::new(&self.wires_el, new_id, wire, from_pin_hitbox, to_pin_hitbox)?;
+            web_wire.redraw_from(from_node_pos)?;
+            web_wire.redraw_to(to_node_pos)?;
+
+            self.wires.insert(new_id, web_wire);
+        }
+
+        e.prevent_default();
+        Ok(())
+    }
+
+    pub fn handle_cut(&mut self, e: &ClipboardEvent) -> Result<(), JsValue> {
+        self.handle_copy(e)?;
+        self.delete_selection();
+        Ok(())
     }
 }

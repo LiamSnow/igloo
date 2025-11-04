@@ -1,15 +1,15 @@
-use std::any::Any;
+use euclid::Box2D;
+use igloo_interface::{
+    PenguinPinType,
+    graph::{PenguinWire, PenguinWireID},
+};
+use wasm_bindgen::JsValue;
+use web_sys::{Element, HtmlElement};
 
 use crate::{
-    app::APP,
-    ffi::{self, add_app_event_listener},
+    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    viewport::{ClientBox, ClientToWorld, WorldPoint},
 };
-
-use super::*;
-use euclid::Box2D;
-use igloo_interface::{PenguinPinType, graph::PenguinWire};
-use wasm_bindgen::{JsCast, prelude::Closure};
-use web_sys::Element;
 
 #[derive(Debug)]
 pub struct WebWire {
@@ -24,7 +24,7 @@ pub struct WebWire {
     from_pos: (f64, f64),
     to_pos: (f64, f64),
 
-    closures: Vec<Box<dyn Any>>,
+    listeners: Listeners,
 }
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub struct WebTempWire {
 }
 
 fn make_els(parent: &Element, r#type: PenguinPinType) -> Result<(Element, Element), JsValue> {
-    let document = ffi::document();
+    let document = document();
 
     let svg = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "svg")?;
     svg.set_attribute("class", "penguin-wire")?;
@@ -62,28 +62,10 @@ impl WebWire {
     ) -> Result<Self, JsValue> {
         let (svg, path) = make_els(parent, inner.r#type)?;
 
-        let mut closures = Vec::with_capacity(1);
-        add_app_event_listener(
-            &path,
-            "mousedown",
-            &mut closures,
-            move |app, e: MouseEvent| {
-                if e.button() != 0 {
-                    return;
-                }
-
-                e.prevent_default();
-                e.stop_propagation();
-
-                app.focus();
-
-                if e.alt_key() {
-                    app.graph.delete_wire(id);
-                } else {
-                    app.graph.select_wire(id, e.ctrl_key() || e.shift_key());
-                }
-            },
-        )?;
+        let listeners = ListenerBuilder::new(&path, EventTarget::Wire(id))
+            .add_mousedown(true)?
+            .add_contextmenu(true)?
+            .build();
 
         Ok(Self {
             inner,
@@ -93,7 +75,7 @@ impl WebWire {
             path,
             from_pos: (0., 0.),
             to_pos: (0., 0.),
-            closures,
+            listeners,
         })
     }
 
@@ -213,7 +195,7 @@ impl WebTempWire {
 
     pub fn show(
         &mut self,
-        start_el: &HtmlElement,
+        start_hitbox: &HtmlElement,
         start_node_pos: WorldPoint,
         r#type: PenguinPinType,
         is_output: bool,
@@ -222,10 +204,12 @@ impl WebTempWire {
         self.path
             .set_attribute("stroke-width", &r#type.stroke_width().to_string())?;
 
-        self.start_pos.0 =
-            start_node_pos.x + start_el.offset_left() as f64 + start_el.offset_width() as f64 / 2.0;
-        self.start_pos.1 =
-            start_node_pos.y + start_el.offset_top() as f64 + start_el.offset_height() as f64 / 2.0;
+        self.start_pos.0 = start_node_pos.x
+            + start_hitbox.offset_left() as f64
+            + start_hitbox.offset_width() as f64 / 2.0;
+        self.start_pos.1 = start_node_pos.y
+            + start_hitbox.offset_top() as f64
+            + start_hitbox.offset_height() as f64 / 2.0;
 
         self.is_output = is_output;
 
@@ -234,7 +218,7 @@ impl WebTempWire {
         Ok(())
     }
 
-    pub fn update(&mut self, mouse_pos: WorldPoint) -> Result<(), JsValue> {
+    pub fn update(&self, mouse_pos: WorldPoint) -> Result<(), JsValue> {
         let (from, to) = if self.is_output {
             (self.start_pos, (mouse_pos.x, mouse_pos.y))
         } else {
