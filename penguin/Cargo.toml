@@ -37,9 +37,6 @@ web-sys = { version = "0.3.81", features = [
   "InputEvent",
 ] }
 igloo-interface = { path = "../interface/", features = ["penguin"] }
-borsh = { version = "1.5.7", features = ["derive"] }
-base64 = "0.22.1"
-maud = "0.27.0"
 log = "0.4.28"
 console_log = "1.0.0"
 indexmap = "2.12.0"
