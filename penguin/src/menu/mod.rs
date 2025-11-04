@@ -140,4 +140,8 @@ impl Menu {
         let style = format!("left: {}px; top: {}px;", x, y);
         self.menu.set_attribute("style", &style)
     }
+
+    pub fn handle_search_input(&mut self) -> Result<(), JsValue> {
+        self.search.handle_input()
+    }
 }

@@ -172,6 +172,10 @@ impl App {
             return self.graph.swap_node_variant(node_id, new_node_path);
         }
 
+        if matches!(event.target, EventTarget::MenuSearch) {
+            return self.menu.handle_search_input();
+        }
+
         // focus #penguin so keyboard input works
         if matches!(event.target, EventTarget::Global)
             && !matches!(

@@ -11,6 +11,7 @@ pub struct MenuSearch {
     input: HtmlInputElement,
     results: Element,
     items: Vec<MenuSearchItem>,
+    listeners: Listeners,
 }
 
 impl Drop for MenuSearch {
@@ -30,15 +31,11 @@ impl MenuSearch {
         input.set_id("penguin-menu-search-input");
         input.set_attribute("type", "text")?;
         input.set_attribute("placeholder", "Search nodes...")?;
-        // TODO replace with Rust listener
-        input.set_attribute(
-            "oninput",
-            r#"document.querySelectorAll('#penguin-menu-search-results > .penguin-menu-search-item[data-compatible]').forEach(item => {
-                 item.style.display = item.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none';
-            })"#
-        )?;
         parent.append_child(&input)?;
-        input.focus()?;
+
+        let listeners = ListenerBuilder::new(&input, EventTarget::MenuSearch)
+            .add_input_no_value()?
+            .build();
 
         let results = document.create_element("div")?;
         results.set_id("penguin-menu-search-results");
@@ -65,6 +62,7 @@ impl MenuSearch {
             input,
             results,
             items,
+            listeners,
         };
 
         me.hide()?;
@@ -79,18 +77,16 @@ impl MenuSearch {
 
     pub fn show(&mut self, from_pin: &Option<PenguinPinRef>) -> Result<(), JsValue> {
         for item in &mut self.items {
-            let comp = if let Some(ws) = from_pin {
+            item.compatible = if let Some(ws) = from_pin {
                 ws.find_compatible(&item.defn).is_some()
             } else {
                 true
             };
 
-            if comp {
-                item.el.set_attribute("data-compatible", "")?;
-                item.el.remove_attribute("style")?;
+            if item.compatible {
+                item.show()?;
             } else {
-                item.el.remove_attribute("data-compatible")?;
-                item.el.set_attribute("style", "display: none;")?;
+                item.hide()?;
             }
         }
 
@@ -99,12 +95,33 @@ impl MenuSearch {
         self.input.focus()?;
         self.results.remove_attribute("style")
     }
+
+    pub fn handle_input(&mut self) -> Result<(), JsValue> {
+        let value = self.input.value().to_lowercase();
+
+        for item in &mut self.items {
+            if !item.compatible {
+                continue;
+            }
+
+            if item.node_name_lower.contains(&value) {
+                item.show()?;
+            } else {
+                item.hide()?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
 pub struct MenuSearchItem {
     el: Element,
     defn: PenguinNodeDefn,
+    compatible: bool,
+    node_name_lower: String,
+    shown: bool,
     listeners: Listeners,
 }
 
@@ -117,8 +134,8 @@ impl Drop for MenuSearchItem {
 impl MenuSearchItem {
     pub fn new(
         parent: &Element,
-        lib_path: String,
-        node_path: String,
+        lib_name: String,
+        node_name: String,
         defn: PenguinNodeDefn,
     ) -> Result<Self, JsValue> {
         let document = document();
@@ -127,44 +144,48 @@ impl MenuSearchItem {
         el.set_class_name("penguin-menu-search-item");
         parent.append_child(&el)?;
 
+        let title = document.create_element("div")?;
+        title.set_class_name("penguin-menu-search-item-title");
+        title.set_inner_html(&node_name);
+        el.append_child(&title)?;
+
+        node::make_dummy(&el, &defn)?;
+
+        let node_name_lower = node_name.to_lowercase();
         let listeners = ListenerBuilder::new(
             &el,
-            EventTarget::MenuSearchItem(PenguinNodeDefnRef::new(
-                &lib_path,
-                &node_path,
-                defn.version,
-            )),
+            EventTarget::MenuSearchItem(PenguinNodeDefnRef {
+                lib_name,
+                node_name,
+                version: defn.version,
+            }),
         )
         .add_mouseclick()?
         .build();
 
-        let title = document.create_element("div")?;
-        title.set_class_name("penguin-menu-search-item-title");
-        title.set_inner_html(&node_path);
-        el.append_child(&title)?;
-
-        // let content = document.create_element("div")?;
-        // content.set_class_name("penguin-menu-search-item-content");
-        node::make_dummy(&el, &defn)?;
-        // el.append_child(&content)?;
-
-        // let path = document.create_element("div")?;
-        // path.set_class_name("penguin-menu-search-item-path");
-        // path.set_inner_html(&format!("{lib_path}.{node_path}"));
-        // el.append_child(&path)?;
-
         Ok(Self {
             el,
             defn,
+            compatible: true,
+            shown: true,
+            node_name_lower,
             listeners,
         })
     }
 
-    // pub fn hide(&self) -> Result<(), JsValue> {
-    //     self.el.set_attribute("style", "display: none;")
-    // }
+    pub fn hide(&mut self) -> Result<(), JsValue> {
+        if self.shown {
+            self.shown = false;
+            self.el.set_attribute("style", "display: none;")?;
+        }
+        Ok(())
+    }
 
-    // pub fn show(&self) -> Result<(), JsValue> {
-    //     self.el.remove_attribute("style")
-    // }
+    pub fn show(&mut self) -> Result<(), JsValue> {
+        if !self.shown {
+            self.shown = true;
+            self.el.remove_attribute("style")?;
+        }
+        Ok(())
+    }
 }

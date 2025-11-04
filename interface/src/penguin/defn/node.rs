@@ -4,10 +4,10 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Display, Serialize, Deserialize)]
-#[display("{lib_path}/{node_path}")]
+#[display("{lib_name}/{node_name}")]
 pub struct PenguinNodeDefnRef {
-    pub lib_path: String,
-    pub node_path: String,
+    pub lib_name: String,
+    pub node_name: String,
     pub version: u8,
 }
 
@@ -43,10 +43,10 @@ pub struct NodeInputFeature {
 }
 
 impl PenguinNodeDefnRef {
-    pub fn new(lib_path: &str, node_path: &str, version: u8) -> Self {
+    pub fn new(lib_name: &str, node_name: &str, version: u8) -> Self {
         Self {
-            lib_path: lib_path.to_string(),
-            node_path: node_path.to_string(),
+            lib_name: lib_name.to_string(),
+            node_name: node_name.to_string(),
             version,
         }
     }

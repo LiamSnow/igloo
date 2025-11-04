@@ -35,6 +35,7 @@ pub enum EventValue {
     Paste(ClipboardEvent),
     Cut(ClipboardEvent),
     Input(String),
+    InputNoValue,
     Resize((i32, i32)),
 }
 
@@ -45,6 +46,7 @@ pub enum EventTarget {
     Wire(PenguinWireID),
     Pin(PenguinPinRef),
     MenuBackdrop,
+    MenuSearch,
     MenuSearchItem(PenguinNodeDefnRef),
     ToolbarButton(ToolbarButton),
     NodeInput(PenguinNodeID, WebInputType),
@@ -278,6 +280,16 @@ impl<'a, E: AsRef<web_sys::EventTarget>> ListenerBuilder<'a, E> {
             "input",
             self.target.clone(),
             move |_: web_sys::Event| EventValue::Input(get_value()),
+        )?;
+        Ok(self)
+    }
+
+    pub fn add_input_no_value(mut self) -> Result<Self, JsValue> {
+        self.listeners.add(
+            self.element,
+            "input",
+            self.target.clone(),
+            |_: web_sys::Event| EventValue::InputNoValue,
         )?;
         Ok(self)
     }

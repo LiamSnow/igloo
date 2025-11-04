@@ -21,9 +21,9 @@ impl PenguinRegistry {
 
     pub fn get_defn(&self, dref: &PenguinNodeDefnRef) -> Option<&PenguinNodeDefn> {
         self.libraries
-            .get(&dref.lib_path)?
+            .get(&dref.lib_name)?
             .nodes
-            .get(&dref.node_path)
+            .get(&dref.node_name)
     }
 }
 

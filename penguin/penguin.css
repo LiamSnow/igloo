@@ -84,7 +84,7 @@
 }
 
 .penguin-node.selected {
-  border: 2px solid #2196F3;
+  border: 2px solid #2196F3 !important;
   cursor: pointer;
   box-shadow: 0 0 10px rgba(33, 150, 243, 0.5);
 }

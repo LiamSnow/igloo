@@ -319,14 +319,14 @@ impl WebGraph {
     pub fn swap_node_variant(
         &mut self,
         node_id: PenguinNodeID,
-        new_node_path: String,
+        new_node_name: String,
     ) -> Result<(), JsValue> {
         let Some(cur_web_node) = self.nodes.get(&node_id) else {
             return Err(JsValue::from_str("Node not found"));
         };
 
         let mut new_node_inner = cur_web_node.inner().clone();
-        new_node_inner.defn_ref.node_path = new_node_path;
+        new_node_inner.defn_ref.node_name = new_node_name;
 
         let new_defn = self
             .registry

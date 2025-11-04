@@ -9,7 +9,7 @@
 - [x] drag selection
 - [x] undo redo
 - [x] copy paste
-- [ ] reroute nodes
+- [x] reroute nodes
 - [ ] sections
 - [x] save inputs (pin + node cfgs)
 - [ ] node context menu
