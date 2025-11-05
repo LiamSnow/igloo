@@ -112,6 +112,7 @@ impl WebNode {
             )))?;
 
         let (el, inputs_el, outputs_el) = make(parent, &defn)?;
+        el.set_attribute("data-defn", &inner.defn_ref.to_string())?;
 
         // input pins
         let mut inputs = IndexMap::with_capacity(defn.inputs.len());
