@@ -1,8 +1,11 @@
 use std::{error::Error, time::Duration};
 
 use igloo_interface::{
-    ComponentAverage, DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot, QueryFilter,
-    QueryTarget, SelectEntity, SetQuery, Snapshot, StartTransaction,
+    ComponentAverage, SelectEntity, StartTransaction,
+    query::{
+        DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot, QueryFilter, QueryTarget,
+        SetQuery, Snapshot,
+    },
 };
 use rustc_hash::FxHashMap;
 

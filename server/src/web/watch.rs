@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use igloo_interface::{
-    ComponentType, QueryFilter, QueryTarget,
+    ComponentType,
     dash::{DashElement, Dashboard},
+    query::{QueryFilter, QueryTarget},
 };
 
 pub struct ElementWatcher {
@@ -244,24 +245,6 @@ impl AddWatchers for DashElement {
 
                 *watch_id += 1;
             }
-            DashElement::DateTimePicker(e) => {
-                let filter = e.binding.filter.clone();
-                let target = targets
-                    .get(&e.binding.target)
-                    .ok_or(format!("Missing {}", e.binding.target))?
-                    .clone();
-
-                e.watch_id = Some(*watch_id);
-
-                watchers.push(ElementWatcher {
-                    watch_id: *watch_id,
-                    filter,
-                    target: target.clone(),
-                    comp: ComponentType::DateTime,
-                });
-
-                *watch_id += 1;
-            }
             DashElement::DurationPicker(e) => {
                 let filter = e.binding.filter.clone();
                 let target = targets
@@ -290,7 +273,9 @@ impl AddWatchers for DashElement {
                 e.watch_id = Some(*watch_id);
 
                 let comp = if e.multi {
-                    ComponentType::WeekdayList
+                    // TODO FIXME maybe we need weekday list?
+                    todo!()
+                    // ComponentType::WeekdayList
                 } else {
                     ComponentType::Weekday
                 };

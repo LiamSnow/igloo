@@ -44,7 +44,6 @@ pub enum DashElement {
     NumberInput(NumberInputElement),
     TimePicker(TimePickerElement),
     DatePicker(DatePickerElement),
-    DateTimePicker(DateTimePickerElement),
     DurationPicker(DurationPickerElement),
     WeekdayPicker(WeekdayPickerElement),
     Slider(SliderElement),

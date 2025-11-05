@@ -1,10 +1,12 @@
 use axum::extract::ws::Message;
 use igloo_interface::{
-    ComponentType, DeviceID, QueryFilter, QueryTarget,
+    ComponentType,
     dash::{
         ColorPickerElement, ColorPickerVariant, DashQuery, DashQueryNoType, Dashboard, HAlign,
         HStackElement, Size, SliderElement, SwitchElement, VAlign, VStackElement,
     },
+    id::DeviceID,
+    query::{QueryFilter, QueryTarget},
     ws::{ElementUpdate, ServerMessage},
 };
 use rustc_hash::FxHashMap;

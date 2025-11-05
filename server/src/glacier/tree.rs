@@ -1,6 +1,7 @@
 use igloo_interface::{
-    Component, ComponentType, DeviceID, FloeID, FloeRef, FloeWriterDefault, GroupID,
-    MAX_SUPPORTED_COMPONENT,
+    Component, ComponentType, MAX_SUPPORTED_COMPONENT,
+    floe::FloeWriterDefault,
+    id::{DeviceID, FloeID, FloeRef, GroupID},
 };
 use ini::Ini;
 use rustc_hash::FxHashMap;

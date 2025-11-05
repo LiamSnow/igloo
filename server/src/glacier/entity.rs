@@ -1,4 +1,4 @@
-use igloo_interface::{Component, ComponentType, MAX_SUPPORTED_COMPONENT, QueryFilter};
+use igloo_interface::{Component, ComponentType, MAX_SUPPORTED_COMPONENT, query::QueryFilter};
 use smallvec::SmallVec;
 
 #[derive(Debug, Clone)]

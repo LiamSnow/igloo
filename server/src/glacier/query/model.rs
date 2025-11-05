@@ -1,6 +1,8 @@
 use derive_more::From;
 use igloo_interface::{
-    Component, ComponentType, DeviceID, GroupID, QueryFilter, QueryTarget, SetQuery, Snapshot,
+    Component, ComponentType,
+    id::{DeviceID, GroupID},
+    query::{QueryFilter, QueryTarget, SetQuery, Snapshot},
 };
 use rustc_hash::FxHashMap;
 use tokio::sync::{mpsc, oneshot};

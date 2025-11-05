@@ -1,8 +1,9 @@
 use futures_util::StreamExt;
 use igloo_interface::{
-    CREATE_DEVICE, DESELECT_ENTITY, END_TRANSACTION, FloeCodec, FloeID, FloeReaderDefault, FloeRef,
-    FloeWriter, FloeWriterDefault, MAX_SUPPORTED_COMPONENT, START_TRANSACTION, WHATS_UP_IGLOO,
-    WhatsUpIgloo,
+    CREATE_DEVICE, DESELECT_ENTITY, END_TRANSACTION, MAX_SUPPORTED_COMPONENT, START_TRANSACTION,
+    WHATS_UP_IGLOO, WhatsUpIgloo,
+    floe::{FloeCodec, FloeReaderDefault, FloeWriter, FloeWriterDefault},
+    id::{FloeID, FloeRef},
 };
 use smallvec::smallvec;
 use std::{error::Error, mem, path::Path, process::Stdio};

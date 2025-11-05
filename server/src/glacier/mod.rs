@@ -1,9 +1,11 @@
 use std::{error::Error, path::Path};
 
 use igloo_interface::{
-    CREATE_DEVICE, CreateDevice, DESELECT_ENTITY, DeviceCreated, DeviceID, END_TRANSACTION, FloeID,
-    FloeRef, REGISTER_ENTITY, RegisterEntity, SELECT_ENTITY, START_TRANSACTION, SelectEntity,
-    StartTransaction, WRITE_INT, read_component,
+    CREATE_DEVICE, CreateDevice, DESELECT_ENTITY, DeviceCreated, END_TRANSACTION, REGISTER_ENTITY,
+    RegisterEntity, SELECT_ENTITY, START_TRANSACTION, SelectEntity, StartTransaction,
+    WRITE_INTEGER,
+    id::{DeviceID, FloeID, FloeRef},
+    read_component,
 };
 use smallvec::SmallVec;
 use tokio::{fs, sync::mpsc};
@@ -123,7 +125,7 @@ async fn handle_trans(
     let mut selected_entity: Option<usize> = None;
 
     for line in trans {
-        if line.cmd_id > WRITE_INT {
+        if line.cmd_id > WRITE_INTEGER {
             match selected_entity {
                 Some(eidx) => {
                     let val = read_component(line.cmd_id, line.payload).unwrap();
