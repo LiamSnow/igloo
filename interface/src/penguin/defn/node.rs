@@ -17,13 +17,14 @@ pub struct PenguinNodeDefn {
     pub desc: String,
     pub title_bar: Option<String>,
     pub icon_bg: bool,
-    pub is_reroute: bool,
     pub inputs: IndexMap<PenguinPinID, PenguinPinDefn>,
     pub outputs: IndexMap<PenguinPinID, PenguinPinDefn>,
     pub version: u8,
     pub hide_search: bool,
     pub variadic_feature: Option<NodeVariadicFeature>,
     pub input_features: Vec<NodeInputFeature>,
+    pub is_reroute: bool,
+    pub is_section: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

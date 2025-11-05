@@ -31,6 +31,8 @@ pub struct PenguinNode {
     // TODO also track size of textareas
     /// values of pins which are unconnected
     pub input_pin_values: HashMap<PenguinPinID, PenguinInputValue>,
+    /// only for resizable nodes (currently only sections)
+    pub size: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

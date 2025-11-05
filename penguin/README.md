@@ -10,10 +10,12 @@
 - [x] undo redo
 - [x] copy paste
 - [x] reroute nodes
-- [ ] sections
+- [x] sections
 - [x] save inputs (pin + node cfgs)
 - [ ] node context menu
-- [ ] node alignment and distribute
+   - [ ] delete, cut, copy, duplicate
+   - [ ] align, distribute
+   - [ ] straighten connections
 - [ ] wire context menu
 - [x] variadic controls
 - [ ] query types

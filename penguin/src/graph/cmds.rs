@@ -40,6 +40,11 @@ pub enum Command {
         old_size: (i32, i32),
         new_size: (i32, i32),
     },
+    ResizeNode {
+        node_id: PenguinNodeID,
+        old_size: (i32, i32),
+        new_size: (i32, i32),
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -246,6 +251,20 @@ impl WebGraph {
                     self.redraw_node_wires(node_id)?;
                 }
             }
+
+            Command::ResizeNode {
+                node_id, new_size, ..
+            } => {
+                if let Some(node) = self.nodes.get_mut(node_id) {
+                    node.inner.size = Some(*new_size);
+
+                    if historical {
+                        node.update_size(*new_size)?;
+                    }
+
+                    self.redraw_node_wires(node_id)?;
+                }
+            }
         }
 
         Ok(())
@@ -400,6 +419,15 @@ impl Command {
             } => Command::ResizeNodeInput {
                 node_id: *node_id,
                 r#type: r#type.clone(),
+                old_size: *new_size,
+                new_size: *old_size,
+            },
+            Command::ResizeNode {
+                node_id,
+                old_size,
+                new_size,
+            } => Command::ResizeNode {
+                node_id: *node_id,
                 old_size: *new_size,
                 new_size: *old_size,
             },

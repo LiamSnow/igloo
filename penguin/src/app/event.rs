@@ -55,7 +55,7 @@ pub enum EventTarget {
 
 #[derive(Debug, Default)]
 pub struct Listeners {
-    closures: Vec<Box<dyn Any>>,
+    pub closures: Vec<Box<dyn Any>>,
     observer: Option<ResizeObserver>,
 }
 
@@ -139,6 +139,43 @@ impl Listeners {
         self.observer = Some(o);
         Ok(())
     }
+
+    pub fn add_mouseevent_conditional<E, F, C>(
+        &mut self,
+        element: &impl AsRef<web_sys::EventTarget>,
+        event_name: &str,
+        event_target: EventTarget,
+        handler: F,
+        condition: C,
+    ) -> Result<(), JsValue>
+    where
+        E: FromWasmAbi + JsCast + Clone + 'static,
+        F: Fn(E) -> EventValue + 'static,
+        C: Fn(&E) -> bool + 'static,
+    {
+        let closure = Closure::wrap(Box::new(move |e: E| {
+            let we = e.unchecked_ref::<web_sys::Event>();
+            we.stop_propagation();
+            if condition(&e) {
+                APP.with(|app| {
+                    if let Some(app) = app.borrow_mut().as_mut() {
+                        app.handle(Event {
+                            value: handler(e),
+                            target: event_target.clone(),
+                        });
+                    }
+                });
+            }
+        }) as Box<dyn FnMut(E)>);
+
+        element
+            .as_ref()
+            .add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref())?;
+
+        self.closures.push(Box::new(closure));
+
+        Ok(())
+    }
 }
 
 pub struct ListenerBuilder<'a, E: AsRef<web_sys::EventTarget>> {
@@ -180,6 +217,20 @@ impl<'a, E: AsRef<web_sys::EventTarget>> ListenerBuilder<'a, E> {
             "mousedown",
             self.target.clone(),
             |e: MouseEvent| EventValue::MouseDown(e),
+        )?;
+        Ok(self)
+    }
+
+    pub fn add_mousedown_conditional(
+        mut self,
+        condition: impl Fn(&MouseEvent) -> bool + 'static,
+    ) -> Result<Self, JsValue> {
+        self.listeners.add_mouseevent_conditional(
+            self.element,
+            "mousedown",
+            self.target.clone(),
+            |e: MouseEvent| EventValue::MouseDown(e),
+            condition,
         )?;
         Ok(self)
     }
@@ -291,6 +342,12 @@ impl<'a, E: AsRef<web_sys::EventTarget>> ListenerBuilder<'a, E> {
             self.target.clone(),
             |_: web_sys::Event| EventValue::InputNoValue,
         )?;
+        Ok(self)
+    }
+
+    pub fn add_resize(mut self, attached: &Element, element: HtmlElement) -> Result<Self, JsValue> {
+        self.listeners
+            .add_resize(attached, element, self.target.clone())?;
         Ok(self)
     }
 

@@ -18,6 +18,19 @@ pub fn std_library() -> PenguinLibrary {
     );
 
     nodes.insert(
+        "Section".to_string(),
+        PenguinNodeDefn {
+            version: 1,
+            input_features: vec![NodeInputFeature {
+                r#type: PenguinType::Text,
+                id: NodeInputFeatureID::from_str("Title"),
+            }],
+            is_section: true,
+            ..Default::default()
+        },
+    );
+
+    nodes.insert(
         "On Start".to_string(),
         PenguinNodeDefn {
             version: 1,

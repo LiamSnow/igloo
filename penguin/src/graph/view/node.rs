@@ -5,7 +5,7 @@ use igloo_interface::{
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement};
+use web_sys::{Element, HtmlElement, MouseEvent};
 
 use crate::{
     app::event::{EventTarget, ListenerBuilder, Listeners, document},
@@ -26,6 +26,7 @@ pub struct WebNode {
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
     input_feature_els: IndexMap<NodeInputFeatureID, WebInput>,
+    section: Option<HtmlElement>,
 }
 
 impl Drop for WebNode {
@@ -252,6 +253,48 @@ impl WebNode {
             }
         }
 
+        let section = if defn.is_section {
+            inputs_el.remove();
+            outputs_el.remove();
+
+            el.set_attribute("data-is-section", "true")?;
+
+            let section = document.create_element("div")?.dyn_into::<HtmlElement>()?;
+            section.set_class_name("penguin-node-section");
+            el.append_child(&section)?;
+
+            let (width, height) = match inner.size {
+                Some(size) => size,
+                None => {
+                    let size = (350, 100);
+                    inner.size = Some(size);
+                    size
+                }
+            };
+
+            let style = section.style();
+            style.set_property("width", &format!("{width}px"))?;
+            style.set_property("height", &format!("{height}px"))?;
+
+            let section_1 = section.clone();
+            let mut l = ListenerBuilder::new(&section, EventTarget::Global)
+                .add_contextmenu()?
+                .add_mousedown_conditional(move |e: &MouseEvent| {
+                    let rect = section_1.get_bounding_client_rect();
+                    let x = e.client_x() as f64 - rect.left();
+                    let y = e.client_y() as f64 - rect.top();
+                    !(x > rect.width() - 20.0 && y > rect.height() - 20.0)
+                })?
+                .build();
+
+            l.add_resize(&section, section.clone(), EventTarget::Node(id))?;
+            listeners.push(l);
+
+            Some(section)
+        } else {
+            None
+        };
+
         listeners.push(
             ListenerBuilder::new(&el, EventTarget::Node(id))
                 .add_mousedown()?
@@ -268,6 +311,7 @@ impl WebNode {
             inputs,
             outputs,
             input_feature_els,
+            section,
         };
 
         me.update_transform()?;
@@ -357,6 +401,15 @@ impl WebNode {
                     input.update_size(size)?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub fn update_size(&self, size: (i32, i32)) -> Result<(), JsValue> {
+        if let Some(section) = &self.section {
+            let style = section.style();
+            style.set_property("width", &format!("{}px", size.0))?;
+            style.set_property("height", &format!("{}px", size.1))?;
         }
         Ok(())
     }

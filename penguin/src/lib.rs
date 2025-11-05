@@ -235,6 +235,20 @@ fn test_graph() -> PenguinGraph {
         }, // PenguinNode::new(, 700., 500.),
     );
 
+    g.nodes.insert(
+        PenguinNodeID(20),
+        PenguinNode {
+            defn_ref: PenguinNodeDefnRef::new("Standard Library", "Section", 1),
+            x: 200.,
+            y: 500.,
+            input_feature_values: HashMap::from([(
+                NodeInputFeatureID("Title".to_string()),
+                PenguinInputValue::new(PenguinValue::Text("Example Title".to_string())),
+            )]),
+            ..Default::default()
+        }, // PenguinNode::new(, 700., 500.),
+    );
+
     g.wires.insert(
         PenguinWireID(1),
         PenguinWire {

@@ -38,22 +38,23 @@ impl App {
                     y: mm.pos.y,
                     input_feature_values: HashMap::with_capacity(defn.input_features.len()),
                     input_pin_values: HashMap::with_capacity(defn.inputs.len()),
+                    ..Default::default()
                 };
 
                 let node_id = self.graph.place_node(node)?;
 
                 // auto wire
-                if let Some(start_pin) = &mm.from_pin {
-                    if let Some((pin_id, pin_defn)) = start_pin.find_compatible(&defn) {
-                        let end_pin = PenguinPinRef {
-                            node_id,
-                            id: pin_id.clone(),
-                            is_output: !start_pin.is_output,
-                            r#type: pin_defn.r#type,
-                        };
+                if let Some(start_pin) = &mm.from_pin
+                    && let Some((pin_id, pin_defn)) = start_pin.find_compatible(&defn)
+                {
+                    let end_pin = PenguinPinRef {
+                        node_id,
+                        id: pin_id.clone(),
+                        is_output: !start_pin.is_output,
+                        r#type: pin_defn.r#type,
+                    };
 
-                        self.graph.add_wire(start_pin.clone(), end_pin)?;
-                    }
+                    self.graph.add_wire(start_pin.clone(), end_pin)?;
                 }
 
                 // close menu

@@ -605,3 +605,35 @@
 .penguin-node[data-is-reroute="true"] .penguin-pin {
   opacity: 0;
 }
+
+.penguin-node[data-is-section="true"] {
+  display: block;
+  z-index: -10;
+  background: rgba(30, 30, 30, 0.4);
+}
+
+.penguin-node[data-is-section="true"]>.penguin-node-section {
+  resize: both;
+  overflow: auto;
+  min-width: 350px;
+  min-height: 100px;
+}
+
+.penguin-node[data-is-section="true"]>.penguin-node-content {
+  width: calc(100% - 20px);
+  padding: 6px 10px;
+  display: block;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 8px 8px 4px 4px;
+}
+
+.penguin-node[data-is-section="true"]>.penguin-node-content>.penguin-input {
+  width: calc(100% - 16px) !important;
+  height: 24px !important;
+  resize: none !important;
+  padding: 0 !important;
+  border: none;
+  display: block;
+  font-size: 18px;
+  background: none;
+}

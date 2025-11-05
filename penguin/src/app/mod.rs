@@ -163,6 +163,20 @@ impl App {
             };
         }
 
+        if matches!(event.target, EventTarget::Node(..))
+            && matches!(event.value, EventValue::Resize(..))
+        {
+            let EventTarget::Node(node_id) = event.target else {
+                unreachable!()
+            };
+
+            let EventValue::Resize(size) = event.value else {
+                unreachable!()
+            };
+
+            return self.graph.handle_node_resize(node_id, size);
+        }
+
         // node variadic
         if matches!(event.target, EventTarget::NodeVariadic(..)) {
             let EventTarget::NodeVariadic(node_id, new_node_path) = event.target else {

@@ -316,6 +316,28 @@ impl WebGraph {
         self.execute(tx)
     }
 
+    pub fn handle_node_resize(
+        &mut self,
+        node_id: PenguinNodeID,
+        new_size: (i32, i32),
+    ) -> Result<(), JsValue> {
+        let Some(old_size) = self.nodes.get(&node_id).and_then(|node| node.inner.size) else {
+            return Ok(());
+        };
+
+        if old_size == new_size {
+            return Ok(());
+        }
+
+        let tx = Transaction::single(Command::ResizeNode {
+            node_id,
+            old_size,
+            new_size,
+        });
+
+        self.execute(tx)
+    }
+
     pub fn swap_node_variant(
         &mut self,
         node_id: PenguinNodeID,
