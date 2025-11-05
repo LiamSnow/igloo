@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{graph::PenguinNodeID, penguin::*};
+use crate::{
+    penguin::{graph::PenguinNodeID, *},
+    types::IglooType,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct PenguinPinID(pub String);
@@ -42,11 +45,11 @@ impl PenguinPinDefn {
         Self::unnamed(PenguinPinType::Flow)
     }
 
-    pub fn named_val(t: PenguinType) -> Self {
+    pub fn named_val(t: IglooType) -> Self {
         Self::named(PenguinPinType::Value(t))
     }
 
-    pub fn unnamed_val(t: PenguinType) -> Self {
+    pub fn unnamed_val(t: IglooType) -> Self {
         Self::unnamed(PenguinPinType::Value(t))
     }
 }

@@ -1,14 +1,12 @@
-use crate::rust::{comp_name_to_cmd_name, ident, upper_camel_to_snake};
-
 use super::model::*;
+use crate::rust::{comp_name_to_cmd_name, ident, upper_camel_to_snake};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{env, fs, path::PathBuf};
 
 pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let comp_enum = gen_comp_enum(comps);
-    let primitives_avgable = gen_primitives_avgable();
-    let structs_avgable = gen_structs_avgable(comps);
+    let enum_avgable = gen_enum_averageable(comps);
     let avg_comp = gen_avg_comp(comps);
     let read_comp = gen_read_comp(comps);
     let write_comp = gen_write_comp(comps);
@@ -19,12 +17,12 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use std::ops::{Add, Sub};
+        use crate::types::*;
+        use crate::avg::*;
 
         #comp_enum
 
-        #primitives_avgable
-
-        #structs_avgable
+        #enum_avgable
 
         #avg_comp
 
@@ -48,85 +46,65 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
 }
 
 fn gen_comp_from_string(comps: &[Component]) -> TokenStream {
-    let parse_error = quote! {
-        #[derive(Debug, Clone)]
-        pub enum ParseError {
-            InvalidValue,
-            UnsupportedType,
-        }
-    };
-
     let arms: Vec<_> = comps
         .iter()
-        .map(|comp| {
-            let comp_name = ident(&comp.name);
+        .filter_map(|comp| {
+            let comp_ident = ident(&comp.name);
 
             match &comp.kind {
-                ComponentKind::Single { field, .. } if !field.contains("Vec<") => {
-                    gen_single_arm(&comp.name, field)
+                ComponentKind::Single { kind } => {
+                    let parse_logic = match kind {
+                        IglooType::Integer | IglooType::Real | IglooType::Boolean => {
+                            quote! { s.parse().ok().map(Component::#comp_ident) }
+                        }
+                        IglooType::Text => {
+                            quote! { Some(Component::#comp_ident(s)) }
+                        }
+                        IglooType::Color | IglooType::Date | IglooType::Time => {
+                            quote! { s.try_into().ok().map(Component::#comp_ident) }
+                        }
+                        IglooType::IntegerList | IglooType::RealList | IglooType::BooleanList => {
+                            quote! {
+                                parse_list(&s)?
+                                    .into_iter()
+                                    .map(|item| item.parse().ok())
+                                    .collect::<Option<Vec<_>>>()
+                                    .map(Component::#comp_ident)
+                            }
+                        }
+                        IglooType::TextList => {
+                            quote! { parse_list(&s).map(Component::#comp_ident) }
+                        }
+                        IglooType::ColorList | IglooType::DateList | IglooType::TimeList => {
+                            quote! {
+                                parse_list(&s)?
+                                    .into_iter()
+                                    .map(|item| item.try_into().ok())
+                                    .collect::<Option<Vec<_>>>()
+                                    .map(Component::#comp_ident)
+                            }
+                        }
+                    };
+
+                    Some(quote! {
+                        ComponentType::#comp_ident => #parse_logic
+                    })
                 }
-                ComponentKind::Enum { variants } => gen_enum_arm(&comp.name, variants),
-                _ => {
-                    quote! {
-                        ComponentType::#comp_name => Err(ParseError::UnsupportedType)
-                    }
-                }
+                ComponentKind::Enum { .. } => Some(quote! {
+                    ComponentType::#comp_ident => s.try_into().ok().map(Component::#comp_ident)
+                }),
+                ComponentKind::Marker { .. } => None,
             }
         })
         .collect();
 
     quote! {
-        #parse_error
-
         impl Component {
-            pub fn from_string(comp_type: ComponentType, s: &str) -> Result<Component, ParseError> {
+            pub fn from_string(comp_type: ComponentType, s: String) -> Option<Component> {
                 match comp_type {
                     #(#arms,)*
+                    _ => None
                 }
-            }
-        }
-    }
-}
-
-fn gen_single_arm(comp_name: &str, field: &str) -> TokenStream {
-    let comp_ident = ident(comp_name);
-    if field == "String" {
-        quote! {
-            ComponentType::#comp_ident => Ok(Component::#comp_ident(s.to_string()))
-        }
-    } else {
-        let field_type: TokenStream = field.parse().unwrap();
-        quote! {
-            ComponentType::#comp_ident => {
-                s.parse::<#field_type>()
-                    .map(Component::#comp_ident)
-                    .map_err(|_| ParseError::InvalidValue)
-            }
-        }
-    }
-}
-
-fn gen_enum_arm(comp_name: &str, variants: &[Variant]) -> TokenStream {
-    let comp_ident = ident(comp_name);
-
-    let variant_arms: Vec<_> = variants
-        .iter()
-        .map(|v| {
-            let variant_ident = ident(&v.name);
-            let id = v.id;
-            quote! {
-                #id => Ok(Component::#comp_ident(#comp_ident::#variant_ident))
-            }
-        })
-        .collect();
-
-    quote! {
-        ComponentType::#comp_ident => {
-            let discriminant = s.parse::<u8>()
-                .map_err(|_| ParseError::InvalidValue)?;
-            match discriminant {
-                #(#variant_arms,)*
-                _ => Err(ParseError::InvalidValue)
             }
         }
     }
@@ -186,7 +164,7 @@ fn gen_write_comp(comps: &[Component]) -> TokenStream {
 
     quote! {
         #[cfg(feature = "floe")]
-        impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
+        impl<W: AsyncWriteExt + Unpin> crate::floe::FloeWriter<W> {
             pub async fn write_component(&mut self, comp: &Component) -> Result<(), std::io::Error> {
                 match comp {
                     #(#arms)*
@@ -311,10 +289,11 @@ fn gen_avg_comp(comps: &[Component]) -> TokenStream {
         .filter(|comp| is_avgable(comp))
         .map(|comp| {
             let name = ident(&comp.name);
+            let name_str = &comp.name;
             quote! {
                 ComponentAverage::#name(avg) => {
                     let Component::#name(v) = comp else {
-                        panic!("Type mismatch in ComponentAverage::add: expected {}, got {:?}", stringify!(#name), comp);
+                        panic!("Type mismatch in ComponentAverage::add: expected {}, got {:?}", #name_str, comp);
                     };
                     avg.add(v);
                 }
@@ -327,10 +306,11 @@ fn gen_avg_comp(comps: &[Component]) -> TokenStream {
         .filter(|comp| is_avgable(comp))
         .map(|comp| {
             let name = ident(&comp.name);
+            let name_str = &comp.name;
             quote! {
                 ComponentAverage::#name(avg) => {
                     let Component::#name(v) = comp else {
-                        panic!("Type mismatch in ComponentAverage::remove: expected {}, got {:?}", stringify!(#name), comp);
+                        panic!("Type mismatch in ComponentAverage::remove: expected {}, got {:?}", #name_str, comp);
                     };
                     avg.remove(v);
                 }
@@ -343,13 +323,14 @@ fn gen_avg_comp(comps: &[Component]) -> TokenStream {
         .filter(|comp| is_avgable(comp))
         .map(|comp| {
             let name = ident(&comp.name);
+            let name_str = &comp.name;
             quote! {
                 ComponentAverage::#name(avg) => {
                     let Component::#name(old_v) = old else {
-                        panic!("Type mismatch in ComponentAverage::update old: expected {}, got {:?}", stringify!(#name), old);
+                        panic!("Type mismatch in ComponentAverage::update old: expected {}, got {:?}", #name_str, old);
                     };
                     let Component::#name(new_v) = new else {
-                        panic!("Type mismatch in ComponentAverage::update new: expected {}, got {:?}", stringify!(#name), new);
+                        panic!("Type mismatch in ComponentAverage::update new: expected {}, got {:?}", #name_str, new);
                     };
                     avg.update(old_v, new_v);
                 }
@@ -448,184 +429,153 @@ fn gen_avg_comp(comps: &[Component]) -> TokenStream {
     }
 }
 
-fn gen_structs_avgable(comps: &[Component]) -> TokenStream {
-    let impls: Vec<_> = comps
+fn is_avgable(comp: &Component) -> bool {
+    match &comp.kind {
+        ComponentKind::Single { kind, .. } => matches!(
+            kind,
+            IglooType::Integer
+                | IglooType::Real
+                | IglooType::Boolean
+                | IglooType::Color
+                | IglooType::Date
+                | IglooType::Time
+        ),
+        ComponentKind::Enum { .. } => true,
+        ComponentKind::Marker { .. } => false,
+    }
+}
+
+fn gen_enum_averageable(comps: &[Component]) -> TokenStream {
+    let enum_comps: Vec<_> = comps
+        .iter()
+        .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
+        .collect();
+
+    let impls: Vec<_> = enum_comps
         .iter()
         .map(|comp| {
-            if let ComponentKind::Struct { fields } = &comp.kind {
-                gen_struct_avgable(comp, fields)
+            let name = ident(&comp.name);
+            let sum_name = format_ident!("{}Sum", comp.name);
+
+            if let ComponentKind::Enum { variants, .. } = &comp.kind {
+                let sum_fields: Vec<_> = variants
+                    .iter()
+                    .map(|v| {
+                        let field_name = ident(&upper_camel_to_snake(&v.name));
+                        quote! { pub #field_name: usize }
+                    })
+                    .collect();
+
+                let add_fields: Vec<_> = variants
+                    .iter()
+                    .map(|v| {
+                        let field_name = ident(&upper_camel_to_snake(&v.name));
+                        quote! { #field_name: self.#field_name + other.#field_name }
+                    })
+                    .collect();
+
+                let sub_fields: Vec<_> = variants
+                    .iter()
+                    .map(|v| {
+                        let field_name = ident(&upper_camel_to_snake(&v.name));
+                        quote! { #field_name: self.#field_name - other.#field_name }
+                    })
+                    .collect();
+
+                let to_sum_arms: Vec<_> = variants
+                    .iter()
+                    .map(|v| {
+                        let variant_name = ident(&v.name);
+                        let field_name = ident(&upper_camel_to_snake(&v.name));
+                        quote! {
+                            #name::#variant_name => {
+                                sum.#field_name = 1;
+                            }
+                        }
+                    })
+                    .collect();
+
+                let field_names: Vec<_> = variants
+                    .iter()
+                    .map(|v| ident(&upper_camel_to_snake(&v.name)))
+                    .collect();
+
+                let from_sum_checks: Vec<_> = variants
+                    .iter()
+                    .map(|v| {
+                        let variant_name = ident(&v.name);
+                        let field_name = ident(&upper_camel_to_snake(&v.name));
+                        quote! {
+                            if sum.#field_name >= max {
+                                return #name::#variant_name;
+                            }
+                        }
+                    })
+                    .collect();
+
+                let max_expr = if field_names.len() == 1 {
+                    let f = &field_names[0];
+                    quote! { sum.#f }
+                } else {
+                    let first = &field_names[0];
+                    let mut expr = quote! { sum.#first };
+                    for f in &field_names[1..] {
+                        expr = quote! { #expr.max(sum.#f) };
+                    }
+                    expr
+                };
+
+                let first_variant = ident(&variants[0].name);
+
+                quote! {
+                    #[derive(Clone, Debug, Default)]
+                    pub struct #sum_name {
+                        #(#sum_fields),*
+                    }
+
+                    impl Add for #sum_name {
+                        type Output = Self;
+                        fn add(self, other: Self) -> Self {
+                            Self {
+                                #(#add_fields),*
+                            }
+                        }
+                    }
+
+                    impl Sub for #sum_name {
+                        type Output = Self;
+                        fn sub(self, other: Self) -> Self {
+                            Self {
+                                #(#sub_fields),*
+                            }
+                        }
+                    }
+
+                    impl Averageable for #name {
+                        type Sum = #sum_name;
+
+                        fn to_sum_repr(self) -> Self::Sum {
+                            let mut sum = #sum_name::default();
+                            match self {
+                                #(#to_sum_arms)*
+                            }
+                            sum
+                        }
+
+                        fn from_sum(sum: Self::Sum, _len: usize) -> Self {
+                            let max = #max_expr;
+                            #(#from_sum_checks)*
+                            #name::#first_variant
+                        }
+                    }
+                }
             } else {
-                quote! {}
+                unreachable!()
             }
         })
         .collect();
 
     quote! {
         #(#impls)*
-    }
-}
-
-fn is_avgable(comp: &Component) -> bool {
-    match &comp.kind {
-        ComponentKind::Single { field, .. } => AVGABLE_PRIMS.contains(&field.as_str()),
-        ComponentKind::Struct { fields } => is_struct_avgable(fields),
-        _ => false,
-    }
-}
-
-/// If all fields in this struct are averageable (numbers, booleans)
-fn is_struct_avgable(fields: &[Field]) -> bool {
-    let mut sum_types = Vec::new();
-    for field in fields {
-        if let Some(sum_type_str) = get_sum_type(&field.r#type) {
-            sum_types.push((field, sum_type_str));
-        } else {
-            return false;
-        }
-    }
-    !sum_types.is_empty()
-}
-
-fn gen_struct_avgable(comp: &Component, fields: &[Field]) -> TokenStream {
-    if !is_struct_avgable(fields) {
-        return quote![];
-    }
-
-    let mut sum_types = Vec::new();
-    for field in fields {
-        let sum_type_str = get_sum_type(&field.r#type).unwrap();
-        sum_types.push((field, sum_type_str));
-    }
-
-    let name = ident(&comp.name);
-    let sum_name = format_ident!("{}Sum", comp.name);
-
-    // FIXME my eyes hurt
-
-    let mut sum_fields = Vec::new();
-    let mut add_fields = Vec::new();
-    let mut sub_fields = Vec::new();
-    let mut to_sum_fields = Vec::new();
-    let mut from_sum_fields = Vec::new();
-
-    for (field, sum_type_str) in &sum_types {
-        let field_name = ident(&field.name);
-        let field_type: TokenStream = field.r#type.parse().unwrap();
-        let sum_type: TokenStream = sum_type_str.parse().unwrap();
-
-        sum_fields.push(quote! { pub #field_name: #sum_type });
-        add_fields.push(quote! { #field_name: self.#field_name + other.#field_name });
-        sub_fields.push(quote! { #field_name: self.#field_name - other.#field_name });
-        to_sum_fields.push(quote! { #field_name: self.#field_name as #sum_type });
-        from_sum_fields.push(if field.r#type == "bool" {
-            quote! { #field_name: (sum.#field_name / len as #sum_type) != 0 }
-        } else if *sum_type_str != field.r#type {
-            quote! { #field_name: (sum.#field_name / len as #sum_type) as #field_type }
-        } else {
-            quote! { #field_name: sum.#field_name / len as #sum_type }
-        });
-    }
-
-    quote! {
-        #[derive(Clone, Debug, Default, BorshSerialize, BorshDeserialize)]
-        pub struct #sum_name {
-            #(#sum_fields),*
-        }
-
-        impl Add for #sum_name {
-            type Output = Self;
-            fn add(self, other: Self) -> Self {
-                #sum_name {
-                    #(#add_fields),*
-                }
-            }
-        }
-
-        impl Sub for #sum_name {
-            type Output = Self;
-            fn sub(self, other: Self) -> Self {
-                #sum_name {
-                    #(#sub_fields),*
-                }
-            }
-        }
-
-        impl Averageable for #name {
-            type Sum = #sum_name;
-
-            fn to_sum_repr(self) -> Self::Sum {
-                #sum_name {
-                    #(#to_sum_fields),*
-                }
-            }
-
-            fn from_sum(sum: Self::Sum, len: usize) -> Self {
-                #name {
-                    #(#from_sum_fields),*
-                }
-            }
-        }
-    }
-}
-
-const AVGABLE_PRIMS: [&str; 13] = [
-    "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "bool",
-];
-
-fn gen_primitives_avgable() -> TokenStream {
-    let impls: Vec<_> = AVGABLE_PRIMS
-        .iter()
-        .map(|typ| gen_primitive_averageable(typ))
-        .collect();
-
-    quote! {
-        #(#impls)*
-    }
-}
-
-fn gen_primitive_averageable(typ_str: &str) -> TokenStream {
-    let name = ident(typ_str);
-    let sum_type_str = get_sum_type(typ_str).unwrap();
-
-    let sum_type: TokenStream = sum_type_str.parse().unwrap();
-    let typ: TokenStream = typ_str.parse().unwrap();
-
-    let from_sum_body = if typ_str == "bool" {
-        quote! { (sum / len as #sum_type) != 0 }
-    } else if sum_type_str != typ_str {
-        quote! { (sum / len as #sum_type) as #typ }
-    } else {
-        quote! { sum / len as #sum_type }
-    };
-
-    quote! {
-        impl Averageable for #name {
-            type Sum = #sum_type;
-
-            fn to_sum_repr(self) -> Self::Sum {
-                self as Self::Sum
-            }
-
-            fn from_sum(sum: Self::Sum, len: usize) -> Self
-            where
-                Self: Sized,
-            {
-                #from_sum_body
-            }
-        }
-    }
-}
-
-/// returns what type to sum with when averaging
-/// IE we can sum up u8's with u8's because it will overflow
-fn get_sum_type(field_type: &str) -> Option<&'static str> {
-    match field_type {
-        "u8" | "u16" | "u32" | "u64" => Some("u64"),
-        "u128" => Some("u128"),
-        "i8" | "i16" | "i32" | "i64" => Some("i64"),
-        "i128" => Some("i128"),
-        "f32" | "f64" => Some("f64"),
-        "bool" => Some("u32"),
-        _ => None,
     }
 }

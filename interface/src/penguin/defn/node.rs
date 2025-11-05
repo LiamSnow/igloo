@@ -1,4 +1,4 @@
-use crate::penguin::*;
+use crate::{penguin::*, types::IglooType};
 use derive_more::Display;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub struct NodeInputFeatureID(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeInputFeature {
-    pub r#type: PenguinType,
+    pub r#type: IglooType,
     /// Value is saved under this ID
     pub id: NodeInputFeatureID,
 }

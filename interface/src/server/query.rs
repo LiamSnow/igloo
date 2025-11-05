@@ -1,6 +1,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::{Component, ComponentType, DeviceID, FloeID, FloeRef, GroupID};
+use crate::{
+    Component, ComponentType,
+    id::{DeviceID, FloeID, FloeRef, GroupID},
+};
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
 pub struct SetQuery {

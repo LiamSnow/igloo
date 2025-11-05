@@ -1,6 +1,9 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
-use crate::penguin::*;
+use crate::{
+    penguin::*,
+    types::{IglooType, IglooValue},
+};
 use serde::{Deserialize, Serialize};
 
 /// PenguinGraph is meant to be a reliable serialization format
@@ -37,7 +40,7 @@ pub struct PenguinNode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PenguinInputValue {
-    pub value: PenguinValue,
+    pub value: IglooValue,
     pub size: Option<(i32, i32)>,
 }
 
@@ -69,33 +72,38 @@ impl PenguinNode {
         if !self.input_feature_values.contains_key(&feature.id) {
             self.input_feature_values.insert(
                 feature.id.clone(),
-                PenguinInputValue::new(PenguinValue::default(&feature.r#type)),
+                PenguinInputValue::new(IglooValue::default(&feature.r#type)),
             );
         }
     }
 
-    pub fn ensure_input_pin_value(&mut self, pin_id: &PenguinPinID, r#type: &PenguinType) {
+    pub fn ensure_input_pin_value(&mut self, pin_id: &PenguinPinID, r#type: &IglooType) {
         if !self.input_pin_values.contains_key(pin_id) {
             self.input_pin_values.insert(
                 pin_id.clone(),
-                PenguinInputValue::new(PenguinValue::default(r#type)),
+                PenguinInputValue::new(IglooValue::default(r#type)),
             );
         }
     }
 }
 
 impl PenguinInputValue {
-    pub fn new(value: PenguinValue) -> Self {
+    pub fn new(value: IglooValue) -> Self {
         Self {
             size: match &value {
-                PenguinValue::Text(_) => Some((100, 20)),
+                IglooValue::Text(_) => Some((100, 20)),
                 _ => None,
             },
             value,
         }
     }
 
-    pub fn set_from_string(&mut self, value: String) -> Result<(), Box<dyn Error>> {
-        self.value.set_from_string(value)
+    pub fn set_from_string(&mut self, value: String) -> bool {
+        if let Some(new) = IglooValue::from_string(&self.value.r#type(), value) {
+            self.value = new;
+            true
+        } else {
+            false
+        }
     }
 }

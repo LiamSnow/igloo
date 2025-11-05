@@ -1,7 +1,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::From;
 
-use crate::{Component, SetQuery, Snapshot, dash::Dashboard};
+use crate::{
+    Component,
+    dash::Dashboard,
+    query::{SetQuery, Snapshot},
+};
 
 /// WASM -> Igloo
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]

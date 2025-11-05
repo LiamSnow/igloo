@@ -1,6 +1,6 @@
 use super::model::*;
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{format_ident, quote};
 use std::{collections::HashSet, env, fs, path::PathBuf};
 use syn::Ident;
 
@@ -10,6 +10,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
     let comp_type = gen_comp_type(comps);
     let helper_funcs = gen_helper_funcs(cmds, comps);
     let str_funcs = gen_str_funcs(comps);
+    let enum_types = gen_enum_types(comps);
     let comps = gen_comps(comps);
     let cmds = gen_cmd_payloads(cmds);
 
@@ -19,6 +20,8 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         use borsh::{BorshSerialize, BorshDeserialize};
         #[cfg(feature = "floe")]
         use tokio::io::AsyncWriteExt;
+        #[cfg(feature = "penguin")]
+        use serde::{Deserialize, Serialize};
 
         pub const MAX_SUPPORTED_COMPONENT: u16 = #max_id;
 
@@ -28,6 +31,8 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         #cmd_ids
 
         #comp_type
+
+        #enum_types
 
         #comps
 
@@ -113,7 +118,7 @@ fn gen_helper_funcs(cmds: &[Command], comps: &[Component]) -> TokenStream {
         .collect();
     quote! {
         #[cfg(feature = "floe")]
-        impl<W: AsyncWriteExt + Unpin> FloeWriter<W> {
+        impl<W: AsyncWriteExt + Unpin> crate::floe::FloeWriter<W> {
             #(#cmds)*
             #(#comps)*
         }
@@ -284,10 +289,9 @@ impl Component {
     fn gen_code(&self) -> TokenStream {
         let doc = self.gen_doc();
         let comp_code = match &self.kind {
-            ComponentKind::Single { field, .. } => self.gen_single(field),
-            ComponentKind::Struct { fields } => self.gen_struct(fields),
-            ComponentKind::Enum { variants } => self.gen_enum(variants),
-            ComponentKind::Marker => quote! {}, // no data
+            ComponentKind::Single { kind, .. } => self.gen_single(kind),
+            ComponentKind::Enum { variants, .. } => self.gen_enum(variants),
+            ComponentKind::Marker { .. } => quote! {}, // no data
         };
         quote! {
             #doc
@@ -296,39 +300,14 @@ impl Component {
     }
 
     pub fn is_marker(&self) -> bool {
-        matches!(self.kind, ComponentKind::Marker)
+        matches!(self.kind, ComponentKind::Marker { .. })
     }
 
-    fn gen_single(&self, field: &str) -> TokenStream {
+    fn gen_single(&self, r#type: &IglooType) -> TokenStream {
         let name = ident(&self.name);
-        let field_type = field
-            .parse::<TokenStream>()
-            .unwrap_or_else(|_| panic!("Failed to parse type: {}", field));
+        let field_type = format_ident!("Igloo{type:?}");
         quote! {
             pub type #name = #field_type;
-        }
-    }
-
-    fn gen_struct(&self, fields: &[Field]) -> TokenStream {
-        let name = ident(&self.name);
-
-        let field_defs: Vec<_> = fields
-            .iter()
-            .map(|field| {
-                let field_name = ident(&field.name);
-                let field_type = field
-                    .r#type
-                    .parse::<TokenStream>()
-                    .unwrap_or_else(|_| panic!("Failed to parse type: {}", field.r#type));
-                quote! { pub #field_name: #field_type }
-            })
-            .collect();
-
-        quote! {
-            #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
-            pub struct #name {
-                #(#field_defs),*
-            }
         }
     }
 
@@ -403,6 +382,7 @@ impl Component {
 
         quote! {
             #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+            #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
             #[borsh(use_discriminant = true)]
             #[repr(u8)]
             pub enum #name {
@@ -468,7 +448,118 @@ impl Component {
     }
 }
 
-/// ex. maps `Int` -> `SET_INT`
+fn gen_enum_types(comps: &[Component]) -> TokenStream {
+    let enum_comps: Vec<_> = comps
+        .iter()
+        .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
+        .collect();
+
+    let type_variants: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! { #name }
+        })
+        .collect();
+
+    let value_variants: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! { #name(#name) }
+        })
+        .collect();
+
+    let from_string_arms: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                IglooEnumType::#name =>
+                    #name::try_from(s).ok().map(IglooEnumValue::#name)
+            }
+        })
+        .collect();
+
+    let default_arms: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            if let ComponentKind::Enum { variants, .. } = &comp.kind {
+                let first_variant = ident(&variants[0].name);
+                quote! {
+                    IglooEnumType::#name => IglooEnumValue::#name(#name::#first_variant)
+                }
+            } else {
+                unreachable!()
+            }
+        })
+        .collect();
+
+    let get_type_arms: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                IglooEnumValue::#name(_) => IglooEnumType::#name
+            }
+        })
+        .collect();
+
+    let display_arms: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                IglooEnumValue::#name(v) => write!(f, "{}", v)
+            }
+        })
+        .collect();
+
+    quote! {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize)]
+        #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
+        pub enum IglooEnumType {
+            #(#type_variants),*
+        }
+
+        #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+        #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
+        pub enum IglooEnumValue {
+            #(#value_variants),*
+        }
+
+        impl IglooEnumValue {
+            pub fn from_string(enum_type: &IglooEnumType, s: String) -> Option<Self> {
+                match enum_type {
+                    #(#from_string_arms),*
+                }
+            }
+
+            pub fn default(enum_type: &IglooEnumType) -> Self {
+                match enum_type {
+                    #(#default_arms),*
+                }
+            }
+
+            pub fn get_type(&self) -> IglooEnumType {
+                match self {
+                    #(#get_type_arms),*
+                }
+            }
+        }
+
+        impl std::fmt::Display for IglooEnumValue {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    #(#display_arms),*
+                }
+            }
+        }
+    }
+}
+
+/// ex. maps `Integer` -> `SET_INTEGER`
 pub fn comp_name_to_cmd_name(comp_name: &str) -> String {
     format!("WRITE_{}", upper_camel_to_screaming_snake(comp_name))
 }

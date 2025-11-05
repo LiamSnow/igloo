@@ -1,6 +1,5 @@
 use std::{collections::HashSet, env, path::Path};
 
-mod deriver;
 mod model;
 mod rust;
 mod server;
@@ -13,12 +12,9 @@ pub fn main() {
     println!("cargo:rerun-if-changed={COMPONENTS_FILE}");
     println!("cargo:rerun-if-changed={PROTOCOL_FILE}");
 
-    // read toml files
     let man_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let cmds = ProtocolConfig::read(Path::new(&man_dir).join(PROTOCOL_FILE)).commands;
-    let mut comps = ComponentsConfig::read(Path::new(&man_dir).join(COMPONENTS_FILE)).components;
-
-    deriver::add_derived_comps(&mut comps);
+    let comps = ComponentsConfig::read(Path::new(&man_dir).join(COMPONENTS_FILE)).components;
 
     validate_component_ids(&comps);
     validate_command_ids(&cmds);

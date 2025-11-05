@@ -1,114 +1,103 @@
-# Primitives 
-[[components]]
-name = "Int"
-id = 0 # NEVER change this ID or versions will be incompatible
-derive_bound_types = [1, 2, 3] # makes IntMin (id=1), IntMax (id=2), IntStep (id=3)
-derive_inner_list_type = 4 # makes IntList, id=4
-kind = "single"
-field = "i32"
-desc = "signed 32-bit integer"
+#! components.toml describes all components in Igloo
+#! Using Rust build code it will generate
+#! types and functions for all components
+#!
+#! In order to ensure backwards compatbility, never change IDs (append-only)
+
+# == Primitives == #
 
 [[components]]
-name = "Uint"
-id = 5
-derive_bound_types = [6, 7, 8]
-derive_inner_list_type = 9
-kind = "single"
-field = "u32"
-desc = "unsigned 32-bit integer"
+name = "Integer"
+id = 0
+kind = "Integer"
 
 [[components]]
-name = "Long"
-id = 10
-derive_bound_types = [11, 12, 13]
-derive_inner_list_type = 14
-kind = "single"
-field = "i64"
-desc = "signed 64-bit integer"
-
-[[components]]
-name = "Float"
-id = 15
-derive_bound_types = [16, 17, 18]
-derive_inner_list_type = 19
-kind = "single"
-field = "f32"
-desc = "32-bit floating point"
-
-[[components]]
-name = "Double"
-id = 20
-derive_bound_types = [21, 22, 23]
-derive_inner_list_type = 24
-kind = "single"
-field = "f64"
-desc = "64-bit floating point"
-
-[[components]]
-name = "Bool"
-id = 25
-derive_inner_list_type = 26
-kind = "single"
-field = "bool"
+name = "Real"
+id = 1
+kind = "Real"
 
 [[components]]
 name = "Text"
-id = 27
-derive_inner_list_type = 28
-derive_string_bound_types = [29, 30, 31] # makes TextMaxLength, TextMinLength, TextPattern
-kind = "single"
-field = "String"
+id = 2
+kind = "Text"
 
 [[components]]
-name = "Trigger"
-id = 62
-kind = "marker"
-desc = "No payload event trigger"
+name = "Boolean"
+id = 3
+kind = "Boolean"
 
-# Date/Time types
+[[components]]
+name = "Color"
+id = 4
+kind = "Color"
+
 [[components]]
 name = "Date"
-id = 32
-derive_list_type = 33
-kind = "struct"
-fields = [
-    { name = "year", type = "u16" },
-    { name = "month", type = "u8" },
-    { name = "day", type = "u8" }
-]
+id = 5
+kind = "Date"
 
 [[components]]
 name = "Time"
-id = 34
-derive_list_type = 35
-kind = "struct"
-fields = [
-    { name = "hour", type = "u8" },
-    { name = "minute", type = "u8" },
-    { name = "second", type = "u8" }
-]
+id = 6
+kind = "Time"
 
 [[components]]
-name = "DateTime"
-id = 36
-derive_list_type = 37
-kind = "single"
-field = "u32"
-desc = "A DateTime represented as a Unix epoch"
+name = "IntegerList"
+id = 7
+kind = "IntegerList"
+
+[[components]]
+name = "RealList"
+id = 8
+kind = "RealList"
+
+[[components]]
+name = "TextList"
+id = 9
+kind = "TextList"
+
+[[components]]
+name = "BooleanList"
+id = 10
+kind = "BooleanList"
+
+[[components]]
+name = "ColorList"
+id = 11
+kind = "ColorList"
+
+[[components]]
+name = "DateList"
+id = 12
+kind = "DateList"
+
+[[components]]
+name = "TimeList"
+id = 13
+kind = "TimeList"
+
+# == End Primitives == #
+
+[[components]]
+name = "Trigger"
+id = 14
+
+[[components]]
+name = "Timestamp"
+id = 15
+kind = "Integer"
+desc = "Unix epoch"
 
 [[components]]
 name = "Duration"
-id = 38
-derive_list_type = 39
-kind = "single"
-field = "i64"
-desc = "A signed duration, represented as seconds"
+id = 16
+kind = "Integer"
+desc = "Number of seconds"
 
 [[components]]
 name = "Weekday"
-id = 54
-kind = "enum"
-derive_list_type = 84
+id = 17
+kind = "Enum"
 variants = [
     { id = 0, name = "Sunday", aliases = ["sunday", "sun"] },
     { id = 1, name = "Monday", aliases = ["monday", "mon", "m"] },
@@ -122,9 +111,7 @@ variants = [
 # Light
 [[components]]
 name = "Light"
-id = 40
-kind = "marker"
-desc = ""
+id = 18
 related = [
     { name = "Switch", reason = "on/off control" },
     { name = "Dimmer", reason = "brightness control" },
@@ -135,31 +122,19 @@ related = [
 
 [[components]]
 name = "Switch"
-id = 41
-kind = "single"
-field = "bool"
+id = 19
+kind = "Boolean"
 
 [[components]]
 name = "Dimmer"
-id = 42
-kind = "single"
-field = "f32"
-desc = "0.0 (0%) - 1.0 (100%)"
-
-[[components]]
-name = "Color"
-id = 43
-kind = "struct"
-fields = [
-    { name = "r", type = "u8" },
-    { name = "g", type = "u8" },
-    { name = "b", type = "u8" }
-]
+id = 20
+kind = "Real"
+desc = "Range: 0.0 (0%) - 1.0 (100%)"
 
 [[components]]
 name = "ColorMode"
-id = 44
-kind = "enum"
+id = 21
+kind = "Enum"
 variants = [
     { id = 0, name = "RGB" },
     { id = 1, name = "Temperature" }
@@ -167,43 +142,34 @@ variants = [
 
 [[components]]
 name = "ColorTemperature"
-id = 45
-kind = "single"
-field = "u16"
-derive_bound_types = [46, 47, 48]
-desc = "Kelvin"
+id = 22
+kind = "Integer"
+desc = "Unit: Degrees Kelvin"
 
-
-# Other
 [[components]]
 name = "Volume"
-id = 49
-kind = "single"
-field = "f32"
-desc = "0.0 (0%) - 1.0 (100%)"
+id = 23
+kind = "Real"
+desc = "Range: 0.0 (0%) - 1.0 (100%)"
 
 [[components]]
 name = "Muted"
-id = 50
-kind = "single"
-field = "bool"
+id = 24
+kind = "Boolean"
 
 [[components]]
 name = "Config"
-id = 51
-kind = "marker"
+id = 25
 desc = "this entity is for configuration of the device"
 
 [[components]]
 name = "Diagnostic"
-id = 52
-kind = "marker"
+id = 26
 desc = "this entity is for diagnosing the device"
 
 [[components]]
 name = "TextSelect"
-id = 53
-kind = "marker"
+id = 27
 desc = "Usually used in a dropdown select menu"
 related = [
     { name = "Text", reason = "currently selection option" },
@@ -212,13 +178,11 @@ related = [
 
 [[components]]
 name = "Siren"
-id = 55
-kind = "marker"
+id = 28
 
 [[components]]
 name = "Sensor"
-id = 56
-kind = "marker"
+id = 29
 desc = "Marks this entity as a Sensor, which usually means its immutable."
 
 # Metadata 
@@ -226,28 +190,25 @@ desc = "Marks this entity as a Sensor, which usually means its immutable."
 # and might not make sense in Igloo
 [[components]]
 name = "Icon"
-id = 57
-kind = "single"
-field = "String"
+id = 30
+kind = "Text"
 desc = "Example: \"mdi:timer-outline\""
 
 [[components]]
 name = "AccuracyDecimals"
-id = 58
-kind = "single"
-field = "i32"
+id = 31
+kind = "Integer"
 
 [[components]]
 name = "DeviceClass"
-id = 59
-kind = "single"
-field = "String"
-desc = "currently just for ESPHome"
+id = 32
+kind = "Text"
+desc = "Currently just for ESPHome"
 
 [[components]]
 name = "SensorStateClass"
-id = 60
-kind = "enum"
+id = 33
+kind = "Enum"
 variants = [
     { id = 0, name = "Measurement" },
     { id = 1, name = "TotalIncreasing" },
@@ -256,8 +217,8 @@ variants = [
 
 [[components]]
 name = "Unit"
-id = 61
-kind = "enum"
+id = 34
+kind = "Enum"
 variants = [
     # Apparent power units
     { id = 0, name = "VoltAmperes", aliases = ["VA"] },
@@ -436,9 +397,8 @@ variants = [
 
 [[components]]
 name = "FanOscillation"
-id = 63
-derive_supported_type = 64 # makes SupportedFanOscillations
-kind = "enum"
+id = 35
+kind = "Enum"
 variants = [
     { id = 0, name = "Off", aliases = ["off"] },
     { id = 1, name = "On", aliases = ["on"] },
@@ -449,9 +409,8 @@ variants = [
 
 [[components]]
 name = "FanDirection"
-id = 65
-derive_supported_type = 66
-kind = "enum"
+id = 36
+kind = "Enum"
 variants = [
     { id = 0, name = "Forward", aliases = ["forward"] },
     { id = 1, name = "Reverse", aliases = ["reverse"] },
@@ -459,9 +418,8 @@ variants = [
 
 [[components]]
 name = "FanSpeed"
-id = 67
-kind = "enum"
-derive_supported_type = 68
+id = 37
+kind = "Enum"
 variants = [
     { id = 0, name = "On", aliases = ["on"] },
     { id = 1, name = "Off", aliases = ["off"] },
@@ -477,9 +435,8 @@ variants = [
 
 [[components]]
 name = "ClimateMode"
-id = 69
-kind = "enum"
-derive_supported_type = 70
+id = 38
+kind = "Enum"
 variants = [
     { id = 0, name = "Off", aliases = ["off"] },
     { id = 1, name = "Auto", aliases = ["auto"] },
@@ -493,9 +450,8 @@ variants = [
 
 [[components]]
 name = "LockState"
-id = 71
-kind = "enum"
-derive_supported_type = 72
+id = 39
+kind = "Enum"
 variants = [
     { id = 0, name = "Unknown", aliases = ["unknown"] },
     { id = 1, name = "Locked", aliases = ["locked"] },
@@ -507,9 +463,8 @@ variants = [
 
 [[components]]
 name = "MediaState"
-id = 73
-kind = "enum"
-derive_supported_type = 74
+id = 40
+kind = "Enum"
 variants = [
     { id = 0, name = "Unknown", aliases = ["unknown"] },
     { id = 1, name = "Idle", aliases = ["idle"] },
@@ -520,9 +475,7 @@ variants = [
 # Cover
 [[components]]
 name = "Cover"
-id = 75
-kind = "marker"
-desc = ""
+id = 41
 related = [
     { name = "CoverState", reason = "current state" },
     { name = "Position", reason = "position of the cover" },
@@ -531,9 +484,8 @@ related = [
 
 [[components]]
 name = "CoverState"
-id = 76
-kind = "enum"
-derive_supported_type = 77
+id = 42
+kind = "Enum"
 variants = [
     { id = 0, name = "Idle", aliases = ["idle"] },
     { id = 1, name = "Opening", aliases = ["opening"] },
@@ -545,21 +497,18 @@ variants = [
 
 [[components]]
 name = "Position"
-id = 78
-kind = "single"
-field = "f32"
+id = 43
+kind = "Real"
 
 [[components]]
 name = "Tilt"
-id = 79
-kind = "single"
-field = "f32"
+id = 44
+kind = "Real"
 
 # Valve
 [[components]]
 name = "Valve"
-id = 80
-kind = "marker"
+id = 45
 desc = ""
 related = [
     { name = "ValveState", reason = "current state" },
@@ -568,9 +517,8 @@ related = [
 
 [[components]]
 name = "ValveState"
-id = 81
-kind = "enum"
-derive_supported_type = 82
+id = 46
+kind = "Enum"
 variants = [
     { id = 0, name = "Idle", aliases = ["idle"] },
     { id = 1, name = "Opening", aliases = ["opening", "is_opening"] },
@@ -580,8 +528,8 @@ variants = [
 
 [[components]]
 name = "AlarmState"
-id = 83
-kind = "enum"
+id = 47
+kind = "Enum"
 variants = [
     { id = 0, name = "Disarmed", aliases = ["disarmed"] },
     { id = 1, name = "ArmedHome", aliases = ["armed_home"] },

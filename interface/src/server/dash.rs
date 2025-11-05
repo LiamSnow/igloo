@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::{Display, From};
 
-use crate::{Component, ComponentType, QueryFilter, QueryTarget};
+use crate::{
+    Component, ComponentType,
+    query::{QueryFilter, QueryTarget},
+};
 
 // TODO we need to experiment with different systems
 // for sizing, margins, and padding. For now we will

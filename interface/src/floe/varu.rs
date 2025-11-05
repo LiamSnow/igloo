@@ -1,7 +1,7 @@
 use bytes::{Buf, BytesMut};
 use tokio::io::AsyncWriteExt;
 
-use crate::{FloeCodec, FloeWriter};
+use crate::floe::{FloeWriter, codec::FloeCodec};
 
 impl FloeCodec {
     /// [Docs](https://sqlite.org/src4/doc/trunk/www/varint.wiki)

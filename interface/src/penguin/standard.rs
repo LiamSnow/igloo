@@ -1,3 +1,5 @@
+use crate::types::IglooType;
+
 use super::*;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -10,7 +12,7 @@ pub fn std_library() -> PenguinLibrary {
         PenguinNodeDefn {
             version: 1,
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Text,
+                r#type: IglooType::Text,
                 id: NodeInputFeatureID::from_str("Value"),
             }],
             ..Default::default()
@@ -22,7 +24,7 @@ pub fn std_library() -> PenguinLibrary {
         PenguinNodeDefn {
             version: 1,
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Text,
+                r#type: IglooType::Text,
                 id: NodeInputFeatureID::from_str("Title"),
             }],
             is_section: true,
@@ -57,7 +59,7 @@ pub fn std_library() -> PenguinLibrary {
                 ),
                 (
                     PenguinPinID::from_str("Message"),
-                    PenguinPinDefn::named_val(PenguinType::Text),
+                    PenguinPinDefn::named_val(IglooType::Text),
                 ),
             ]),
             outputs: IndexMap::from([(
@@ -81,7 +83,7 @@ pub fn std_library() -> PenguinLibrary {
                 ),
                 (
                     PenguinPinID::from_str("Condition"),
-                    PenguinPinDefn::named_val(PenguinType::Bool),
+                    PenguinPinDefn::named_val(IglooType::Boolean),
                 ),
             ]),
             outputs: IndexMap::from([
@@ -139,10 +141,10 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Text,
+                r#type: IglooType::Text,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -155,10 +157,10 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Bool,
+                r#type: IglooType::Boolean,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -171,10 +173,10 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Int,
+                r#type: IglooType::Integer,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -187,10 +189,10 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Real,
+                r#type: IglooType::Real,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -203,10 +205,10 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Value"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: PenguinType::Color,
+                r#type: IglooType::Color,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -223,11 +225,11 @@ pub fn std_library() -> PenguinLibrary {
             desc: "Logical AND".to_string(),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input {{2..10}}"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -243,11 +245,11 @@ pub fn std_library() -> PenguinLibrary {
             desc: "Logical OR".to_string(),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input {{2..10}}"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -261,11 +263,11 @@ pub fn std_library() -> PenguinLibrary {
             icon_bg: true,
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -280,16 +282,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                    PenguinPinDefn::unnamed_val(IglooType::Boolean),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                    PenguinPinDefn::unnamed_val(IglooType::Boolean),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -304,16 +306,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                    PenguinPinDefn::unnamed_val(IglooType::Boolean),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                    PenguinPinDefn::unnamed_val(IglooType::Boolean),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -329,11 +331,11 @@ pub fn std_library() -> PenguinLibrary {
             desc: "Add integers".to_string(),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input {{2..10}}"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             ..Default::default()
         },
@@ -348,16 +350,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             ..Default::default()
         },
@@ -373,11 +375,11 @@ pub fn std_library() -> PenguinLibrary {
             desc: "Multiply integers".to_string(),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input {{2..10}}"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             ..Default::default()
         },
@@ -392,16 +394,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             ..Default::default()
         },
@@ -416,16 +418,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             ..Default::default()
         },
@@ -440,16 +442,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -464,16 +466,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -488,16 +490,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -512,16 +514,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -536,16 +538,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -560,16 +562,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Int),
+                    PenguinPinDefn::unnamed_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -585,11 +587,11 @@ pub fn std_library() -> PenguinLibrary {
             desc: "Add reals".to_string(),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input {{2..10}}"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             ..Default::default()
         },
@@ -604,16 +606,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             ..Default::default()
         },
@@ -629,11 +631,11 @@ pub fn std_library() -> PenguinLibrary {
             desc: "Multiply reals".to_string(),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input {{2..10}}"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             ..Default::default()
         },
@@ -648,16 +650,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Real),
+                PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             ..Default::default()
         },
@@ -672,16 +674,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -696,16 +698,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -720,16 +722,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -744,16 +746,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -768,16 +770,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -792,16 +794,16 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::unnamed_val(PenguinType::Real),
+                    PenguinPinDefn::unnamed_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
@@ -816,20 +818,20 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("A"),
-                    PenguinPinDefn::named_val(PenguinType::Color),
+                    PenguinPinDefn::named_val(IglooType::Color),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::named_val(PenguinType::Color),
+                    PenguinPinDefn::named_val(IglooType::Color),
                 ),
                 (
                     PenguinPinID::from_str("Ratio"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             ..Default::default()
         },
@@ -843,20 +845,20 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("R"),
-                    PenguinPinDefn::named_val(PenguinType::Int),
+                    PenguinPinDefn::named_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("G"),
-                    PenguinPinDefn::named_val(PenguinType::Int),
+                    PenguinPinDefn::named_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::named_val(PenguinType::Int),
+                    PenguinPinDefn::named_val(IglooType::Integer),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             ..Default::default()
         },
@@ -869,20 +871,20 @@ pub fn std_library() -> PenguinLibrary {
             title_bar: Some("To RGB".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             outputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("R"),
-                    PenguinPinDefn::named_val(PenguinType::Int),
+                    PenguinPinDefn::named_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("G"),
-                    PenguinPinDefn::named_val(PenguinType::Int),
+                    PenguinPinDefn::named_val(IglooType::Integer),
                 ),
                 (
                     PenguinPinID::from_str("B"),
-                    PenguinPinDefn::named_val(PenguinType::Int),
+                    PenguinPinDefn::named_val(IglooType::Integer),
                 ),
             ]),
             ..Default::default()
@@ -897,20 +899,20 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("H"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("S"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("L"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             ..Default::default()
         },
@@ -923,20 +925,20 @@ pub fn std_library() -> PenguinLibrary {
             title_bar: Some("To HSL".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             outputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("H"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("S"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("L"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
             ]),
             ..Default::default()
@@ -951,20 +953,20 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("H"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("S"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("V"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             ..Default::default()
         },
@@ -977,20 +979,20 @@ pub fn std_library() -> PenguinLibrary {
             title_bar: Some("To HSV".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Color),
+                PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             outputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("H"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("S"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
                 (
                     PenguinPinID::from_str("V"),
-                    PenguinPinDefn::named_val(PenguinType::Real),
+                    PenguinPinDefn::named_val(IglooType::Real),
                 ),
             ]),
             ..Default::default()
@@ -1004,11 +1006,11 @@ pub fn std_library() -> PenguinLibrary {
             title_bar: Some("Length".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Int),
+                PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             ..Default::default()
         },
@@ -1021,11 +1023,11 @@ pub fn std_library() -> PenguinLibrary {
             title_bar: Some("To Uppercase".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             ..Default::default()
         },
@@ -1038,11 +1040,11 @@ pub fn std_library() -> PenguinLibrary {
             title_bar: Some("To Lowercase".to_string()),
             inputs: IndexMap::from([(
                 PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             ..Default::default()
         },
@@ -1056,20 +1058,20 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("Text"),
-                    PenguinPinDefn::named_val(PenguinType::Text),
+                    PenguinPinDefn::named_val(IglooType::Text),
                 ),
                 (
                     PenguinPinID::from_str("Find"),
-                    PenguinPinDefn::named_val(PenguinType::Text),
+                    PenguinPinDefn::named_val(IglooType::Text),
                 ),
                 (
                     PenguinPinID::from_str("Replace"),
-                    PenguinPinDefn::named_val(PenguinType::Text),
+                    PenguinPinDefn::named_val(IglooType::Text),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Text),
+                PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             ..Default::default()
         },
@@ -1083,44 +1085,44 @@ pub fn std_library() -> PenguinLibrary {
             inputs: IndexMap::from([
                 (
                     PenguinPinID::from_str("Text"),
-                    PenguinPinDefn::named_val(PenguinType::Text),
+                    PenguinPinDefn::named_val(IglooType::Text),
                 ),
                 (
                     PenguinPinID::from_str("Pattern"),
-                    PenguinPinDefn::named_val(PenguinType::Text),
+                    PenguinPinDefn::named_val(IglooType::Text),
                 ),
             ]),
             outputs: IndexMap::from([(
                 PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed_val(PenguinType::Bool),
+                PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             ..Default::default()
         },
     );
 
-    add_cast(&mut nodes, PenguinType::Text, PenguinType::Int);
-    add_cast(&mut nodes, PenguinType::Real, PenguinType::Int);
-    add_cast(&mut nodes, PenguinType::Bool, PenguinType::Int);
+    add_cast(&mut nodes, IglooType::Text, IglooType::Integer);
+    add_cast(&mut nodes, IglooType::Real, IglooType::Integer);
+    add_cast(&mut nodes, IglooType::Boolean, IglooType::Integer);
 
-    add_cast(&mut nodes, PenguinType::Text, PenguinType::Real);
-    add_cast(&mut nodes, PenguinType::Int, PenguinType::Real);
-    add_cast(&mut nodes, PenguinType::Bool, PenguinType::Real);
+    add_cast(&mut nodes, IglooType::Text, IglooType::Real);
+    add_cast(&mut nodes, IglooType::Integer, IglooType::Real);
+    add_cast(&mut nodes, IglooType::Boolean, IglooType::Real);
 
-    add_cast(&mut nodes, PenguinType::Text, PenguinType::Bool);
-    add_cast(&mut nodes, PenguinType::Int, PenguinType::Bool);
-    add_cast(&mut nodes, PenguinType::Real, PenguinType::Bool);
+    add_cast(&mut nodes, IglooType::Text, IglooType::Boolean);
+    add_cast(&mut nodes, IglooType::Integer, IglooType::Boolean);
+    add_cast(&mut nodes, IglooType::Real, IglooType::Boolean);
 
-    add_cast(&mut nodes, PenguinType::Int, PenguinType::Text);
-    add_cast(&mut nodes, PenguinType::Real, PenguinType::Text);
-    add_cast(&mut nodes, PenguinType::Bool, PenguinType::Text);
-    add_cast(&mut nodes, PenguinType::Color, PenguinType::Text);
+    add_cast(&mut nodes, IglooType::Integer, IglooType::Text);
+    add_cast(&mut nodes, IglooType::Real, IglooType::Text);
+    add_cast(&mut nodes, IglooType::Boolean, IglooType::Text);
+    add_cast(&mut nodes, IglooType::Color, IglooType::Text);
 
     add_reroute(&mut nodes, PenguinPinType::Flow);
-    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Int));
-    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Real));
-    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Text));
-    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Bool));
-    add_reroute(&mut nodes, PenguinPinType::Value(PenguinType::Color));
+    add_reroute(&mut nodes, PenguinPinType::Value(IglooType::Integer));
+    add_reroute(&mut nodes, PenguinPinType::Value(IglooType::Real));
+    add_reroute(&mut nodes, PenguinPinType::Value(IglooType::Text));
+    add_reroute(&mut nodes, PenguinPinType::Value(IglooType::Boolean));
+    add_reroute(&mut nodes, PenguinPinType::Value(IglooType::Color));
 
     PenguinLibrary { nodes }
 }
@@ -1145,7 +1147,7 @@ fn add_reroute(nodes: &mut HashMap<String, PenguinNodeDefn>, pin_type: PenguinPi
     );
 }
 
-fn add_cast(nodes: &mut HashMap<String, PenguinNodeDefn>, from: PenguinType, to: PenguinType) {
+fn add_cast(nodes: &mut HashMap<String, PenguinNodeDefn>, from: IglooType, to: IglooType) {
     nodes.insert(
         from.cast_name(to).unwrap(),
         PenguinNodeDefn {
