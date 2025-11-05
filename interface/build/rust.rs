@@ -18,6 +18,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use borsh::{BorshSerialize, BorshDeserialize};
+        pub use crate::types::*;
         #[cfg(feature = "floe")]
         use tokio::io::AsyncWriteExt;
         #[cfg(feature = "penguin")]
