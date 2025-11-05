@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BytesMut;
 use igloo_interface::{
-    DESELECT_ENTITY, FloeWriterDefault, SELECT_ENTITY, SelectEntity, StartTransaction,
+    DESELECT_ENTITY, SELECT_ENTITY, SelectEntity, StartTransaction, floe::FloeWriterDefault,
 };
 use prost::Message;
 use std::{

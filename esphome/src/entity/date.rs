@@ -6,7 +6,9 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{DESELECT_ENTITY, Date, END_TRANSACTION, FloeWriterDefault, WRITE_DATE};
+use igloo_interface::{
+    DESELECT_ENTITY, Date, END_TRANSACTION, WRITE_DATE, floe::FloeWriterDefault,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesDateResponse {

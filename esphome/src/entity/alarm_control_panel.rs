@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use igloo_interface::{
-    AlarmState, DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_ALARM_STATE, WRITE_TEXT,
+    AlarmState, DESELECT_ENTITY, END_TRANSACTION, Text, WRITE_ALARM_STATE, WRITE_TEXT,
+    floe::FloeWriterDefault,
 };
 
 use super::{EntityRegister, add_entity_category, add_icon};
@@ -93,7 +94,7 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_TEXT => {
-                let code: String = borsh::from_slice(&payload)?;
+                let code: Text = borsh::from_slice(&payload)?;
                 req.code = code;
             }
 

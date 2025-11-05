@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{api, entity::EntityUpdate};
 use async_trait::async_trait;
-use igloo_interface::FloeWriterDefault;
+use igloo_interface::floe::FloeWriterDefault;
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesSensorResponse {
@@ -27,7 +27,9 @@ impl EntityRegister for crate::api::ListEntitiesSensorResponse {
         add_device_class(writer, self.device_class).await?;
         add_unit(writer, self.unit_of_measurement).await?;
         writer.sensor().await?;
-        writer.accuracy_decimals(&self.accuracy_decimals).await?;
+        writer
+            .accuracy_decimals(&(self.accuracy_decimals as i64))
+            .await?;
         Ok(())
     }
 }
@@ -43,6 +45,6 @@ impl EntityUpdate for api::SensorStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.float(&self.state).await
+        writer.real(&(self.state as f64)).await
     }
 }

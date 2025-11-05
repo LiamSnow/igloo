@@ -1,13 +1,11 @@
 use async_trait::async_trait;
 use igloo_interface::{
-    ClimateMode, DESELECT_ENTITY, END_TRANSACTION, FanOscillation, FanSpeed, FloeWriterDefault,
-    WRITE_CLIMATE_MODE, WRITE_FAN_OSCILLATION, WRITE_FAN_SPEED, WRITE_FLOAT, WRITE_TEXT,
+    ClimateMode, DESELECT_ENTITY, END_TRANSACTION, FanOscillation, FanSpeed, Real, Text,
+    WRITE_CLIMATE_MODE, WRITE_FAN_OSCILLATION, WRITE_FAN_SPEED, WRITE_REAL, WRITE_TEXT,
+    floe::FloeWriterDefault,
 };
 
-use super::{
-    EntityRegister, add_climate_modes, add_entity_category, add_f32_bounds, add_fan_oscillations,
-    add_fan_speeds, add_icon,
-};
+use super::{EntityRegister, add_entity_category, add_icon};
 use crate::{
     api,
     device::{Device, DeviceError},
@@ -26,7 +24,7 @@ impl EntityRegister for crate::api::ListEntitiesClimateResponse {
     async fn register(
         self,
         device: &mut crate::device::Device,
-        writer: &mut igloo_interface::FloeWriterDefault,
+        writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
             .register_entity(
@@ -39,18 +37,18 @@ impl EntityRegister for crate::api::ListEntitiesClimateResponse {
 
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
-        add_f32_bounds(
-            writer,
-            self.visual_min_temperature,
-            self.visual_max_temperature,
-            Some(self.visual_target_temperature_step),
-        )
-        .await?;
+        // add_f32_bounds(
+        //     writer,
+        //     self.visual_min_temperature,
+        //     self.visual_max_temperature,
+        //     Some(self.visual_target_temperature_step),
+        // )
+        // .await?;
 
-        add_climate_modes(writer, self.supported_modes()).await?;
+        // add_climate_modes(writer, self.supported_modes()).await?;
 
-        add_fan_speeds(writer, self.supported_fan_modes()).await?;
-        add_fan_oscillations(writer, self.supported_swing_modes()).await?;
+        // add_fan_speeds(writer, self.supported_fan_modes()).await?;
+        // add_fan_oscillations(writer, self.supported_swing_modes()).await?;
 
         writer.text_select().await?;
         writer
@@ -74,7 +72,7 @@ impl EntityUpdate for api::ClimateStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.float(&self.target_temperature).await?;
+        writer.real(&(self.target_temperature as f64)).await?;
 
         writer.climate_mode(&self.mode().as_igloo()).await?;
 
@@ -199,14 +197,14 @@ pub async fn process(
                 req.swing_mode = fan_oscillation_to_swing(&oscillation).into();
             }
 
-            WRITE_FLOAT => {
-                let temperature: f32 = borsh::from_slice(&payload)?;
+            WRITE_REAL => {
+                let temperature: Real = borsh::from_slice(&payload)?;
                 req.has_target_temperature = true;
-                req.target_temperature = temperature;
+                req.target_temperature = temperature as f32;
             }
 
             WRITE_TEXT => {
-                let text: String = borsh::from_slice(&payload)?;
+                let text: Text = borsh::from_slice(&payload)?;
                 req.has_custom_preset = true;
                 req.custom_preset = text;
             }

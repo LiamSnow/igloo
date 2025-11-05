@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use igloo_interface::FloeWriterDefault;
+use igloo_interface::floe::FloeWriterDefault;
 
 use crate::{api, entity::EntityUpdate, model::EntityType};
 
@@ -34,6 +34,6 @@ impl EntityUpdate for api::BinarySensorStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.bool(&self.state).await
+        writer.boolean(&self.state).await
     }
 }

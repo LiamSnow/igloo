@@ -1,11 +1,11 @@
-use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, DESELECT_ENTITY, END_TRANSACTION};
-use super::{add_entity_category, add_icon, add_device_class, EntityRegister};
+use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
 use crate::{
     api,
     device::{Device, DeviceError},
     model::MessageType,
 };
+use async_trait::async_trait;
+use igloo_interface::{DESELECT_ENTITY, END_TRANSACTION, floe::FloeWriterDefault};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesButtonResponse {
@@ -15,7 +15,12 @@ impl EntityRegister for crate::api::ListEntitiesButtonResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Button)
+            .register_entity(
+                writer,
+                &self.name,
+                self.key,
+                crate::model::EntityType::Button,
+            )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use igloo_interface::{
-    CoverState, DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_COVER_STATE,
-    WRITE_POSITION, WRITE_TILT,
+    CoverState, DESELECT_ENTITY, END_TRANSACTION, Position, Tilt, WRITE_COVER_STATE,
+    WRITE_POSITION, WRITE_TILT, floe::FloeWriterDefault,
 };
 
 use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
@@ -52,8 +52,8 @@ impl EntityUpdate for api::CoverStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.position(&self.position).await?;
-        writer.tilt(&self.tilt).await?;
+        writer.position(&(self.position as f64)).await?;
+        writer.tilt(&(self.tilt as f64)).await?;
         writer
             .cover_state(&self.current_operation().as_igloo())
             .await
@@ -84,15 +84,15 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_POSITION => {
-                let position: f32 = borsh::from_slice(&payload)?;
+                let position: Position = borsh::from_slice(&payload)?;
                 req.has_position = true;
-                req.position = position;
+                req.position = position as f32;
             }
 
             WRITE_TILT => {
-                let tilt: f32 = borsh::from_slice(&payload)?;
+                let tilt: Tilt = borsh::from_slice(&payload)?;
                 req.has_tilt = true;
-                req.tilt = tilt;
+                req.tilt = tilt as f32;
             }
 
             WRITE_COVER_STATE => {

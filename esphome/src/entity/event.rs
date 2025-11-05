@@ -1,6 +1,6 @@
+use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
 use async_trait::async_trait;
-use igloo_interface::FloeWriterDefault;
-use super::{add_entity_category, add_icon, add_device_class, EntityRegister};
+use igloo_interface::floe::FloeWriterDefault;
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesEventResponse {
@@ -10,7 +10,12 @@ impl EntityRegister for crate::api::ListEntitiesEventResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Event)
+            .register_entity(
+                writer,
+                &self.name,
+                self.key,
+                crate::model::EntityType::Event,
+            )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;

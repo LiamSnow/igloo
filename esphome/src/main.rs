@@ -2,7 +2,7 @@ use crate::device::{ConnectionParams, Device};
 use futures_util::StreamExt;
 use igloo_interface::{
     CreateDevice, DEVICE_CREATED, DeviceCreated, END_TRANSACTION, START_TRANSACTION,
-    StartTransaction, floe_init,
+    StartTransaction, floe::floe_init,
 };
 use ini::Ini;
 use std::{collections::HashMap, error::Error, sync::Arc};

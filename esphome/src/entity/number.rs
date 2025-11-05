@@ -1,6 +1,4 @@
-use super::{
-    EntityRegister, add_device_class, add_entity_category, add_f32_bounds, add_icon, add_unit,
-};
+use super::{EntityRegister, add_device_class, add_entity_category, add_icon, add_unit};
 use crate::{
     api,
     device::{Device, DeviceError},
@@ -8,7 +6,9 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_FLOAT};
+use igloo_interface::{
+    DESELECT_ENTITY, END_TRANSACTION, Real, WRITE_REAL, floe::FloeWriterDefault,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesNumberResponse {
@@ -29,7 +29,7 @@ impl EntityRegister for crate::api::ListEntitiesNumberResponse {
         // add_number_mode(writer, self.mode()).await?;
         add_icon(writer, &self.icon).await?;
         add_device_class(writer, self.device_class).await?;
-        add_f32_bounds(writer, self.min_value, self.max_value, Some(self.step)).await?;
+        // add_f32_bounds(writer, self.min_value, self.max_value, Some(self.step)).await?;
         add_unit(writer, self.unit_of_measurement).await?;
         Ok(())
     }
@@ -46,7 +46,7 @@ impl EntityUpdate for api::NumberStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.float(&self.state).await
+        writer.real(&(self.state as f64)).await
     }
 }
 
@@ -69,9 +69,9 @@ pub async fn process(
 
     for (cmd_id, payload) in commands {
         match cmd_id {
-            WRITE_FLOAT => {
-                let state: f32 = borsh::from_slice(&payload)?;
-                req.state = state;
+            WRITE_REAL => {
+                let state: Real = borsh::from_slice(&payload)?;
+                req.state = state as f32;
             }
 
             DESELECT_ENTITY | END_TRANSACTION => {

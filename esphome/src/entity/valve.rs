@@ -7,8 +7,8 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, ValveState, WRITE_POSITION,
-    WRITE_VALVE_STATE,
+    DESELECT_ENTITY, END_TRANSACTION, Position, ValveState, WRITE_POSITION, WRITE_VALVE_STATE,
+    floe::FloeWriterDefault,
 };
 
 #[async_trait]
@@ -51,7 +51,7 @@ impl EntityUpdate for api::ValveStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.position(&self.position).await?;
+        writer.position(&(self.position as f64)).await?;
         writer
             .valve_state(&self.current_operation().as_igloo())
             .await
@@ -71,9 +71,9 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_POSITION => {
-                let position: f32 = borsh::from_slice(&payload)?;
+                let position: Position = borsh::from_slice(&payload)?;
                 req.has_position = true;
-                req.position = position;
+                req.position = position as f32;
             }
 
             WRITE_VALVE_STATE => {

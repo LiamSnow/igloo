@@ -7,8 +7,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, FanDirection, FanOscillation, FanSpeed, FloeWriterDefault,
-    WRITE_FAN_DIRECTION, WRITE_FAN_OSCILLATION, WRITE_INT, WRITE_SWITCH, WRITE_TEXT,
+    DESELECT_ENTITY, END_TRANSACTION, FanDirection, FanOscillation, FanSpeed, IglooText, Integer,
+    Switch, WRITE_FAN_DIRECTION, WRITE_FAN_OSCILLATION, WRITE_INTEGER, WRITE_SWITCH, WRITE_TEXT,
+    floe::FloeWriterDefault,
 };
 
 #[async_trait]
@@ -54,7 +55,7 @@ impl EntityUpdate for api::FanStateResponse {
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
         writer.fan_speed(&self.speed().as_igloo()).await?;
-        writer.int(&self.speed_level).await?;
+        writer.integer(&(self.speed_level as i64)).await?;
         writer.fan_direction(&self.direction().as_igloo()).await?;
         writer.text(&self.preset_mode.clone()).await?;
         writer
@@ -86,24 +87,21 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_SWITCH => {
-                let state: bool = borsh::from_slice(&payload)?;
+                let state: Switch = borsh::from_slice(&payload)?;
                 req.has_state = true;
                 req.state = state;
             }
 
-            WRITE_INT => {
-                let speed_level: i32 = borsh::from_slice(&payload)?;
+            WRITE_INTEGER => {
+                let speed_level: Integer = borsh::from_slice(&payload)?;
                 req.has_speed_level = true;
-                req.speed_level = speed_level;
+                req.speed_level = speed_level as i32;
             }
 
             WRITE_FAN_OSCILLATION => {
                 let oscillation: FanOscillation = borsh::from_slice(&payload)?;
                 req.has_oscillating = true;
-                req.oscillating = match oscillation {
-                    FanOscillation::Off => false,
-                    _ => true,
-                };
+                req.oscillating = !matches!(oscillation, FanOscillation::Off);
             }
 
             WRITE_FAN_DIRECTION => {
@@ -113,7 +111,7 @@ pub async fn process(
             }
 
             WRITE_TEXT => {
-                let preset: String = borsh::from_slice(&payload)?;
+                let preset: IglooText = borsh::from_slice(&payload)?;
                 req.has_preset_mode = true;
                 req.preset_mode = preset;
             }

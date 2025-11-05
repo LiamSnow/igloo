@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use igloo_interface::FloeWriterDefault;
+use igloo_interface::floe::FloeWriterDefault;
 
 use crate::{api, entity::EntityUpdate, model::EntityType};
 

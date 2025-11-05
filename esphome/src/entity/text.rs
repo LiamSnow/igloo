@@ -6,7 +6,9 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, WRITE_TEXT};
+use igloo_interface::{
+    DESELECT_ENTITY, END_TRANSACTION, Text, WRITE_TEXT, floe::FloeWriterDefault,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesTextResponse {
@@ -21,9 +23,9 @@ impl EntityRegister for crate::api::ListEntitiesTextResponse {
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
         // writer.text_mode(&self.mode().as_igloo()).await?;
-        writer.text_min_length(&self.min_length).await?;
-        writer.text_max_length(&self.max_length).await?;
-        writer.text_pattern(&self.pattern).await?;
+        // writer.text_min_length(&self.min_length).await?;
+        // writer.text_max_length(&self.max_length).await?;
+        // writer.text_pattern(&self.pattern).await?;
         Ok(())
     }
 }
@@ -65,7 +67,7 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_TEXT => {
-                let state: String = borsh::from_slice(&payload)?;
+                let state: Text = borsh::from_slice(&payload)?;
                 req.state = state;
             }
 

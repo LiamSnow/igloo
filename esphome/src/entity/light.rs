@@ -7,9 +7,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::{
-    Color, ColorMode, ColorTemperature, DESELECT_ENTITY, Dimmer, END_TRANSACTION,
-    FloeWriterDefault, Switch, WRITE_COLOR, WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE,
-    WRITE_DIMMER, WRITE_SWITCH,
+    Color, ColorMode, ColorTemperature, DESELECT_ENTITY, Dimmer, END_TRANSACTION, Switch,
+    WRITE_COLOR, WRITE_COLOR_MODE, WRITE_COLOR_TEMPERATURE, WRITE_DIMMER, WRITE_SWITCH,
+    floe::FloeWriterDefault,
 };
 
 #[async_trait]
@@ -34,11 +34,11 @@ impl EntityRegister for crate::api::ListEntitiesLightResponse {
     }
 }
 
-pub fn kelvin_to_mireds(kelvin: u16) -> f32 {
-    1_000_000. / kelvin as f32
+pub fn kelvin_to_mireds(kelvin: i64) -> f64 {
+    1_000_000. / kelvin as f64
 }
 
-pub fn mireds_to_kelvin(mireds: f32) -> u16 {
+pub fn mireds_to_kelvin(mireds: f64) -> u16 {
     (1_000_000. / mireds).round() as u16
 }
 
@@ -56,10 +56,10 @@ impl EntityUpdate for api::LightStateResponse {
                 b: (self.blue * 255.) as u8,
             })
             .await?;
-        writer.dimmer(&self.brightness).await?;
+        writer.dimmer(&(self.brightness as f64)).await?;
         writer.switch(&self.state).await?;
         writer
-            .color_temperature(&(mireds_to_kelvin(self.color_temperature)))
+            .color_temperature(&(mireds_to_kelvin(self.color_temperature as f64) as i64))
             .await?;
 
         // ON_OFF = 1 << 0;
@@ -108,7 +108,7 @@ pub async fn process(
                 // req.has_color_brightness = true;
                 // req.color_brightness = val;
                 req.has_brightness = true;
-                req.brightness = val;
+                req.brightness = val as f32;
 
                 req.has_state = true;
                 req.state = val > 0.;
@@ -123,7 +123,7 @@ pub async fn process(
             WRITE_COLOR_TEMPERATURE => {
                 let temp_kelvin: ColorTemperature = borsh::from_slice(&payload)?;
                 req.has_color_temperature = true;
-                req.color_temperature = kelvin_to_mireds(temp_kelvin);
+                req.color_temperature = kelvin_to_mireds(temp_kelvin) as f32;
             }
 
             WRITE_COLOR_MODE => {

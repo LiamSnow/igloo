@@ -1,3 +1,4 @@
+use super::{EntityRegister, add_entity_category, add_icon};
 use crate::{
     api,
     device::{Device, DeviceError},
@@ -5,8 +6,9 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, WRITE_TEXT, DESELECT_ENTITY, END_TRANSACTION};
-use super::{add_entity_category, add_icon, EntityRegister};
+use igloo_interface::{
+    DESELECT_ENTITY, END_TRANSACTION, Text, WRITE_TEXT, floe::FloeWriterDefault,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesSelectResponse {
@@ -16,7 +18,12 @@ impl EntityRegister for crate::api::ListEntitiesSelectResponse {
         writer: &mut FloeWriterDefault,
     ) -> Result<(), crate::device::DeviceError> {
         device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Select)
+            .register_entity(
+                writer,
+                &self.name,
+                self.key,
+                crate::model::EntityType::Select,
+            )
             .await?;
         add_entity_category(writer, self.entity_category()).await?;
         add_icon(writer, &self.icon).await?;
@@ -54,7 +61,7 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_TEXT => {
-                let state: String = borsh::from_slice(&payload)?;
+                let state: Text = borsh::from_slice(&payload)?;
                 req.state = state;
             }
 

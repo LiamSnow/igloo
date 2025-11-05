@@ -6,7 +6,9 @@ use crate::{
     model::MessageType,
 };
 use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, WRITE_SWITCH, DESELECT_ENTITY, END_TRANSACTION};
+use igloo_interface::{
+    DESELECT_ENTITY, END_TRANSACTION, Switch, WRITE_SWITCH, floe::FloeWriterDefault,
+};
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesSwitchResponse {
@@ -46,15 +48,12 @@ pub async fn process(
     key: u32,
     commands: Vec<(u16, Vec<u8>)>,
 ) -> Result<(), DeviceError> {
-    let mut req = api::SwitchCommandRequest {
-        key,
-        state: false,
-    };
+    let mut req = api::SwitchCommandRequest { key, state: false };
 
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_SWITCH => {
-                let state: bool = borsh::from_slice(&payload)?;
+                let state: Switch = borsh::from_slice(&payload)?;
                 req.state = state;
             }
 

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use igloo_interface::{FloeWriterDefault, SensorStateClass, Unit};
+use igloo_interface::{SensorStateClass, Unit, floe::FloeWriterDefault};
 
 use crate::api;
 
@@ -81,19 +81,19 @@ pub async fn add_unit(
     Ok(())
 }
 
-pub async fn add_f32_bounds(
-    writer: &mut FloeWriterDefault,
-    min: f32,
-    max: f32,
-    step: Option<f32>,
-) -> Result<(), std::io::Error> {
-    writer.float_min(&min).await?;
-    writer.float_max(&max).await?;
-    if let Some(step) = step {
-        writer.float_step(&step).await?;
-    }
-    Ok(())
-}
+// pub async fn add_f32_bounds(
+//     writer: &mut FloeWriterDefault,
+//     min: f32,
+//     max: f32,
+//     step: Option<f32>,
+// ) -> Result<(), std::io::Error> {
+//     writer.float_min(&min).await?;
+//     writer.float_max(&max).await?;
+//     if let Some(step) = step {
+//         writer.float_step(&step).await?;
+//     }
+//     Ok(())
+// }
 
 pub async fn add_device_class(
     writer: &mut FloeWriterDefault,
@@ -105,32 +105,32 @@ pub async fn add_device_class(
     Ok(())
 }
 
-pub async fn add_climate_modes(
-    writer: &mut FloeWriterDefault,
-    modes: impl Iterator<Item = api::ClimateMode>,
-) -> Result<(), std::io::Error> {
-    let modes = modes.map(|m| m.as_igloo()).collect();
-    writer.supported_climate_modes(&modes).await?;
-    Ok(())
-}
+// pub async fn add_climate_modes(
+//     writer: &mut FloeWriterDefault,
+//     modes: impl Iterator<Item = api::ClimateMode>,
+// ) -> Result<(), std::io::Error> {
+//     let modes = modes.map(|m| m.as_igloo()).collect();
+//     writer.supported_climate_modes(&modes).await?;
+//     Ok(())
+// }
 
-pub async fn add_fan_speeds(
-    writer: &mut FloeWriterDefault,
-    modes: impl Iterator<Item = api::ClimateFanMode>,
-) -> Result<(), std::io::Error> {
-    let speeds = modes.map(|m| m.as_igloo()).collect();
-    writer.supported_fan_speeds(&speeds).await?;
-    Ok(())
-}
+// pub async fn add_fan_speeds(
+//     writer: &mut FloeWriterDefault,
+//     modes: impl Iterator<Item = api::ClimateFanMode>,
+// ) -> Result<(), std::io::Error> {
+//     let speeds = modes.map(|m| m.as_igloo()).collect();
+//     writer.supported_fan_speeds(&speeds).await?;
+//     Ok(())
+// }
 
-pub async fn add_fan_oscillations(
-    writer: &mut FloeWriterDefault,
-    modes: impl Iterator<Item = api::ClimateSwingMode>,
-) -> Result<(), std::io::Error> {
-    let modes = modes.map(|m| m.as_igloo()).collect();
-    writer.supported_fan_oscillations(&modes).await?;
-    Ok(())
-}
+// pub async fn add_fan_oscillations(
+//     writer: &mut FloeWriterDefault,
+//     modes: impl Iterator<Item = api::ClimateSwingMode>,
+// ) -> Result<(), std::io::Error> {
+//     let modes = modes.map(|m| m.as_igloo()).collect();
+//     writer.supported_fan_oscillations(&modes).await?;
+//     Ok(())
+// }
 
 pub async fn add_sensor_state_class(
     writer: &mut FloeWriterDefault,

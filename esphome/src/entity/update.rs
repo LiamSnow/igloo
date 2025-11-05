@@ -5,7 +5,7 @@ use crate::{
     entity::EntityUpdate,
 };
 use async_trait::async_trait;
-use igloo_interface::FloeWriterDefault;
+use igloo_interface::floe::FloeWriterDefault;
 
 #[async_trait]
 impl EntityRegister for crate::api::ListEntitiesUpdateResponse {
@@ -53,11 +53,11 @@ impl EntityUpdate for api::UpdateStateResponse {
             self.release_url
         );
 
-        writer.bool(&self.in_progress).await?;
+        writer.boolean(&self.in_progress).await?;
         writer.text(&content.to_string()).await?;
 
         if self.has_progress {
-            writer.float(&self.progress).await?;
+            writer.real(&(self.progress as f64)).await?;
         }
 
         Ok(())

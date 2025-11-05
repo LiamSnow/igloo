@@ -7,8 +7,8 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, FloeWriterDefault, MediaState, WRITE_MEDIA_STATE,
-    WRITE_MUTED, WRITE_VOLUME,
+    DESELECT_ENTITY, END_TRANSACTION, MediaState, Muted, Volume, WRITE_MEDIA_STATE, WRITE_MUTED,
+    WRITE_VOLUME, floe::FloeWriterDefault,
 };
 
 #[async_trait]
@@ -50,7 +50,7 @@ impl EntityUpdate for api::MediaPlayerStateResponse {
     }
 
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.volume(&self.volume).await?;
+        writer.volume(&(self.volume as f64)).await?;
         writer.muted(&self.muted).await?;
         writer.media_state(&self.state().as_igloo()).await
     }
@@ -78,13 +78,13 @@ pub async fn process(
     for (cmd_id, payload) in commands {
         match cmd_id {
             WRITE_VOLUME => {
-                let volume: f32 = borsh::from_slice(&payload)?;
+                let volume: Volume = borsh::from_slice(&payload)?;
                 req.has_volume = true;
-                req.volume = volume;
+                req.volume = volume as f32;
             }
 
             WRITE_MUTED => {
-                let muted: bool = borsh::from_slice(&payload)?;
+                let muted: Muted = borsh::from_slice(&payload)?;
                 req.has_command = true;
                 req.command = if muted {
                     api::MediaPlayerCommand::Mute
