@@ -1,30 +1,24 @@
 use super::model::*;
 use crate::rust::{comp_name_to_cmd_name, ident, upper_camel_to_snake};
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use std::{env, fs, path::PathBuf};
 
 pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let comp_enum = gen_comp_enum(comps);
-    let enum_avgable = gen_enum_averageable(comps);
-    let avg_comp = gen_avg_comp(comps);
     let read_comp = gen_read_comp(comps);
     let write_comp = gen_write_comp(comps);
     let comp_inner = gen_comp_inner(comps);
     let comp_from_string = gen_comp_from_string(comps);
+    let enum_aggregatable = gen_enum_aggregatable(comps);
+    let component_aggregate = gen_component_aggregate(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
-        use std::ops::{Add, Sub};
-        use crate::types::*;
-        use crate::avg::*;
+        use crate::agg::*;
 
         #comp_enum
-
-        #enum_avgable
-
-        #avg_comp
 
         #read_comp
 
@@ -33,6 +27,10 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         #comp_inner
 
         #comp_from_string
+
+        #enum_aggregatable
+
+        #component_aggregate
     };
 
     // reconstruct, format, and save
@@ -261,175 +259,133 @@ fn gen_comp_enum(comps: &[Component]) -> TokenStream {
     }
 }
 
-fn gen_avg_comp(comps: &[Component]) -> TokenStream {
-    let variants: Vec<_> = comps
+
+fn gen_enum_aggregatable(comps: &[Component]) -> TokenStream {
+    let enum_comps: Vec<_> = comps
         .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            quote! {
-                #name(Average<#name>)
-            }
-        })
+        .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
         .collect();
 
-    let new_arms: Vec<_> = comps
+    let impls: Vec<_> = enum_comps
         .iter()
-        .filter(|comp| is_avgable(comp))
         .map(|comp| {
             let name = ident(&comp.name);
-            quote! {
-                ComponentType::#name => Some(ComponentAverage::#name(Average::new()))
-            }
-        })
-        .collect();
+            
+            if let ComponentKind::Enum { variants, .. } = &comp.kind {
+                let variant_count = variants.len();
+                let variant_arms: Vec<_> = variants
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, v)| {
+                        let variant_name = ident(&v.name);
+                        quote! {
+                            #name::#variant_name => #idx
+                        }
+                    })
+                    .collect();
 
-    let add_arms: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            let name_str = &comp.name;
-            quote! {
-                ComponentAverage::#name(avg) => {
-                    let Component::#name(v) = comp else {
-                        panic!("Type mismatch in ComponentAverage::add: expected {}, got {:?}", #name_str, comp);
-                    };
-                    avg.add(v);
+                let from_idx_arms: Vec<_> = variants
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, v)| {
+                        let variant_name = ident(&v.name);
+                        quote! {
+                            #idx => #name::#variant_name
+                        }
+                    })
+                    .collect();
+
+                quote! {
+                    impl Aggregatable for #name {
+                        fn aggregate<I: IntoIterator<Item = Self>>(items: I, op: AggregationOp) -> Option<Self> {
+                            match op {
+                                AggregationOp::Mean => {
+                                    let mut counts = [0usize; #variant_count];
+                                    let mut total = 0;
+                                    for item in items {
+                                        let idx = match item {
+                                            #(#variant_arms,)*
+                                        };
+                                        counts[idx] += 1;
+                                        total += 1;
+                                    }
+                                    
+                                    if total == 0 {
+                                        return None;
+                                    }
+                                    
+                                    let mut max_idx = 0;
+                                    for idx in 1..#variant_count {
+                                        if counts[idx] > counts[max_idx] {
+                                            max_idx = idx;
+                                        }
+                                    }                                    
+
+                                    let result = match max_idx {
+                                        #(#from_idx_arms,)*
+                                        _ => unreachable!(),
+                                    };
+                                    Some(result)
+                                }
+                                _ => None,
+                            }
+                        }
+                    }
                 }
-            }
-        })
-        .collect();
-
-    let remove_arms: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            let name_str = &comp.name;
-            quote! {
-                ComponentAverage::#name(avg) => {
-                    let Component::#name(v) = comp else {
-                        panic!("Type mismatch in ComponentAverage::remove: expected {}, got {:?}", #name_str, comp);
-                    };
-                    avg.remove(v);
-                }
-            }
-        })
-        .collect();
-
-    let update_arms: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            let name_str = &comp.name;
-            quote! {
-                ComponentAverage::#name(avg) => {
-                    let Component::#name(old_v) = old else {
-                        panic!("Type mismatch in ComponentAverage::update old: expected {}, got {:?}", #name_str, old);
-                    };
-                    let Component::#name(new_v) = new else {
-                        panic!("Type mismatch in ComponentAverage::update new: expected {}, got {:?}", #name_str, new);
-                    };
-                    avg.update(old_v, new_v);
-                }
-            }
-        })
-        .collect();
-
-    let current_average_arms: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            quote! {
-                ComponentAverage::#name(avg) => avg.current_average().map(Component::#name)
-            }
-        })
-        .collect();
-
-    let len_arms: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            quote! {
-                ComponentAverage::#name(avg) => avg.len()
-            }
-        })
-        .collect();
-
-    let is_empty_arms: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_avgable(comp))
-        .map(|comp| {
-            let name = ident(&comp.name);
-            quote! {
-                ComponentAverage::#name(avg) => avg.is_empty()
+            } else {
+                unreachable!()
             }
         })
         .collect();
 
     quote! {
-        #[derive(Clone, Debug)]
-        pub enum ComponentAverage {
-            #(#variants,)*
-        }
+        #(#impls)*
+    }
+}
 
-        impl ComponentAverage {
-            /// None if comp type is not averageable
-            pub fn new(comp_type: ComponentType) -> Option<Self> {
-                match comp_type {
-                    #(#new_arms,)*
+fn gen_component_aggregate(comps: &[Component]) -> TokenStream {
+    let aggregatable_comps: Vec<_> = comps
+        .iter()
+        .filter(|comp| is_aggregatable(comp))
+        .collect();
+
+    let arms: Vec<_> = aggregatable_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            let name_str = &comp.name;
+            
+            quote! {
+                Component::#name(_) => {
+                    let iter = items.into_iter().map(|item| {
+                        match item {
+                            Component::#name(v) => v,
+                            _ => panic!("Heterogeneous components in aggregate: expected {}", #name_str),
+                        }
+                    });
+                    #name::aggregate(iter, op).map(Component::#name)
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl Component {
+            pub fn aggregate(items: Vec<Component>, op: AggregationOp) -> Option<Component> {
+                if items.is_empty() {
+                    return None;
+                }
+
+                match &items[0] {
+                    #(#arms,)*
                     _ => None,
-                }
-            }
-
-            /// panics if the comp type != averages type
-            pub fn add(&mut self, comp: Component) {
-                match self {
-                    #(#add_arms,)*
-                }
-            }
-
-            /// panics if the comp type != averages type
-            pub fn remove(&mut self, comp: Component) {
-                match self {
-                    #(#remove_arms,)*
-                }
-            }
-
-            /// panics if the comp type != averages type
-            pub fn update(&mut self, old: Component, new: Component) {
-                match self {
-                    #(#update_arms,)*
-                }
-            }
-
-            /// None if no components have been added
-            pub fn current_average(&self) -> Option<Component> {
-                match self {
-                    #(#current_average_arms,)*
-                }
-            }
-
-            pub fn len(&self) -> usize {
-                match self {
-                    #(#len_arms,)*
-                }
-            }
-
-            pub fn is_empty(&self) -> bool {
-                match self {
-                    #(#is_empty_arms,)*
                 }
             }
         }
     }
 }
 
-fn is_avgable(comp: &Component) -> bool {
+fn is_aggregatable(comp: &Component) -> bool {
     match &comp.kind {
         ComponentKind::Single { kind, .. } => matches!(
             kind,
@@ -442,140 +398,5 @@ fn is_avgable(comp: &Component) -> bool {
         ),
         ComponentKind::Enum { .. } => true,
         ComponentKind::Marker { .. } => false,
-    }
-}
-
-fn gen_enum_averageable(comps: &[Component]) -> TokenStream {
-    let enum_comps: Vec<_> = comps
-        .iter()
-        .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
-        .collect();
-
-    let impls: Vec<_> = enum_comps
-        .iter()
-        .map(|comp| {
-            let name = ident(&comp.name);
-            let sum_name = format_ident!("{}Sum", comp.name);
-
-            if let ComponentKind::Enum { variants, .. } = &comp.kind {
-                let sum_fields: Vec<_> = variants
-                    .iter()
-                    .map(|v| {
-                        let field_name = ident(&upper_camel_to_snake(&v.name));
-                        quote! { pub #field_name: usize }
-                    })
-                    .collect();
-
-                let add_fields: Vec<_> = variants
-                    .iter()
-                    .map(|v| {
-                        let field_name = ident(&upper_camel_to_snake(&v.name));
-                        quote! { #field_name: self.#field_name + other.#field_name }
-                    })
-                    .collect();
-
-                let sub_fields: Vec<_> = variants
-                    .iter()
-                    .map(|v| {
-                        let field_name = ident(&upper_camel_to_snake(&v.name));
-                        quote! { #field_name: self.#field_name - other.#field_name }
-                    })
-                    .collect();
-
-                let to_sum_arms: Vec<_> = variants
-                    .iter()
-                    .map(|v| {
-                        let variant_name = ident(&v.name);
-                        let field_name = ident(&upper_camel_to_snake(&v.name));
-                        quote! {
-                            #name::#variant_name => {
-                                sum.#field_name = 1;
-                            }
-                        }
-                    })
-                    .collect();
-
-                let field_names: Vec<_> = variants
-                    .iter()
-                    .map(|v| ident(&upper_camel_to_snake(&v.name)))
-                    .collect();
-
-                let from_sum_checks: Vec<_> = variants
-                    .iter()
-                    .map(|v| {
-                        let variant_name = ident(&v.name);
-                        let field_name = ident(&upper_camel_to_snake(&v.name));
-                        quote! {
-                            if sum.#field_name >= max {
-                                return #name::#variant_name;
-                            }
-                        }
-                    })
-                    .collect();
-
-                let max_expr = if field_names.len() == 1 {
-                    let f = &field_names[0];
-                    quote! { sum.#f }
-                } else {
-                    let first = &field_names[0];
-                    let mut expr = quote! { sum.#first };
-                    for f in &field_names[1..] {
-                        expr = quote! { #expr.max(sum.#f) };
-                    }
-                    expr
-                };
-
-                let first_variant = ident(&variants[0].name);
-
-                quote! {
-                    #[derive(Clone, Debug, Default)]
-                    pub struct #sum_name {
-                        #(#sum_fields),*
-                    }
-
-                    impl Add for #sum_name {
-                        type Output = Self;
-                        fn add(self, other: Self) -> Self {
-                            Self {
-                                #(#add_fields),*
-                            }
-                        }
-                    }
-
-                    impl Sub for #sum_name {
-                        type Output = Self;
-                        fn sub(self, other: Self) -> Self {
-                            Self {
-                                #(#sub_fields),*
-                            }
-                        }
-                    }
-
-                    impl Averageable for #name {
-                        type Sum = #sum_name;
-
-                        fn to_sum_repr(self) -> Self::Sum {
-                            let mut sum = #sum_name::default();
-                            match self {
-                                #(#to_sum_arms)*
-                            }
-                            sum
-                        }
-
-                        fn from_sum(sum: Self::Sum, _len: usize) -> Self {
-                            let max = #max_expr;
-                            #(#from_sum_checks)*
-                            #name::#first_variant
-                        }
-                    }
-                }
-            } else {
-                unreachable!()
-            }
-        })
-        .collect();
-
-    quote! {
-        #(#impls)*
     }
 }

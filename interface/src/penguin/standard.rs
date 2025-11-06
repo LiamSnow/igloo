@@ -1,4 +1,4 @@
-use crate::types::IglooType;
+use crate::{IGLOO_PRIMITIVES, types::IglooType};
 
 use super::*;
 use indexmap::IndexMap;
@@ -6,6 +6,27 @@ use std::collections::HashMap;
 
 pub fn std_library() -> PenguinLibrary {
     let mut nodes = HashMap::new();
+
+    // TODO
+    //
+    // On Device Attach
+    // On Device Detach
+    // On Device Register
+    //
+    // On Floe Attach
+    //
+    // Get One Component
+    // Get All Component
+    // Get With Function
+    //
+    // Set One Component
+    // Set All Component
+    //
+    // Watch One Component
+    // Watch All Components
+    //
+    // Watch One Entity
+    // Watch All Entities
 
     nodes.insert(
         "Comment".to_string(),
@@ -28,6 +49,52 @@ pub fn std_library() -> PenguinLibrary {
                 id: NodeInputFeatureID::from_str("Title"),
             }],
             is_section: true,
+            ..Default::default()
+        },
+    );
+
+    nodes.insert(
+        "Delay Seconds".to_string(),
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Delay".to_string()),
+            inputs: IndexMap::from([
+                (
+                    PenguinPinID::from_str("Execute"),
+                    PenguinPinDefn::unnamed_flow(),
+                ),
+                (
+                    PenguinPinID::from_str("Wait (seconds)"),
+                    PenguinPinDefn::named_val(IglooType::Integer),
+                ),
+            ]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Done"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            ..Default::default()
+        },
+    );
+
+    nodes.insert(
+        "Delay Milliseconds".to_string(),
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Delay".to_string()),
+            inputs: IndexMap::from([
+                (
+                    PenguinPinID::from_str("Execute"),
+                    PenguinPinDefn::unnamed_flow(),
+                ),
+                (
+                    PenguinPinID::from_str("Wait (ms)"),
+                    PenguinPinDefn::named_val(IglooType::Integer),
+                ),
+            ]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Done"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
             ..Default::default()
         },
     );
@@ -1100,22 +1167,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_cast(&mut nodes, IglooType::Text, IglooType::Integer);
-    add_cast(&mut nodes, IglooType::Real, IglooType::Integer);
-    add_cast(&mut nodes, IglooType::Boolean, IglooType::Integer);
-
-    add_cast(&mut nodes, IglooType::Text, IglooType::Real);
-    add_cast(&mut nodes, IglooType::Integer, IglooType::Real);
-    add_cast(&mut nodes, IglooType::Boolean, IglooType::Real);
-
-    add_cast(&mut nodes, IglooType::Text, IglooType::Boolean);
-    add_cast(&mut nodes, IglooType::Integer, IglooType::Boolean);
-    add_cast(&mut nodes, IglooType::Real, IglooType::Boolean);
-
-    add_cast(&mut nodes, IglooType::Integer, IglooType::Text);
-    add_cast(&mut nodes, IglooType::Real, IglooType::Text);
-    add_cast(&mut nodes, IglooType::Boolean, IglooType::Text);
-    add_cast(&mut nodes, IglooType::Color, IglooType::Text);
+    add_cast_nodes(&mut nodes);
 
     add_reroute(&mut nodes, PenguinPinType::Flow);
     add_reroute(&mut nodes, PenguinPinType::Value(IglooType::Integer));
@@ -1147,24 +1199,30 @@ fn add_reroute(nodes: &mut HashMap<String, PenguinNodeDefn>, pin_type: PenguinPi
     );
 }
 
-fn add_cast(nodes: &mut HashMap<String, PenguinNodeDefn>, from: IglooType, to: IglooType) {
-    nodes.insert(
-        from.cast_name(to).unwrap(),
-        PenguinNodeDefn {
-            version: 1,
-            icon: "→".to_string(),
-            icon_bg: true,
-            inputs: IndexMap::from([(
-                PenguinPinID::from_str("Input"),
-                PenguinPinDefn::unnamed(PenguinPinType::Value(from)),
-            )]),
-            outputs: IndexMap::from([(
-                PenguinPinID::from_str("Output"),
-                PenguinPinDefn::unnamed(PenguinPinType::Value(to)),
-            )]),
-            ..Default::default()
-        },
-    );
+fn add_cast_nodes(nodes: &mut HashMap<String, PenguinNodeDefn>) {
+    for from in IGLOO_PRIMITIVES {
+        for to in IGLOO_PRIMITIVES {
+            if let Some(cast_name) = from.cast_name(to) {
+                nodes.insert(
+                    cast_name,
+                    PenguinNodeDefn {
+                        version: 1,
+                        icon: "→".to_string(),
+                        icon_bg: true,
+                        inputs: IndexMap::from([(
+                            PenguinPinID::from_str("Input"),
+                            PenguinPinDefn::unnamed(PenguinPinType::Value(from)),
+                        )]),
+                        outputs: IndexMap::from([(
+                            PenguinPinID::from_str("Output"),
+                            PenguinPinDefn::unnamed(PenguinPinType::Value(to)),
+                        )]),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
 }
 
 fn add_variadic(

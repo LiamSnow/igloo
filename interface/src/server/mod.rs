@@ -1,4 +1,4 @@
-pub mod avg;
+pub mod agg;
 pub mod dash;
 pub mod id;
 pub mod query;

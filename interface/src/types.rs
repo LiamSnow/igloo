@@ -53,6 +53,23 @@ pub enum IglooType {
     Enum(IglooEnumType),
 }
 
+pub static IGLOO_PRIMITIVES: [IglooType; 14] = [
+    IglooType::Integer,
+    IglooType::Real,
+    IglooType::Text,
+    IglooType::Boolean,
+    IglooType::Color,
+    IglooType::Date,
+    IglooType::Time,
+    IglooType::IntegerList,
+    IglooType::RealList,
+    IglooType::TextList,
+    IglooType::BooleanList,
+    IglooType::ColorList,
+    IglooType::DateList,
+    IglooType::TimeList,
+];
+
 #[derive(Debug, Clone, PartialEq, Display)]
 #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
 pub enum IglooValue {
