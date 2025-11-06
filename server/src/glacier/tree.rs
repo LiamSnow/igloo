@@ -9,7 +9,10 @@ use smallvec::{SmallVec, smallvec};
 use std::{error::Error, time::Duration};
 use tokio::fs;
 
-use crate::glacier::{entity::HasComponent, query::WatchQuery};
+use crate::glacier::{
+    entity::HasComponent,
+    query::{AttachedQuery, QueryResult},
+};
 
 use super::entity::Entity;
 
@@ -58,11 +61,11 @@ pub struct Device {
 
     // TODO FIXME whenever device is added/removed from group, NEED to update these
     /// queries for any entity
-    queries: FxHashMap<ComponentType, SmallVec<[WatchQuery; 2]>>,
+    queries: FxHashMap<ComponentType, SmallVec<[AttachedQuery; 2]>>,
     /// queries for one entity
-    entity_queries: FxHashMap<(usize, ComponentType), SmallVec<[WatchQuery; 2]>>,
+    entity_queries: FxHashMap<(usize, ComponentType), SmallVec<[AttachedQuery; 2]>>,
     /// queries waiting for entity to be registered
-    pending_entity_queries: FxHashMap<String, Vec<(ComponentType, WatchQuery)>>,
+    pending_entity_queries: FxHashMap<String, Vec<(ComponentType, AttachedQuery)>>,
 
     pub presense: Presense,
     /// entity idx -> entity
@@ -75,7 +78,7 @@ pub struct Device {
 pub struct Presense([u32; MAX_SUPPORTED_COMPONENT.div_ceil(32) as usize]);
 
 impl Device {
-    pub fn attach_query(&mut self, comp_type: ComponentType, query: WatchQuery) {
+    pub fn attach_query(&mut self, comp_type: ComponentType, query: AttachedQuery) {
         match self.queries.get_mut(&comp_type) {
             Some(v) => v.push(query.clone()),
             None => {
@@ -88,7 +91,7 @@ impl Device {
         &mut self,
         eidx: usize,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) {
         match self.entity_queries.get_mut(&(eidx, comp_type)) {
             Some(v) => v.push(query.clone()),
@@ -103,7 +106,7 @@ impl Device {
         &mut self,
         eid: String,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) {
         match self.pending_entity_queries.get_mut(&eid) {
             Some(v) => v.push((comp_type, query)),
@@ -139,7 +142,12 @@ impl Device {
                     && let Err(e) = query
                         .tx
                         .send_timeout(
-                            (query.prefix, did, eidx, comp.clone()),
+                            QueryResult {
+                                device: did,
+                                entity: eidx,
+                                value: comp.clone(),
+                                tag: query.tag,
+                            },
                             Duration::from_millis(10),
                         )
                         .await
@@ -154,7 +162,12 @@ impl Device {
                     && let Err(e) = query
                         .tx
                         .send_timeout(
-                            (query.prefix, did, eidx, comp.clone()),
+                            QueryResult {
+                                device: did,
+                                entity: eidx,
+                                value: comp.clone(),
+                                tag: query.tag,
+                            },
                             Duration::from_millis(10),
                         )
                         .await
@@ -178,7 +191,7 @@ impl DeviceTree {
     pub fn attach_query_to_all(
         &mut self,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) -> Result<(), Box<dyn Error>> {
         for device in &mut self.devices {
             let Some(device) = device else { continue };
@@ -191,7 +204,7 @@ impl DeviceTree {
         &mut self,
         gid: GroupID,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) -> Result<(), Box<dyn Error>> {
         let group = self.group(gid)?;
         for did in group.devices.clone() {
@@ -204,7 +217,7 @@ impl DeviceTree {
         &mut self,
         did: DeviceID,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) -> Result<(), Box<dyn Error>> {
         let device = self.device_mut(did)?;
         device.attach_query(comp_type, query);
@@ -216,7 +229,7 @@ impl DeviceTree {
         did: DeviceID,
         eidx: usize,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) -> Result<(), Box<dyn Error>> {
         let device = self.device_mut(did)?;
         device.attach_entity_query(eidx, comp_type, query);
@@ -228,7 +241,7 @@ impl DeviceTree {
         did: DeviceID,
         eid: String,
         comp_type: ComponentType,
-        query: WatchQuery,
+        query: AttachedQuery,
     ) -> Result<(), Box<dyn Error>> {
         let device = self.device_mut(did)?;
         device.attach_pending_entity_query(eid, comp_type, query);

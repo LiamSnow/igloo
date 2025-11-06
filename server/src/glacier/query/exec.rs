@@ -1,34 +1,31 @@
-use std::{error::Error, time::Duration};
-
+use crate::glacier::{entity::HasComponent, query::*, tree::DeviceTree};
 use igloo_interface::{
-    ComponentAverage, SelectEntity, StartTransaction,
+    Component, SelectEntity, StartTransaction,
     query::{
         DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot, QueryFilter, QueryTarget,
         SetQuery, Snapshot,
     },
 };
-use rustc_hash::FxHashMap;
+use std::{error::Error, time::Duration};
 
-use crate::glacier::{entity::HasComponent, query::*, tree::DeviceTree};
-
-pub trait Executable {
+pub trait QueryExec {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>>;
 }
 
-impl Executable for Query {
+impl QueryExec for Query {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
         match self {
             Query::Set(q) => q.execute(tree).await,
             Query::GetOne(q) => q.execute(tree).await,
             Query::GetAll(q) => q.execute(tree).await,
-            Query::GetAvg(q) => q.execute(tree).await,
-            Query::WatchAll(q) => q.execute(tree).await,
+            Query::GetAggregate(q) => q.execute(tree).await,
+            Query::Watch(q) => q.execute(tree).await,
             Query::Snapshot(q) => q.execute(tree).await,
         }
     }
 }
 
-impl Executable for SetQuery {
+impl QueryExec for SetQuery {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
         let mut applicable = Vec::with_capacity(10);
 
@@ -133,7 +130,7 @@ impl Executable for SetQuery {
     }
 }
 
-impl Executable for GetOneQuery {
+impl QueryExec for GetOneQuery {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
         let filter = match self.filter {
             QueryFilter::None => QueryFilter::With(self.comp),
@@ -153,7 +150,12 @@ impl Executable for GetOneQuery {
                             continue;
                         }
 
-                        res = Some((did, eidx, entity.get(self.comp).unwrap().clone()));
+                        res = Some(QueryResult {
+                            device: did,
+                            entity: eidx,
+                            value: entity.get(self.comp).unwrap().clone(),
+                            tag: self.tag,
+                        });
                         break 'outer;
                     }
                 }
@@ -171,7 +173,13 @@ impl Executable for GetOneQuery {
                             continue;
                         }
 
-                        res = Some((did, eidx, entity.get(self.comp).unwrap().clone()));
+                        res = Some(QueryResult {
+                            device: did,
+                            entity: eidx,
+                            value: entity.get(self.comp).unwrap().clone(),
+                            tag: self.tag,
+                        });
+
                         break 'outer;
                     }
                 }
@@ -186,7 +194,13 @@ impl Executable for GetOneQuery {
                             continue;
                         }
 
-                        res = Some((did, eidx, entity.get(self.comp).unwrap().clone()));
+                        res = Some(QueryResult {
+                            device: did,
+                            entity: eidx,
+                            value: entity.get(self.comp).unwrap().clone(),
+                            tag: self.tag,
+                        });
+
                         break;
                     }
                 }
@@ -200,7 +214,12 @@ impl Executable for GetOneQuery {
                 let entity = &device.entities[*eidx];
 
                 if entity.matches_filter(&filter) {
-                    Some((did, *eidx, entity.get(self.comp).unwrap().clone()))
+                    Some(QueryResult {
+                        device: did,
+                        entity: *eidx,
+                        value: entity.get(self.comp).unwrap().clone(),
+                        tag: self.tag,
+                    })
                 } else {
                     None
                 }
@@ -213,9 +232,9 @@ impl Executable for GetOneQuery {
     }
 }
 
-impl Executable for GetAllQuery {
+impl QueryExec for GetAllQuery {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
-        let mut res = GetAllQueryResult::default();
+        let mut res = Vec::with_capacity(20);
 
         let filter = match self.filter {
             QueryFilter::None => QueryFilter::With(self.comp),
@@ -229,14 +248,15 @@ impl Executable for GetAllQuery {
                         continue;
                     }
 
-                    let mut emap = FxHashMap::default();
                     for (eidx, entity) in device.entities.iter().enumerate() {
                         if entity.matches_filter(&filter) {
-                            emap.insert(eidx, entity.get(self.comp).unwrap().clone());
+                            res.push(QueryResult {
+                                device: did,
+                                entity: eidx,
+                                value: entity.get(self.comp).unwrap().clone(),
+                                tag: self.tag,
+                            });
                         }
-                    }
-                    if !emap.is_empty() {
-                        res.insert(did, emap);
                     }
                 }
             }
@@ -246,28 +266,30 @@ impl Executable for GetAllQuery {
                         continue;
                     }
 
-                    let mut emap = FxHashMap::default();
                     for (eidx, entity) in device.entities.iter().enumerate() {
                         if entity.matches_filter(&filter) {
-                            emap.insert(eidx, entity.get(self.comp).unwrap().clone());
+                            res.push(QueryResult {
+                                device: did,
+                                entity: eidx,
+                                value: entity.get(self.comp).unwrap().clone(),
+                                tag: self.tag,
+                            });
                         }
-                    }
-                    if !emap.is_empty() {
-                        res.insert(did, emap);
                     }
                 }
             }
             QueryTarget::Device(did) => {
                 let device = tree.device(did)?;
                 if device.presense.matches_filter(&filter) {
-                    let mut emap = FxHashMap::default();
                     for (eidx, entity) in device.entities.iter().enumerate() {
                         if entity.matches_filter(&filter) {
-                            emap.insert(eidx, entity.get(self.comp).unwrap().clone());
+                            res.push(QueryResult {
+                                device: did,
+                                entity: eidx,
+                                value: entity.get(self.comp).unwrap().clone(),
+                                tag: self.tag,
+                            });
                         }
-                    }
-                    if !emap.is_empty() {
-                        res.insert(did, emap);
                     }
                 }
             }
@@ -279,9 +301,12 @@ impl Executable for GetAllQuery {
                 let entity = &device.entities[*eidx];
 
                 if entity.matches_filter(&filter) {
-                    let mut emap = FxHashMap::default();
-                    emap.insert(*eidx, entity.get(self.comp).unwrap().clone());
-                    res.insert(did, emap);
+                    res.push(QueryResult {
+                        device: did,
+                        entity: *eidx,
+                        value: entity.get(self.comp).unwrap().clone(),
+                        tag: self.tag,
+                    });
                 }
             }
         }
@@ -292,20 +317,14 @@ impl Executable for GetAllQuery {
     }
 }
 
-impl Executable for GetAvgQuery {
+impl QueryExec for GetAggregateQuery {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
-        let Some(mut avg) = ComponentAverage::new(self.comp) else {
-            // not avgable
-            return self
-                .response_tx
-                .send(None)
-                .map_err(|_| "Failed to send query result. Channel closed".into());
-        };
-
         let filter = match self.filter {
             QueryFilter::None => QueryFilter::With(self.comp),
             f => QueryFilter::And(Box::new((f, QueryFilter::With(self.comp)))),
         };
+
+        let mut items = Vec::with_capacity(20);
 
         match self.target {
             QueryTarget::All => {
@@ -319,7 +338,7 @@ impl Executable for GetAvgQuery {
                             continue;
                         }
 
-                        avg.add(entity.get(self.comp).unwrap().clone());
+                        items.push(entity.get(self.comp).unwrap().clone());
                     }
                 }
             }
@@ -334,7 +353,7 @@ impl Executable for GetAvgQuery {
                             continue;
                         }
 
-                        avg.add(entity.get(self.comp).unwrap().clone());
+                        items.push(entity.get(self.comp).unwrap().clone());
                     }
                 }
             }
@@ -346,7 +365,7 @@ impl Executable for GetAvgQuery {
                             continue;
                         }
 
-                        avg.add(entity.get(self.comp).unwrap().clone());
+                        items.push(entity.get(self.comp).unwrap().clone());
                     }
                 }
             }
@@ -358,29 +377,34 @@ impl Executable for GetAvgQuery {
                 let entity = &device.entities[*entity_idx];
 
                 if entity.matches_filter(&filter) {
-                    avg.add(entity.get(self.comp).unwrap().clone());
+                    items.push(entity.get(self.comp).unwrap().clone());
                 }
             }
         }
 
+        let res = QueryAggregateResult {
+            result: Component::aggregate(items, self.op),
+            tag: self.tag,
+        };
+
         self.response_tx
-            .send(avg.current_average())
+            .send(res)
             .map_err(|_| "Failed to send query result. Channel closed".into())
     }
 }
 
-impl Executable for WatchAllQuery {
+impl QueryExec for WatchQuery {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
         let filter = match self.filter {
             QueryFilter::None => QueryFilter::With(self.comp),
             f => QueryFilter::And(Box::new((f, QueryFilter::With(self.comp)))),
         };
 
-        let mut query = WatchQuery {
+        let mut query = AttachedQuery {
             filter: filter.clone(),
             tx: self.update_tx.clone(),
             gid: None,
-            prefix: self.prefix,
+            tag: self.tag,
         };
 
         // send all initially + register for persistence
@@ -399,7 +423,12 @@ impl Executable for WatchAllQuery {
                             if let Err(e) = self
                                 .update_tx
                                 .send_timeout(
-                                    (self.prefix, did, eidx, comp),
+                                    QueryResult {
+                                        device: did,
+                                        entity: eidx,
+                                        value: comp,
+                                        tag: self.tag,
+                                    },
                                     Duration::from_millis(10),
                                 )
                                 .await
@@ -425,7 +454,12 @@ impl Executable for WatchAllQuery {
                             if let Err(e) = self
                                 .update_tx
                                 .send_timeout(
-                                    (self.prefix, did, eidx, comp),
+                                    QueryResult {
+                                        device: did,
+                                        entity: eidx,
+                                        value: comp,
+                                        tag: self.tag,
+                                    },
                                     Duration::from_millis(10),
                                 )
                                 .await
@@ -447,7 +481,12 @@ impl Executable for WatchAllQuery {
                             if let Err(e) = self
                                 .update_tx
                                 .send_timeout(
-                                    (self.prefix, did, eidx, comp),
+                                    QueryResult {
+                                        device: did,
+                                        entity: eidx,
+                                        value: comp,
+                                        tag: self.tag,
+                                    },
                                     Duration::from_millis(10),
                                 )
                                 .await
@@ -471,7 +510,12 @@ impl Executable for WatchAllQuery {
                         if let Err(e) = self
                             .update_tx
                             .send_timeout(
-                                (self.prefix, did, *eidx, comp),
+                                QueryResult {
+                                    device: did,
+                                    entity: *eidx,
+                                    value: comp,
+                                    tag: self.tag,
+                                },
                                 Duration::from_millis(10),
                             )
                             .await
@@ -491,7 +535,7 @@ impl Executable for WatchAllQuery {
     }
 }
 
-impl Executable for SnapshotQuery {
+impl QueryExec for SnapshotQuery {
     async fn execute(self, tree: &mut DeviceTree) -> Result<(), Box<dyn Error>> {
         // TODO should snapshot respect Target and/or Filter?
 

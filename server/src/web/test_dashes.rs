@@ -14,7 +14,9 @@ use std::{collections::HashMap, error::Error};
 use tokio::sync::mpsc;
 
 use crate::{
-    DashboardRequest, GlobalState, glacier::query::WatchAllQuery, web::watch::GetWatchers,
+    DashboardRequest, GlobalState,
+    glacier::query::{QueryResult, WatchQuery},
+    web::watch::GetWatchers,
 };
 
 pub async fn init_dash(
@@ -31,12 +33,12 @@ pub async fn init_dash(
         state
             .query_tx
             .send(
-                WatchAllQuery {
+                WatchQuery {
                     filter: watcher.filter,
                     target: watcher.target,
                     update_tx: watch_tx.clone(),
                     comp: watcher.comp,
-                    prefix: watcher.watch_id,
+                    tag: watcher.watch_id,
                 }
                 .into(),
             )
@@ -57,7 +59,7 @@ pub async fn init_dash(
 
         loop {
             tokio::select! {
-                Some((watch_id, _, _, value)) = watch_rx.recv() => {
+                Some(QueryResult { tag: watch_id, value, .. }) = watch_rx.recv() => {
                     watch_values.insert(watch_id, value.clone());
                     let msg: ServerMessage = ElementUpdate { watch_id, value }.into();
                     let bytes = match borsh::to_vec(&msg) {

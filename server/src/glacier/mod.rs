@@ -12,7 +12,7 @@ use tokio::{fs, sync::mpsc};
 
 use crate::glacier::{
     floe::FloeManager,
-    query::{Executable, Query},
+    query::{Query, QueryExec},
     tree::DeviceTree,
 };
 
