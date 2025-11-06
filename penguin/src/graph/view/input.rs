@@ -1,5 +1,8 @@
 use crate::app::event::{EventTarget, ListenerBuilder, Listeners, document};
-use igloo_interface::{NodeInputFeatureID, PenguinPinID, PenguinType, graph::PenguinNodeID};
+use igloo_interface::{
+    IglooType,
+    penguin::{NodeInputFeatureID, PenguinPinID, graph::PenguinNodeID},
+};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlElement, HtmlInputElement, HtmlTextAreaElement};
 
@@ -14,7 +17,7 @@ pub struct WebInput {
     el: Element,
     node_id: PenguinNodeID,
     mode: WebInputType,
-    value_type: PenguinType,
+    value_type: IglooType,
     listeners: Listeners,
 }
 
@@ -29,13 +32,13 @@ impl WebInput {
         parent: &Element,
         node_id: PenguinNodeID,
         mode: WebInputType,
-        value_type: PenguinType,
+        value_type: IglooType,
         initial_value: &str,
         initial_size: Option<(i32, i32)>,
     ) -> Result<Self, JsValue> {
         let document = document();
 
-        let el_type = if matches!(value_type, PenguinType::Text) {
+        let el_type = if matches!(value_type, IglooType::Text) {
             "textarea"
         } else {
             "input"
@@ -48,8 +51,8 @@ impl WebInput {
         let mut listeners =
             ListenerBuilder::new(&el, EventTarget::NodeInput(node_id, mode.clone()))
                 .add_input(move || match value_type {
-                    PenguinType::Text => el_clone.dyn_ref::<HtmlTextAreaElement>().unwrap().value(),
-                    PenguinType::Bool => el_clone
+                    IglooType::Text => el_clone.dyn_ref::<HtmlTextAreaElement>().unwrap().value(),
+                    IglooType::Boolean => el_clone
                         .dyn_ref::<HtmlInputElement>()
                         .unwrap()
                         .checked()
@@ -66,17 +69,17 @@ impl WebInput {
                 .build();
 
         match value_type {
-            PenguinType::Int => {
+            IglooType::Integer => {
                 el.set_attribute("type", "number")?;
                 el.set_attribute("step", "1")?;
                 el.set_attribute("value", initial_value)?;
             }
-            PenguinType::Real => {
+            IglooType::Real => {
                 el.set_attribute("type", "number")?;
                 el.set_attribute("step", "any")?;
                 el.set_attribute("value", initial_value)?;
             }
-            PenguinType::Text => {
+            IglooType::Text => {
                 let textarea = el.dyn_ref::<HtmlTextAreaElement>().unwrap().clone();
                 textarea.set_value(initial_value);
                 let (width, height) = initial_size.unwrap();
@@ -92,15 +95,31 @@ impl WebInput {
                     EventTarget::NodeInput(node_id, mode.clone()),
                 )?;
             }
-            PenguinType::Bool => {
+            IglooType::Boolean => {
                 el.set_attribute("type", "checkbox")?;
                 let input = el.dyn_ref::<HtmlInputElement>().unwrap();
                 input.set_checked(initial_value == "true");
             }
-            PenguinType::Color => {
+            IglooType::Color => {
                 el.set_attribute("type", "color")?;
                 el.set_attribute("value", initial_value)?;
             }
+            IglooType::Date => {
+                el.set_attribute("type", "date")?;
+                el.set_attribute("value", initial_value)?;
+            }
+            IglooType::Time => {
+                el.set_attribute("type", "time")?;
+                el.set_attribute("value", initial_value)?;
+            }
+            IglooType::IntegerList => todo!(),
+            IglooType::RealList => todo!(),
+            IglooType::TextList => todo!(),
+            IglooType::BooleanList => todo!(),
+            IglooType::ColorList => todo!(),
+            IglooType::DateList => todo!(),
+            IglooType::TimeList => todo!(),
+            IglooType::Enum(igloo_enum_type) => todo!(),
         }
 
         parent.append_child(&el)?;
@@ -125,13 +144,13 @@ impl WebInput {
 
     pub fn update_value(&self, value: &str) -> Result<(), JsValue> {
         match self.value_type {
-            PenguinType::Text => {
+            IglooType::Text => {
                 self.el
                     .dyn_ref::<HtmlTextAreaElement>()
                     .unwrap()
                     .set_value(value);
             }
-            PenguinType::Bool => {
+            IglooType::Boolean => {
                 self.el
                     .dyn_ref::<HtmlInputElement>()
                     .unwrap()
@@ -148,7 +167,7 @@ impl WebInput {
     }
 
     pub fn update_size(&self, size: (i32, i32)) -> Result<(), JsValue> {
-        if let PenguinType::Text = self.value_type {
+        if let IglooType::Text = self.value_type {
             let (width, height) = size;
             let textarea = self.el.dyn_ref::<HtmlTextAreaElement>().unwrap();
             let s = textarea.style();

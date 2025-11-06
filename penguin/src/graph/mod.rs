@@ -7,7 +7,7 @@ use crate::{
     },
     viewport::ClientToWorld,
 };
-use igloo_interface::{
+use igloo_interface::penguin::{
     PenguinRegistry,
     graph::{PenguinGraph, PenguinNodeID, PenguinWireID},
 };

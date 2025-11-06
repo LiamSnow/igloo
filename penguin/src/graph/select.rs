@@ -3,7 +3,7 @@ use crate::{
     graph::WebGraph,
     viewport::{ClientBox, ClientToWorld, WorldPoint},
 };
-use igloo_interface::{
+use igloo_interface::penguin::{
     PenguinPinRef,
     graph::{PenguinNodeID, PenguinWireID},
 };

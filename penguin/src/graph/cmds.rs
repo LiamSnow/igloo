@@ -2,7 +2,7 @@ use crate::{
     graph::{WebGraph, input::WebInputType, node::WebNode, wire::WebWire},
     viewport::WorldPoint,
 };
-use igloo_interface::graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID};
+use igloo_interface::penguin::graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID};
 use wasm_bindgen::JsValue;
 
 const MAX_HISTORY: usize = 500;

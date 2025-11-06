@@ -3,7 +3,7 @@ use crate::{
     viewport::{ClientBox, ClientToWorld, WorldPoint, rect_center},
 };
 use euclid::Box2D;
-use igloo_interface::{
+use igloo_interface::penguin::{
     PenguinPinType,
     graph::{PenguinWire, PenguinWireID},
 };

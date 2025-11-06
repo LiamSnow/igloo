@@ -1,10 +1,12 @@
 extern crate console_error_panic_hook;
 use crate::app::APP;
 use igloo_interface::{
-    NodeInputFeatureID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType, PenguinType,
-    PenguinValue,
-    graph::{
-        PenguinGraph, PenguinInputValue, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID,
+    IglooType, IglooValue,
+    penguin::{
+        NodeInputFeatureID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType,
+        graph::{
+            PenguinGraph, PenguinInputValue, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID,
+        },
     },
 };
 use log::Level;
@@ -229,7 +231,7 @@ fn test_graph() -> PenguinGraph {
             y: 500.,
             input_feature_values: HashMap::from([(
                 NodeInputFeatureID("Value".to_string()),
-                PenguinInputValue::new(PenguinValue::Text("Example Comment".to_string())),
+                PenguinInputValue::new(IglooValue::Text("Example Comment".to_string())),
             )]),
             ..Default::default()
         }, // PenguinNode::new(, 700., 500.),
@@ -243,7 +245,7 @@ fn test_graph() -> PenguinGraph {
             y: 500.,
             input_feature_values: HashMap::from([(
                 NodeInputFeatureID("Title".to_string()),
-                PenguinInputValue::new(PenguinValue::Text("Example Title".to_string())),
+                PenguinInputValue::new(IglooValue::Text("Example Title".to_string())),
             )]),
             ..Default::default()
         }, // PenguinNode::new(, 700., 500.),
@@ -256,7 +258,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(4),
             to_pin: PenguinPinID::from_str("Input 0"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -266,7 +268,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(4),
             to_pin: PenguinPinID::from_str("Input 1"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -276,7 +278,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(5),
             to_pin: PenguinPinID::from_str("Input 0"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -286,7 +288,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(5),
             to_pin: PenguinPinID::from_str("Input 1"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -296,7 +298,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(7),
             to_pin: PenguinPinID::from_str("A"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -306,7 +308,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(7),
             to_pin: PenguinPinID::from_str("B"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -326,7 +328,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(8),
             to_pin: PenguinPinID::from_str("Condition"),
-            r#type: PenguinPinType::Value(PenguinType::Bool),
+            r#type: PenguinPinType::Value(IglooType::Boolean),
         },
     );
     g.wires.insert(
@@ -336,7 +338,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(9),
             to_pin: PenguinPinID::from_str("Input"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -346,7 +348,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(11),
             to_pin: PenguinPinID::from_str("Input"),
-            r#type: PenguinPinType::Value(PenguinType::Text),
+            r#type: PenguinPinType::Value(IglooType::Text),
         },
     );
     g.wires.insert(
@@ -356,7 +358,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(12),
             to_pin: PenguinPinID::from_str("Message"),
-            r#type: PenguinPinType::Value(PenguinType::Text),
+            r#type: PenguinPinType::Value(IglooType::Text),
         },
     );
     g.wires.insert(
@@ -376,7 +378,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(14),
             to_pin: PenguinPinID::from_str("A"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -386,7 +388,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Value"),
             to_node: PenguinNodeID(14),
             to_pin: PenguinPinID::from_str("B"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -396,7 +398,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(15),
             to_pin: PenguinPinID::from_str("Input"),
-            r#type: PenguinPinType::Value(PenguinType::Int),
+            r#type: PenguinPinType::Value(IglooType::Integer),
         },
     );
     g.wires.insert(
@@ -406,7 +408,7 @@ fn test_graph() -> PenguinGraph {
             from_pin: PenguinPinID::from_str("Output"),
             to_node: PenguinNodeID(16),
             to_pin: PenguinPinID::from_str("Message"),
-            r#type: PenguinPinType::Value(PenguinType::Text),
+            r#type: PenguinPinType::Value(IglooType::Text),
         },
     );
     g.wires.insert(

@@ -5,9 +5,9 @@ use crate::{
     },
     graph::WebGraph,
     menu::Menu,
-    viewport::{ClientPoint, ClientToWorld, Viewport},
+    viewport::{ClientPoint, Viewport},
 };
-use igloo_interface::{PenguinRegistry, graph::PenguinGraph};
+use igloo_interface::penguin::{PenguinRegistry, graph::PenguinGraph};
 use std::cell::RefCell;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlElement};

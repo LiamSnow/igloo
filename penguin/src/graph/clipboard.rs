@@ -1,6 +1,6 @@
 use super::cmds::*;
 use crate::{graph::WebGraph, viewport::WorldPoint};
-use igloo_interface::graph::{PenguinGraph, PenguinNodeID, PenguinWireID};
+use igloo_interface::penguin::graph::{PenguinGraph, PenguinNodeID, PenguinWireID};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 use web_sys::ClipboardEvent;

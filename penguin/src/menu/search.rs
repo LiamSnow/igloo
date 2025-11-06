@@ -2,7 +2,9 @@ use crate::{
     app::event::{EventTarget, ListenerBuilder, Listeners, document},
     graph::node,
 };
-use igloo_interface::{PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinRef, PenguinRegistry};
+use igloo_interface::penguin::{
+    PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinRef, PenguinRegistry,
+};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, HtmlInputElement};
 

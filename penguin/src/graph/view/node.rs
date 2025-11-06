@@ -1,4 +1,4 @@
-use igloo_interface::{
+use igloo_interface::penguin::{
     NodeInputFeatureID, PenguinNodeDefn, PenguinPinID, PenguinPinRef, PenguinRegistry,
     graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };

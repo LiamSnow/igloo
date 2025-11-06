@@ -1,4 +1,4 @@
-use igloo_interface::graph::PenguinNodeID;
+use igloo_interface::penguin::graph::PenguinNodeID;
 use wasm_bindgen::JsValue;
 
 use crate::{

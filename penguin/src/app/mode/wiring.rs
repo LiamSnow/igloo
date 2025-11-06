@@ -3,7 +3,7 @@ use crate::app::{
     event::{Event, EventTarget, EventValue},
     mode::{MenuMode, Mode},
 };
-use igloo_interface::PenguinPinRef;
+use igloo_interface::penguin::PenguinPinRef;
 use wasm_bindgen::JsValue;
 
 impl App {

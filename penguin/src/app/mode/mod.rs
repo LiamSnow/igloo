@@ -1,4 +1,4 @@
-use igloo_interface::PenguinPinRef;
+use igloo_interface::penguin::PenguinPinRef;
 
 mod box_selecting;
 mod dragging;
@@ -11,7 +11,6 @@ pub use box_selecting::*;
 pub use dragging::*;
 pub use menu::*;
 pub use panning::*;
-pub use wiring::*;
 
 #[derive(Debug, Clone, Default)]
 pub enum Mode {

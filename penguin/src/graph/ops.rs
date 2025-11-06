@@ -3,7 +3,7 @@ use crate::{
     graph::{WebGraph, input::WebInputType},
     viewport::{ClientToWorld, WorldPoint},
 };
-use igloo_interface::{
+use igloo_interface::penguin::{
     PenguinNodeDefnRef, PenguinPinID, PenguinPinRef,
     graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
@@ -425,8 +425,8 @@ impl WebGraph {
         let original_wire = wire.inner().clone();
 
         let node_name = format!("Reroute {}", original_wire.r#type);
-        let defn_Ref = PenguinNodeDefnRef::new("Standard Library", &node_name, 1);
-        if self.registry.get_defn(&defn_Ref).is_none() {
+        let defn_ref = PenguinNodeDefnRef::new("Standard Library", &node_name, 1);
+        if self.registry.get_defn(&defn_ref).is_none() {
             return Err(JsValue::from_str("Reroute node definition not found"));
         }
 
@@ -444,7 +444,7 @@ impl WebGraph {
         tx.push(Command::AddNode {
             id: node_id,
             node: PenguinNode {
-                defn_ref: defn_Ref,
+                defn_ref,
                 x: wpos.x,
                 y: wpos.y,
                 ..Default::default()

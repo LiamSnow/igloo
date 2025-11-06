@@ -18,5 +18,5 @@
    - [ ] straighten connections
 - [ ] wire context menu
 - [x] variadic controls
-- [ ] query types
 - [ ] icons
+- [ ] !! igloo nodes (watch query, oneshot, etc.)

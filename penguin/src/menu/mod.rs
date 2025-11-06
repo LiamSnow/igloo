@@ -1,4 +1,4 @@
-use igloo_interface::{PenguinPinRef, PenguinRegistry};
+use igloo_interface::penguin::{PenguinPinRef, PenguinRegistry};
 use wasm_bindgen::JsValue;
 use web_sys::Element;
 

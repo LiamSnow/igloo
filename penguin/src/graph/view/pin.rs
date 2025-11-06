@@ -1,6 +1,6 @@
 use std::mem;
 
-use igloo_interface::{
+use igloo_interface::penguin::{
     PenguinPinDefn, PenguinPinID, PenguinPinRef, PenguinPinType,
     graph::{PenguinNode, PenguinWireID},
 };

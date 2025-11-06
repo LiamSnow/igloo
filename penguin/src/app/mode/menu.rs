@@ -9,7 +9,7 @@ use crate::{
     },
     viewport::WorldPoint,
 };
-use igloo_interface::{PenguinPinRef, graph::PenguinNode};
+use igloo_interface::penguin::{PenguinPinRef, graph::PenguinNode};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuMode {
