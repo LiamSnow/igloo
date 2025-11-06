@@ -11,6 +11,16 @@ pub enum AggregationOp {
     All,
 }
 
+pub const AGGREGATION_OPS: [AggregationOp; 7] = [
+    AggregationOp::Mean,
+    AggregationOp::Median,
+    AggregationOp::Max,
+    AggregationOp::Min,
+    AggregationOp::Sum,
+    AggregationOp::Any,
+    AggregationOp::All,
+];
+
 pub trait Aggregatable {
     fn aggregate<I: IntoIterator<Item = Self>>(items: I, op: AggregationOp) -> Option<Self>
     where

@@ -1,4 +1,4 @@
-use crate::{IglooEnumType, IglooEnumValue};
+use crate::{IGLOO_ENUMS, IglooEnumType, IglooEnumValue};
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 #[cfg(feature = "penguin")]
@@ -272,27 +272,22 @@ impl IglooType {
 
     pub fn can_cast(self, to: Self) -> bool {
         use IglooType::*;
-        match (self, to) {
-            (Integer, Real) => true,
-            (Real, Integer) => true,
-
-            (_, Text) => true,
-
-            (Integer, Boolean) => true,
-            (Boolean, Integer) => true,
-
-            (IntegerList, RealList) => true,
-            (RealList, IntegerList) => true,
-
-            (IntegerList, TextList) => true,
-            (RealList, TextList) => true,
-            (BooleanList, TextList) => true,
-            (ColorList, TextList) => true,
-            (DateList, TextList) => true,
-            (TimeList, TextList) => true,
-
-            _ => false,
-        }
+        matches!(
+            (self, to),
+            (Integer, Real)
+                | (Real, Integer)
+                | (_, Text)
+                | (Integer, Boolean)
+                | (Boolean, Integer)
+                | (IntegerList, RealList)
+                | (RealList, IntegerList)
+                | (IntegerList, TextList)
+                | (RealList, TextList)
+                | (BooleanList, TextList)
+                | (ColorList, TextList)
+                | (DateList, TextList)
+                | (TimeList, TextList)
+        )
     }
 
     pub fn cast_name(self, to: Self) -> Option<String> {
@@ -300,6 +295,14 @@ impl IglooType {
             return None;
         }
         Some(format!("Cast {self} to {to}"))
+    }
+
+    pub fn all() -> Vec<Self> {
+        let mut res = IGLOO_PRIMITIVES.to_vec();
+        for e in IGLOO_ENUMS {
+            res.push(Self::Enum(e));
+        }
+        res
     }
 }
 

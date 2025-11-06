@@ -454,6 +454,7 @@ fn gen_enum_types(comps: &[Component]) -> TokenStream {
         .iter()
         .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
         .collect();
+    let count = enum_comps.len();
 
     let type_variants: Vec<_> = enum_comps
         .iter()
@@ -557,6 +558,12 @@ fn gen_enum_types(comps: &[Component]) -> TokenStream {
                 }
             }
         }
+
+        pub static IGLOO_ENUMS: [IglooEnumType; #count] = [
+            #(
+                IglooEnumType::#type_variants
+            ),*
+        ];
     }
 }
 

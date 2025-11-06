@@ -23,6 +23,7 @@ pub struct PenguinNodeDefn {
     pub hide_search: bool,
     pub variadic_feature: Option<NodeVariadicFeature>,
     pub input_features: Vec<NodeInputFeature>,
+    pub query_feature: Option<NodeQueryFeature>,
     pub is_reroute: bool,
     pub is_section: bool,
 }
@@ -33,14 +34,27 @@ pub struct NodeVariadicFeature {
     pub next: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeQueryFeature {
+    pub base: String,
+    pub is_aggregate: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct NodeInputFeatureID(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeInputFeature {
-    pub r#type: IglooType,
+    pub value_type: IglooType,
+    pub input_type: NodeInputType,
     /// Value is saved under this ID
     pub id: NodeInputFeatureID,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeInputType {
+    Input,
+    Select(Vec<String>),
 }
 
 impl PenguinNodeDefnRef {

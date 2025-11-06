@@ -1,4 +1,4 @@
-use crate::{IGLOO_PRIMITIVES, types::IglooType};
+use crate::types::IglooType;
 
 use super::*;
 use indexmap::IndexMap;
@@ -15,25 +15,102 @@ pub fn std_library() -> PenguinLibrary {
     //
     // On Floe Attach
     //
-    // Get One Component
-    // Get All Component
-    // Get With Function
+    // Get All Component? (requires change in typing)
     //
-    // Set One Component
-    // Set All Component
-    //
-    // Watch One Component
-    // Watch All Components
-    //
-    // Watch One Entity
-    // Watch All Entities
+    // Get Device/Entity Name?
+
+    add_query_node(
+        &mut nodes,
+        "Get One Component",
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Get One".to_string()),
+            desc: "Read the value of the first component that matches the conditions. A value will populate and the 'Ok' branch will execute if successful. If no valid componenet was found the 'No Result' branch will execute.".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Execute"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            outputs: IndexMap::from([
+                (PenguinPinID::from_str("Ok"), PenguinPinDefn::named_flow()),
+                (
+                    PenguinPinID::from_str("No Result"),
+                    PenguinPinDefn::named_flow(),
+                ),
+            ]),
+            ..Default::default()
+        },
+        false,
+        false,
+    );
+
+    add_query_node(
+        &mut nodes,
+        "Aggregate Components",
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Aggregate".to_string()),
+            desc: "Read all components that match conditions, then apply the operation. A value will populate and the 'Ok' branch will execute if successful. If no valid components were found OR that component does not support the aggregation function, the 'No Result' branch will execute.".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Execute"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            outputs: IndexMap::from([
+                (PenguinPinID::from_str("Ok"), PenguinPinDefn::named_flow()),
+                (
+                    PenguinPinID::from_str("No Result"),
+                    PenguinPinDefn::named_flow(),
+                ),
+            ]),
+            ..Default::default()
+        },
+        true,
+        false,
+    );
+
+    add_query_node(
+        &mut nodes,
+        "Set Components",
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("Set".to_string()),
+            desc: "Sets a component on all applicable entities.".to_string(),
+            inputs: IndexMap::from([(
+                PenguinPinID::from_str("Execute"),
+                PenguinPinDefn::unnamed_flow(),
+            )]),
+            outputs: IndexMap::from([(
+                PenguinPinID::from_str("Done"),
+                PenguinPinDefn::named_flow(),
+            )]),
+            ..Default::default()
+        },
+        false,
+        true,
+    );
+
+    add_query_node(
+        &mut nodes,
+        "On Component Changed",
+        PenguinNodeDefn {
+            version: 1,
+            title_bar: Some("On Change".to_string()),
+            desc: "Any time a component that matches the filters changes, a value will populate and the branch will be executed. Note that it will initially trigger for all applicable components.".to_string(),
+            outputs: IndexMap::from([
+                (PenguinPinID::from_str("Trigger"), PenguinPinDefn::unnamed_flow()),
+            ]),
+            ..Default::default()
+        },
+        false,
+        false,
+    );
 
     nodes.insert(
         "Comment".to_string(),
         PenguinNodeDefn {
             version: 1,
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Text,
+                value_type: IglooType::Text,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("Value"),
             }],
             ..Default::default()
@@ -45,7 +122,8 @@ pub fn std_library() -> PenguinLibrary {
         PenguinNodeDefn {
             version: 1,
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Text,
+                value_type: IglooType::Text,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("Title"),
             }],
             is_section: true,
@@ -164,7 +242,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Merge",
         PenguinNodeDefn {
@@ -183,7 +261,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Either",
         PenguinNodeDefn {
@@ -211,7 +289,8 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinDefn::unnamed_val(IglooType::Text),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Text,
+                value_type: IglooType::Text,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -227,7 +306,8 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinDefn::unnamed_val(IglooType::Boolean),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Boolean,
+                value_type: IglooType::Boolean,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -243,7 +323,8 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinDefn::unnamed_val(IglooType::Integer),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Integer,
+                value_type: IglooType::Integer,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -259,7 +340,8 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinDefn::unnamed_val(IglooType::Real),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Real,
+                value_type: IglooType::Real,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
@@ -275,14 +357,15 @@ pub fn std_library() -> PenguinLibrary {
                 PenguinPinDefn::unnamed_val(IglooType::Color),
             )]),
             input_features: vec![NodeInputFeature {
-                r#type: IglooType::Color,
+                value_type: IglooType::Color,
+                input_type: NodeInputType::Input,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "And",
         PenguinNodeDefn {
@@ -302,7 +385,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Or",
         PenguinNodeDefn {
@@ -388,7 +471,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Add Integers",
         PenguinNodeDefn {
@@ -432,7 +515,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Multiply Integers",
         PenguinNodeDefn {
@@ -644,7 +727,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Add Reals",
         PenguinNodeDefn {
@@ -688,7 +771,7 @@ pub fn std_library() -> PenguinLibrary {
         },
     );
 
-    add_variadic(
+    add_variadic_node(
         &mut nodes,
         "Multiply Reals",
         PenguinNodeDefn {
@@ -1200,8 +1283,8 @@ fn add_reroute(nodes: &mut HashMap<String, PenguinNodeDefn>, pin_type: PenguinPi
 }
 
 fn add_cast_nodes(nodes: &mut HashMap<String, PenguinNodeDefn>) {
-    for from in IGLOO_PRIMITIVES {
-        for to in IGLOO_PRIMITIVES {
+    for from in IglooType::all() {
+        for to in IglooType::all() {
             if let Some(cast_name) = from.cast_name(to) {
                 nodes.insert(
                     cast_name,
@@ -1225,7 +1308,52 @@ fn add_cast_nodes(nodes: &mut HashMap<String, PenguinNodeDefn>) {
     }
 }
 
-fn add_variadic(
+fn add_query_node(
+    nodes: &mut HashMap<String, PenguinNodeDefn>,
+    base_name: &str,
+    mut template: PenguinNodeDefn,
+    is_aggregate: bool,
+    is_setter: bool,
+) {
+    template.query_feature = Some(NodeQueryFeature {
+        base: base_name.to_string(),
+        is_aggregate,
+    });
+
+    // base
+    nodes.insert(base_name.to_string(), template.clone());
+
+    // variants
+    for r#type in IglooType::all() {
+        let mut node = template.clone();
+
+        if is_setter {
+            node.inputs.insert(
+                PenguinPinID::from_str("Value"),
+                PenguinPinDefn::named_val(r#type),
+            );
+        } else {
+            node.outputs.insert(
+                PenguinPinID::from_str("Value"),
+                PenguinPinDefn::named_val(r#type),
+            );
+            node.outputs.insert(
+                PenguinPinID::from_str("Device ID"),
+                PenguinPinDefn::named_val(IglooType::Integer),
+            );
+            node.outputs.insert(
+                PenguinPinID::from_str("Entity ID"),
+                PenguinPinDefn::named_val(IglooType::Integer),
+            );
+        }
+
+        node.hide_search = true;
+
+        nodes.insert(format!("{base_name} {type}"), node);
+    }
+}
+
+fn add_variadic_node(
     nodes: &mut HashMap<String, PenguinNodeDefn>,
     base_name: &str,
     template: PenguinNodeDefn,
