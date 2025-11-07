@@ -380,9 +380,14 @@
   box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
 }
 
-.penguin-input[type="text"] {
+textarea.penguin-input {
   min-width: 80px;
   max-width: 200px;
+  resize: both;
+}
+
+input.penguin-input[type="text"] {
+  width: 80px;
 }
 
 .penguin-input[type="number"] {

@@ -1,117 +1,101 @@
-use std::mem;
-
-use igloo_interface::penguin::{
-    PenguinPinDefn, PenguinPinID, PenguinPinRef, PenguinPinType,
-    graph::{PenguinNode, PenguinWireID},
-};
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement, SvgElement};
-
 use crate::{
-    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    dom::{self, Div, Polygon, events::EventTarget, node::DomNode},
     graph::input::{WebInput, WebInputType},
 };
+use either::Either;
+use igloo_interface::penguin::{
+    NodeInputType, PenguinPinDefn, PenguinPinID, PenguinPinRef, PenguinPinType,
+    graph::{PenguinNode, PenguinWireID},
+};
+
+type PinElement = Either<DomNode<Polygon>, DomNode<Div>>;
 
 #[derive(Debug)]
 pub struct WebPin {
     pref: PenguinPinRef,
     defn: PenguinPinDefn,
-    wrapper: Element,
-    pub hitbox: HtmlElement,
+    #[allow(dead_code)]
+    wrapper: DomNode<Div>,
+    pub hitbox: DomNode<Div>,
     /// flow=polygon, value=div
-    pin_el: Element,
+    pin_el: PinElement,
     pub(super) input_el: Option<WebInput>,
     connections: Vec<PenguinWireID>,
-    listeners: Listeners,
-}
-
-impl Drop for WebPin {
-    fn drop(&mut self) {
-        self.wrapper.remove();
-    }
 }
 
 const UNCONNECTED_COLOR: &str = "#111";
 
-pub fn make(
-    parent: &Element,
+pub fn make<T>(
+    parent: &DomNode<T>,
     defn: &PenguinPinDefn,
     id: &PenguinPinID,
     is_output: bool,
-) -> Result<(Element, HtmlElement, Element), JsValue> {
-    let document = document();
+) -> (DomNode<Div>, DomNode<Div>, PinElement) {
+    let wrapper = dom::div()
+        .class(if is_output {
+            "penguin-pin-wrapper output"
+        } else {
+            "penguin-pin-wrapper input"
+        })
+        .mount(parent);
 
-    let wrapper = document.create_element("div")?;
-    wrapper.set_class_name(if is_output {
-        "penguin-pin-wrapper output"
-    } else {
-        "penguin-pin-wrapper input"
-    });
-    parent.append_child(&wrapper)?;
-
-    let hitbox = document.create_element("div")?.dyn_into::<HtmlElement>()?;
-    hitbox.set_class_name("penguin-pin-hitbox");
-    wrapper.append_child(&hitbox)?;
+    let hitbox = dom::div().class("penguin-pin-hitbox").mount(&wrapper);
 
     let pin_el = match defn.r#type {
         PenguinPinType::Flow => {
-            let svg = document
-                .create_element_ns(Some("http://www.w3.org/2000/svg"), "svg")?
-                .dyn_into::<SvgElement>()?;
+            let svg = dom::svg()
+                .attr("class", "penguin-pin flow")
+                .width(16.)
+                .height(16.)
+                .viewbox(0., 0., 16., 16.)
+                .mount(&hitbox);
 
-            svg.set_attribute("class", "penguin-pin flow")?;
-            svg.set_attribute("width", "16")?;
-            svg.set_attribute("height", "16")?;
-            svg.set_attribute("viewbox", "0 0 16 16")?;
-
-            hitbox.append_child(&svg)?;
-
-            let polygon =
-                document.create_element_ns(Some("http://www.w3.org/2000/svg"), "polygon")?;
-
-            polygon.set_attribute("points", "1,1 12,1 15,8 12,15 1,15")?;
-            polygon.set_attribute("fill", UNCONNECTED_COLOR)?;
-            polygon.set_attribute("stroke", defn.r#type.color())?;
-            polygon.set_attribute("strokeWidth", "2")?;
-
-            svg.append_child(&polygon)?;
-
-            polygon
+            Either::Left(
+                dom::polygon()
+                    .points("1,1 12,1 15,8 12,15 1,15")
+                    .fill(UNCONNECTED_COLOR)
+                    .stroke(defn.r#type.color())
+                    .stroke_width(2.)
+                    .mount(&svg),
+            )
         }
-        PenguinPinType::Value(vt) => {
-            let pin_el = document.create_element("div")?;
-
-            pin_el.set_class_name("penguin-pin value");
-            pin_el.set_attribute("style", &format!("border-color: {};", vt.color()))?;
-
-            hitbox.append_child(&pin_el)?;
-
-            pin_el
-        }
+        PenguinPinType::Value(vt) => Either::Right(
+            dom::div()
+                .class("penguin-pin value")
+                .style("border-color", vt.color())
+                .mount(&hitbox),
+        ),
     };
 
     if !defn.hide_name {
-        let name = document.create_element("span")?.dyn_into::<HtmlElement>()?;
-
-        name.set_class_name("penguin-pin-name");
-        name.set_inner_text(&id.0);
-
-        wrapper.append_child(&name)?;
+        dom::div()
+            .class("penguin-pin-name")
+            .text(&id.0)
+            .mount(&wrapper);
     }
 
-    Ok((wrapper, hitbox, pin_el))
+    (wrapper, hitbox, pin_el)
 }
 
 impl WebPin {
-    pub fn new(
-        parent: &Element,
+    pub fn new<T>(
+        parent: &DomNode<T>,
         node: &mut PenguinNode,
         pref: PenguinPinRef,
         defn: PenguinPinDefn,
         connections: Vec<PenguinWireID>,
         is_reroute: bool,
-    ) -> Result<Self, JsValue> {
-        let (wrapper, hitbox, pin_el) = make(parent, &defn, &pref.id, pref.is_output)?;
+    ) -> Self {
+        let (mut wrapper, mut hitbox, pin_el) = make(parent, &defn, &pref.id, pref.is_output);
+
+        wrapper.remove_on_drop();
+
+        hitbox.event_target(EventTarget::Pin(pref.clone()));
+        hitbox.listen_mouseup();
+        if !is_reroute {
+            hitbox.listen_mousedown();
+            hitbox.listen_contextmenu();
+        }
 
         let mut input_el = None;
 
@@ -126,17 +110,11 @@ impl WebPin {
                 pref.node_id,
                 WebInputType::Pin(pref.id.clone()),
                 vt,
+                NodeInputType::Input,
                 &pin_value.value.to_string(),
                 pin_value.size,
-            )?);
+            ));
         }
-
-        let mut builder =
-            ListenerBuilder::new(&hitbox, EventTarget::Pin(pref.clone())).add_mouseup()?;
-        if !is_reroute {
-            builder = builder.add_mousedown()?.add_contextmenu()?;
-        }
-        let listeners = builder.build();
 
         let me = Self {
             pref,
@@ -146,12 +124,11 @@ impl WebPin {
             pin_el,
             input_el,
             connections,
-            listeners,
         };
 
-        me.update_fill()?;
+        me.update_fill();
 
-        Ok(me)
+        me
     }
 
     pub fn connections(&self) -> &[PenguinWireID] {
@@ -159,57 +136,44 @@ impl WebPin {
     }
 
     /// WARN: make sure to update node wires
-    pub fn remove_connection(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
+    pub fn remove_connection(&mut self, wire_id: PenguinWireID) {
         self.connections.retain(|&id| id != wire_id);
-        self.update_fill()?;
-        Ok(())
+        self.update_fill();
     }
 
-    pub fn take_connections(&mut self) -> Result<Vec<PenguinWireID>, JsValue> {
-        let mut o = Vec::new();
-        mem::swap(&mut self.connections, &mut o);
-        self.update_fill()?;
-        Ok(o)
-    }
+    // pub fn take_connections(&mut self) -> Vec<PenguinWireID> {
+    //     let mut o = Vec::new();
+    //     mem::swap(&mut self.connections, &mut o);
+    //     self.update_fill();
+    //     o
+    // }
 
-    pub fn add_connection(&mut self, connection: PenguinWireID) -> Result<(), JsValue> {
+    pub fn add_connection(&mut self, connection: PenguinWireID) {
         self.connections.push(connection);
-        self.update_fill()
+        self.update_fill();
     }
 
-    fn update_fill(&self) -> Result<(), JsValue> {
+    fn update_fill(&self) {
         let connected = !self.connections.is_empty();
 
-        match self.defn.r#type {
-            PenguinPinType::Flow => self.pin_el.set_attribute(
-                "fill",
-                if connected {
-                    self.defn.r#type.color()
-                } else {
-                    UNCONNECTED_COLOR
-                },
-            )?,
-            PenguinPinType::Value(vt) => {
-                self.pin_el.set_attribute(
-                    "style",
-                    &format!(
-                        "border-color: {}; background-color: {};",
-                        vt.color(),
-                        if connected {
-                            vt.color()
-                        } else {
-                            UNCONNECTED_COLOR
-                        },
-                    ),
-                )?;
+        let color = if connected {
+            self.defn.r#type.color()
+        } else {
+            UNCONNECTED_COLOR
+        };
+
+        match &self.pin_el {
+            Either::Left(polygon) => {
+                polygon.set_fill(color);
+            }
+            Either::Right(div) => {
+                div.set_style("background-color", color);
             }
         }
 
         if let Some(input) = &self.input_el {
-            input.set_visible(!connected)?;
+            input.set_visible(!connected);
         }
-
-        Ok(())
     }
 
     pub fn show_wiring(&mut self, start: &PenguinPinRef) {
@@ -223,10 +187,10 @@ impl WebPin {
             "penguin-pin-hitbox invalid-target"
         };
 
-        self.hitbox.set_class_name(class);
+        self.hitbox.set_class(class);
     }
 
     pub fn hide_wiring(&mut self) {
-        self.hitbox.set_class_name("penguin-pin-hitbox");
+        self.hitbox.set_class("penguin-pin-hitbox");
     }
 }

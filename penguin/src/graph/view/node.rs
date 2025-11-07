@@ -1,118 +1,101 @@
-use igloo_interface::penguin::{
-    NodeInputFeatureID, PenguinNodeDefn, PenguinPinID, PenguinPinRef, PenguinRegistry,
-    graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
-};
-use indexmap::IndexMap;
-use std::collections::HashMap;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement, MouseEvent};
-
 use crate::{
-    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    dom::{self, Div, events::EventTarget, node::DomNode},
     graph::{
         input::{WebInput, WebInputType},
         pin::{self, WebPin},
     },
-    viewport::{ClientBox, ClientPoint, WorldPoint},
+    viewport::{ClientSpace, WorldPoint},
 };
+use euclid::Box2D;
+use igloo_interface::penguin::{
+    NodeInputFeatureID, PenguinNodeDefn, PenguinNodeDefnRef, PenguinPinID, PenguinPinRef,
+    PenguinRegistry,
+    graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
+};
+use indexmap::IndexMap;
+use std::collections::HashMap;
+use web_sys::MouseEvent;
 
 #[derive(Debug)]
 pub struct WebNode {
     pub inner: PenguinNode,
-    id: PenguinNodeID,
-    defn: PenguinNodeDefn,
-    el: HtmlElement,
-    listeners: Vec<Listeners>,
+    // id: PenguinNodeID,
+    // defn: PenguinNodeDefn,
+    el: DomNode<Div>,
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
     input_feature_els: IndexMap<NodeInputFeatureID, WebInput>,
-    section: Option<HtmlElement>,
+    section: Option<DomNode<Div>>,
 }
 
-impl Drop for WebNode {
-    fn drop(&mut self) {
-        self.el.remove();
-    }
-}
-
-fn make(
-    parent: &Element,
+fn make<T>(
+    parent: &DomNode<T>,
     defn: &PenguinNodeDefn,
-) -> Result<(HtmlElement, Element, Element), JsValue> {
-    let document = document();
-
-    let el = document.create_element("div")?.dyn_into::<HtmlElement>()?;
-    el.set_class_name("penguin-node");
-    parent.append_child(&el)?;
+    defn_ref: &PenguinNodeDefnRef,
+) -> (DomNode<Div>, DomNode<Div>, DomNode<Div>) {
+    let el = dom::div()
+        .class("penguin-node")
+        .attr("data-defn", &defn_ref.to_string())
+        .mount(parent);
 
     if let Some(title_bar) = &defn.title_bar {
-        let title_el = document.create_element("div")?;
-        title_el.set_class_name("penguin-node-title");
-        title_el.set_inner_html(title_bar);
-        el.append_child(&title_el)?;
+        dom::div()
+            .class("penguin-node-title")
+            .text(title_bar)
+            .mount(&el);
     }
 
     if defn.icon_bg {
-        let icon_el = document.create_element("div")?;
-        icon_el.set_class_name("penguin-node-bg");
-        icon_el.set_inner_html(&defn.icon);
-        el.append_child(&icon_el)?;
+        dom::div()
+            .class("penguin-node-bg")
+            .text(&defn.icon)
+            .mount(&el);
     }
 
     if defn.is_reroute {
-        el.set_attribute("data-is-reroute", "true")?;
-        let circle = document.create_element("div")?;
-        circle.set_class_name("penguin-reroute-circle");
-        el.append_child(&circle)?;
+        el.set_attr("data-is-reroute", "true");
     }
 
-    let inputs_el = document.create_element("div")?;
-    inputs_el.set_class_name("penguin-node-inputs");
-    el.append_child(&inputs_el)?;
+    let inputs_el = dom::div().class("penguin-node-inputs").mount(&el);
+    let outputs_el = dom::div().class("penguin-node-outputs").mount(&el);
 
-    let outputs_el = document.create_element("div")?;
-    outputs_el.set_class_name("penguin-node-outputs");
-    el.append_child(&outputs_el)?;
-
-    Ok((el, inputs_el, outputs_el))
+    (el, inputs_el, outputs_el)
 }
 
 /// used for search
-pub fn make_dummy(parent: &Element, defn: &PenguinNodeDefn) -> Result<(), JsValue> {
-    let (el, inputs_el, outputs_el) = make(parent, defn)?;
-    el.set_class_name("penguin-node penguin-dummy-node");
+pub fn make_dummy<T>(parent: &DomNode<T>, defn: &PenguinNodeDefn, defn_ref: &PenguinNodeDefnRef) {
+    let (el, inputs_el, outputs_el) = make(parent, defn, defn_ref);
+    el.set_class("penguin-node penguin-dummy-node");
 
     for (pin_id, pin_defn) in &defn.inputs {
-        pin::make(&inputs_el, pin_defn, pin_id, false)?;
+        pin::make(&inputs_el, pin_defn, pin_id, false);
     }
 
     for (pin_id, pin_defn) in &defn.outputs {
-        pin::make(&outputs_el, pin_defn, pin_id, true)?;
+        pin::make(&outputs_el, pin_defn, pin_id, true);
     }
-
-    Ok(())
 }
 
 impl WebNode {
-    pub fn new(
-        parent: &Element,
+    pub fn new<T>(
+        parent: &DomNode<T>,
         registry: &PenguinRegistry,
         wires: Option<&HashMap<PenguinWireID, PenguinWire>>,
         mut inner: PenguinNode,
         id: PenguinNodeID,
-    ) -> Result<Self, JsValue> {
-        let document = document();
-
+    ) -> Self {
         let defn = registry
             .get_defn(&inner.defn_ref)
             .cloned()
-            .ok_or(JsValue::from_str(&format!(
-                "Unknown Node Definition {}",
-                inner.defn_ref
-            )))?;
+            .unwrap_or_else(|| panic!("Unknown Node Definition {}", inner.defn_ref));
 
-        let (el, inputs_el, outputs_el) = make(parent, &defn)?;
-        el.set_attribute("data-defn", &inner.defn_ref.to_string())?;
+        let (mut el, inputs_el, outputs_el) = make(parent, &defn, &inner.defn_ref);
+
+        el.remove_on_drop();
+
+        el.event_target(EventTarget::Node(id));
+        el.listen_mousedown();
+        el.listen_contextmenu();
 
         // input pins
         let mut inputs = IndexMap::with_capacity(defn.inputs.len());
@@ -147,16 +130,15 @@ impl WebNode {
                     pin_defn.clone(),
                     connections.unwrap_or_default(),
                     defn.is_reroute,
-                )?,
+                ),
             );
         }
 
         if defn.is_reroute {
-            let s = el.style();
             let defn = &defn.outputs[0];
             let color = defn.r#type.color();
-            s.set_property("background-color", color)?;
-            s.set_property("border-color", color)?;
+            el.set_style("background-color", color);
+            el.set_style("border-color", color);
         }
 
         // output pins
@@ -192,16 +174,14 @@ impl WebNode {
                     pin_defn.clone(),
                     connections.unwrap_or_default(),
                     defn.is_reroute,
-                )?,
+                ),
             );
         }
 
         // input feature
         let mut input_feature_els = IndexMap::with_capacity(defn.input_features.len());
         if !defn.input_features.is_empty() {
-            let content_el = document.create_element("div")?;
-            content_el.set_class_name("penguin-node-content");
-            el.append_child(&content_el)?;
+            let content_el = dom::div().class("penguin-node-content").mount(&el);
 
             for feature in &defn.input_features {
                 inner.ensure_input_feature_value(feature);
@@ -211,46 +191,37 @@ impl WebNode {
                     &content_el,
                     id,
                     WebInputType::NodeFeature(feature.id.clone()),
-                    feature.r#type,
+                    feature.value_type,
+                    feature.input_type.clone(),
                     &feature_value.value.to_string(),
                     feature_value.size,
-                )?;
+                );
 
                 input_feature_els.insert(feature.id.clone(), input);
             }
         }
 
-        let mut listeners = Vec::with_capacity(3);
-
         if let Some(vf) = &defn.variadic_feature {
-            let controls = document.create_element("div")?;
-            controls.set_class_name("penguin-variadic-controls");
-            el.append_child(&controls)?;
+            let controls = dom::div().class("penguin-variadic-controls").mount(&el);
 
             if let Some(prev) = &vf.prev {
-                let btn = document.create_element("button")?;
-                btn.set_class_name("penguin-variadic-button");
-                btn.set_inner_html("-");
-                controls.append_child(&btn)?;
-                listeners.push(
-                    ListenerBuilder::new(&btn, EventTarget::NodeVariadic(id, prev.clone()))
-                        .add_mousedown()?
-                        .add_mouseclick()?
-                        .build(),
-                );
+                dom::button()
+                    .class("penguin-variadic-button")
+                    .text("-")
+                    .event_target(EventTarget::NodeVariadic(id, prev.clone()))
+                    .listen_mousedown()
+                    .listen_click()
+                    .mount(&controls);
             }
 
             if let Some(next) = &vf.next {
-                let btn = document.create_element("button")?;
-                btn.set_class_name("penguin-variadic-button");
-                btn.set_inner_html("+");
-                controls.append_child(&btn)?;
-                listeners.push(
-                    ListenerBuilder::new(&btn, EventTarget::NodeVariadic(id, next.clone()))
-                        .add_mousedown()?
-                        .add_mouseclick()?
-                        .build(),
-                );
+                dom::button()
+                    .class("penguin-variadic-button")
+                    .text("+")
+                    .event_target(EventTarget::NodeVariadic(id, next.clone()))
+                    .listen_mousedown()
+                    .listen_click()
+                    .mount(&controls);
             }
         }
 
@@ -258,11 +229,7 @@ impl WebNode {
             inputs_el.remove();
             outputs_el.remove();
 
-            el.set_attribute("data-is-section", "true")?;
-
-            let section = document.create_element("div")?.dyn_into::<HtmlElement>()?;
-            section.set_class_name("penguin-node-section");
-            el.append_child(&section)?;
+            el.set_attr("data-is-section", "true");
 
             let (width, height) = match inner.size {
                 Some(size) => size,
@@ -273,62 +240,54 @@ impl WebNode {
                 }
             };
 
-            let style = section.style();
-            style.set_property("width", &format!("{width}px"))?;
-            style.set_property("height", &format!("{height}px"))?;
+            let mut section = dom::div()
+                .class("penguin-node-section")
+                .width(width as f64)
+                .height(height as f64)
+                .event_target(EventTarget::Global)
+                .listen_contextmenu()
+                .mount(&el);
 
-            let section_1 = section.clone();
-            let mut l = ListenerBuilder::new(&section, EventTarget::Global)
-                .add_contextmenu()?
-                .add_mousedown_conditional(move |e: &MouseEvent| {
-                    let rect = section_1.get_bounding_client_rect();
-                    let x = e.client_x() as f64 - rect.left();
-                    let y = e.client_y() as f64 - rect.top();
-                    !(x > rect.width() - 20.0 && y > rect.height() - 20.0)
-                })?
-                .build();
+            let section_el = section.element.clone();
+            section.listen_resize(&section_el);
+            section.listen_mousedown_conditional(move |e: &MouseEvent| {
+                let rect = section_el.get_bounding_client_rect();
+                let x = e.client_x() as f64 - rect.left();
+                let y = e.client_y() as f64 - rect.top();
+                !(x > rect.width() - 20.0 && y > rect.height() - 20.0)
+            });
 
-            l.add_resize(&section, section.clone(), EventTarget::Node(id))?;
-            listeners.push(l);
+            section.event_target(EventTarget::Node(id));
 
             Some(section)
         } else {
             None
         };
 
-        listeners.push(
-            ListenerBuilder::new(&el, EventTarget::Node(id))
-                .add_mousedown()?
-                .add_contextmenu()?
-                .build(),
-        );
-
         let me = WebNode {
             inner,
-            id,
-            defn,
+            // id,
+            // defn,
             el,
-            listeners,
             inputs,
             outputs,
             input_feature_els,
             section,
         };
 
-        me.update_transform()?;
+        me.update_transform();
 
-        Ok(me)
+        me
     }
 
-    pub fn update_transform(&self) -> Result<(), JsValue> {
-        let translate = format!("translate({}px, {}px)", self.inner.x, self.inner.y);
-        self.el.style().set_property("transform", &translate)
+    pub fn update_transform(&self) {
+        self.el.translate(self.inner.x, self.inner.y);
     }
 
-    pub fn set_pos(&mut self, pos: WorldPoint) -> Result<(), JsValue> {
+    pub fn set_pos(&mut self, pos: WorldPoint) {
         self.inner.x = pos.x;
         self.inner.y = pos.y;
-        self.update_transform()
+        self.update_transform();
     }
 
     pub fn pos(&self) -> WorldPoint {
@@ -337,21 +296,14 @@ impl WebNode {
 
     pub fn select(&self, selected: bool) {
         if selected {
-            self.el.set_class_name("penguin-node selected");
+            self.el.set_class("penguin-node selected");
         } else {
-            self.el.set_class_name("penguin-node");
+            self.el.set_class("penguin-node");
         }
     }
 
-    pub fn client_box(&self) -> ClientBox {
-        let rect = self.el.get_bounding_client_rect();
-        ClientBox::new(
-            ClientPoint::new(rect.x() as i32, rect.y() as i32),
-            ClientPoint::new(
-                (rect.x() + rect.width()) as i32,
-                (rect.y() + rect.height()) as i32,
-            ),
-        )
+    pub fn client_box(&self) -> Box2D<f64, ClientSpace> {
+        self.el.client_box()
     }
 
     pub fn inner(&self) -> &PenguinNode {
@@ -366,52 +318,44 @@ impl WebNode {
         }
     }
 
-    pub fn update_input_value(&self, r#type: &WebInputType, value: &str) -> Result<(), JsValue> {
+    pub fn update_input_value(&self, r#type: &WebInputType, value: &str) {
         match r#type {
             WebInputType::Pin(pin_id) => {
                 if let Some(pin) = self.inputs.get(pin_id)
                     && let Some(input) = &pin.input_el
                 {
-                    input.update_value(value)?;
+                    input.update_value(value);
                 }
             }
             WebInputType::NodeFeature(feature_id) => {
                 if let Some(input) = self.input_feature_els.get(feature_id) {
-                    input.update_value(value)?;
+                    input.update_value(value);
                 }
             }
         }
-        Ok(())
     }
 
-    pub fn update_input_size(
-        &self,
-        r#type: &WebInputType,
-        size: (i32, i32),
-    ) -> Result<(), JsValue> {
+    pub fn update_input_size(&self, r#type: &WebInputType, size: (i32, i32)) {
         match r#type {
             WebInputType::Pin(pin_id) => {
                 if let Some(pin) = self.inputs.get(pin_id)
                     && let Some(input) = &pin.input_el
                 {
-                    input.update_size(size)?;
+                    input.update_size(size);
                 }
             }
             WebInputType::NodeFeature(feature_id) => {
                 if let Some(input) = self.input_feature_els.get(feature_id) {
-                    input.update_size(size)?;
+                    input.update_size(size);
                 }
             }
         }
-        Ok(())
     }
 
-    pub fn update_size(&self, size: (i32, i32)) -> Result<(), JsValue> {
+    pub fn update_size(&self, size: (i32, i32)) {
         if let Some(section) = &self.section {
-            let style = section.style();
-            style.set_property("width", &format!("{}px", size.0))?;
-            style.set_property("height", &format!("{}px", size.1))?;
+            section.set_width(size.0 as f64);
+            section.set_height(size.1 as f64);
         }
-        Ok(())
     }
 }

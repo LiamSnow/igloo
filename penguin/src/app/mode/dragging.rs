@@ -1,14 +1,9 @@
-use igloo_interface::penguin::graph::PenguinNodeID;
-use wasm_bindgen::JsValue;
-
 use crate::{
-    app::{
-        App,
-        event::{Event, EventValue},
-        mode::Mode,
-    },
+    app::{App, mode::Mode},
+    dom::events::{Event, EventValue},
     viewport::WorldPoint,
 };
+use igloo_interface::penguin::graph::PenguinNodeID;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DraggingMode {
@@ -19,7 +14,7 @@ pub struct DraggingMode {
 }
 
 impl App {
-    pub fn handle_dragging_mode(&mut self, event: Event) -> Result<(), JsValue> {
+    pub fn handle_dragging_mode(&mut self, event: Event) {
         let Mode::Dragging(ref mut dm) = self.mode else {
             unreachable!();
         };
@@ -33,31 +28,29 @@ impl App {
 
                 for (node_id, initial_pos) in &dm.node_poses {
                     let new_pos = *initial_pos + delta;
-                    self.graph.move_node(node_id, new_pos)?;
+                    self.graph.move_node(node_id, new_pos);
                 }
-
-                Ok(())
             }
-            EventValue::MouseUp(_) => self.set_mode(Mode::Idle),
-            _ => Ok(()),
+            EventValue::MouseUp(_) => {
+                self.set_mode(Mode::Idle);
+            }
+            _ => {}
         }
     }
 
-    pub fn finish_dragging_mode(&mut self) -> Result<(), JsValue> {
+    pub fn finish_dragging_mode(&mut self) {
         if let Mode::Dragging(dm) = &self.mode {
             let mut moves = Vec::with_capacity(dm.node_poses.len());
 
             for (node_id, initial_pos) in &dm.node_poses {
-                let final_pos = self.graph.get_node_pos(node_id)?;
+                let final_pos = self.graph.get_node_pos(node_id);
 
                 if initial_pos != &final_pos {
                     moves.push((*node_id, *initial_pos, final_pos));
                 }
             }
 
-            self.graph.finish_moves(moves)?;
+            self.graph.finish_moves(moves);
         }
-
-        Ok(())
     }
 }

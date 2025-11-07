@@ -1,11 +1,9 @@
-use wasm_bindgen::JsValue;
-
 use crate::{
     app::{
         App,
-        event::{Event, EventValue},
         mode::{MenuMode, Mode},
     },
+    dom::events::{Event, EventValue},
     viewport::{ClientBox, ClientPoint},
 };
 
@@ -16,7 +14,7 @@ pub struct BoxSelectingMode {
 }
 
 impl App {
-    pub fn handle_box_selecting_mode(&mut self, event: Event) -> Result<(), JsValue> {
+    pub fn handle_box_selecting_mode(&mut self, event: Event) {
         let Mode::BoxSelecting(ref mut bs) = self.mode else {
             unreachable!();
         };
@@ -30,11 +28,11 @@ impl App {
                 let width = i32::abs(bs.start_pos.x - current.x);
                 let height = i32::abs(bs.start_pos.y - current.y);
 
-                let style = format!(
-                    "display: block; left: {left}px; top: {top}px; width: {width}px; height: {height}px;"
-                );
-                self.box_el.set_attribute("style", &style)?;
-                Ok(())
+                self.box_el.set_style("display", "block");
+                self.box_el.set_left(left as f64);
+                self.box_el.set_top(top as f64);
+                self.box_el.set_width(width as f64);
+                self.box_el.set_height(height as f64);
             }
             EventValue::MouseUp(_) => {
                 let end_pos = self.mouse_pos;
@@ -46,11 +44,11 @@ impl App {
                 if distance < 10.0 {
                     // just a click -> open context menu
                     let wpos = self.viewport.client_to_world(end_pos);
-                    self.menu.show_search(end_pos, &None)?;
+                    self.menu.show_search(end_pos, &None);
                     self.set_mode(Mode::Menu(MenuMode {
                         pos: wpos,
                         from_pin: None,
-                    }))
+                    }));
                 } else {
                     // complete box selection
                     let cbox = ClientBox::new(
@@ -69,14 +67,14 @@ impl App {
                         self.viewport.client_to_world_transform(),
                         bs.append,
                     );
-                    self.set_mode(Mode::Idle)
+                    self.set_mode(Mode::Idle);
                 }
             }
-            _ => Ok(()),
+            _ => {}
         }
     }
 
-    pub fn finish_box_selecting_mode(&mut self) -> Result<(), JsValue> {
-        self.box_el.set_attribute("style", "display: none;")
+    pub fn finish_box_selecting_mode(&mut self) {
+        self.box_el.hide();
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    app::event::document,
+    dom::{self, Div, node::DomNode},
     graph::{
         cmds::{Command, Transaction},
         node::WebNode,
@@ -12,8 +12,6 @@ use igloo_interface::penguin::{
     graph::{PenguinGraph, PenguinNodeID, PenguinWireID},
 };
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
-use web_sys::Element;
 
 mod cmds;
 pub mod view;
@@ -28,8 +26,8 @@ pub struct WebGraph {
     pub registry: PenguinRegistry,
     pub(self) nodes: HashMap<PenguinNodeID, WebNode>,
     pub(self) wires: HashMap<PenguinWireID, WebWire>,
-    pub(self) nodes_el: Element,
-    pub(self) wires_el: Element,
+    pub(self) nodes_el: DomNode<Div>,
+    pub(self) wires_el: DomNode<Div>,
     pub(self) temp_wire: WebTempWire,
     pub(self) selection: Selection,
     pub(self) past: Vec<Transaction>,
@@ -38,67 +36,54 @@ pub struct WebGraph {
 }
 
 impl WebGraph {
-    pub fn new(registry: PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
-        let document = document();
+    pub fn new<T>(registry: PenguinRegistry, parent: &DomNode<T>) -> Self {
+        let wires_el = dom::div().id("penguin-wires").mount(parent);
+        let nodes_el = dom::div().id("penguin-nodes").mount(parent);
 
-        let wires_el = document.create_element("div")?;
-        wires_el.set_id("penguin-wires");
-        parent.append_child(&wires_el)?;
-
-        let nodes_el = document.create_element("div")?;
-        nodes_el.set_id("penguin-nodes");
-        parent.append_child(&nodes_el)?;
-
-        Ok(Self {
+        Self {
             registry,
             nodes: HashMap::with_capacity(100),
             wires: HashMap::with_capacity(100),
-            temp_wire: WebTempWire::new(&wires_el)?,
+            temp_wire: WebTempWire::new(&wires_el),
             nodes_el,
             wires_el,
             selection: Selection::default(),
             past: Vec::new(),
             future: Vec::new(),
             ctw: ClientToWorld::default(),
-        })
+        }
     }
 
-    pub fn clear(&mut self) -> Result<(), JsValue> {
+    pub fn clear(&mut self) {
         self.selection.nodes.clear();
         self.selection.wires.clear();
         self.past.clear();
         self.future.clear();
 
         self.wires.clear();
-        self.wires_el.set_inner_html("");
-        self.temp_wire = WebTempWire::new(&self.wires_el)?;
+        self.wires_el.set_html("");
+        self.temp_wire = WebTempWire::new(&self.wires_el);
 
         self.nodes.clear();
-        self.nodes_el.set_inner_html("");
-
-        Ok(())
+        self.nodes_el.set_html("");
     }
 
-    pub fn load(&mut self, graph: PenguinGraph) -> Result<(), JsValue> {
-        self.clear()?;
+    pub fn load(&mut self, graph: PenguinGraph) {
+        self.clear();
 
         for (id, node) in graph.nodes {
-            self.apply_command(&Command::AddNode { id, node }, false)?;
+            self.apply_command(&Command::AddNode { id, node }, false);
         }
 
         for (id, wire) in graph.wires {
-            if let Err(e) = self.apply_command(
+            self.apply_command(
                 &Command::AddWire {
                     id,
                     wire: wire.clone(),
                 },
                 false,
-            ) {
-                log::error!("Failed to load wire. id={id:?}, wire={wire:?}, error={e:?}");
-            }
+            )
         }
-
-        Ok(())
     }
 
     pub fn penguin(&self) -> PenguinGraph {

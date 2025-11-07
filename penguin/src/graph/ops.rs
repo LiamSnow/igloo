@@ -7,10 +7,9 @@ use igloo_interface::penguin::{
     PenguinNodeDefnRef, PenguinPinID, PenguinPinRef,
     graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID},
 };
-use wasm_bindgen::JsValue;
 
 impl WebGraph {
-    pub fn place_node(&mut self, inner: PenguinNode) -> Result<PenguinNodeID, JsValue> {
+    pub fn place_node(&mut self, inner: PenguinNode) -> PenguinNodeID {
         let node_id = PenguinNodeID(self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1);
 
         let tx = Transaction::single(Command::AddNode {
@@ -18,13 +17,13 @@ impl WebGraph {
             node: inner,
         });
 
-        self.execute(tx)?;
-        Ok(node_id)
+        self.execute(tx);
+        node_id
     }
 
-    pub fn delete_wire(&mut self, wire_id: PenguinWireID) -> Result<(), JsValue> {
+    pub fn delete_wire(&mut self, wire_id: PenguinWireID) {
         let Some(wire) = self.wires.get(&wire_id) else {
-            return Ok(());
+            return;
         };
 
         let tx = Transaction::single(Command::DeleteWire {
@@ -32,12 +31,12 @@ impl WebGraph {
             wire: wire.inner().clone(),
         });
 
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn delete_pin_wires(&mut self, pin: &PenguinPinRef) -> Result<(), JsValue> {
+    pub fn delete_pin_wires(&mut self, pin: &PenguinPinRef) {
         let Some(node) = self.nodes.get(&pin.node_id) else {
-            return Ok(());
+            return;
         };
 
         let pin_obj = if pin.is_output {
@@ -46,9 +45,7 @@ impl WebGraph {
             node.inputs.get(&pin.id)
         };
 
-        let Some(pin_obj) = pin_obj else {
-            return Ok(());
-        };
+        let Some(pin_obj) = pin_obj else { return };
 
         let wire_ids: Vec<_> = pin_obj.connections().to_vec();
         let mut tx = Transaction::with_capacity(wire_ids.len());
@@ -62,10 +59,10 @@ impl WebGraph {
             }
         }
 
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn add_wire(&mut self, pin_a: PenguinPinRef, pin_b: PenguinPinRef) -> Result<(), JsValue> {
+    pub fn add_wire(&mut self, pin_a: PenguinPinRef, pin_b: PenguinPinRef) {
         let (from, to) = if pin_a.is_output {
             (pin_a, pin_b)
         } else {
@@ -109,12 +106,12 @@ impl WebGraph {
             let from_node_pos = self
                 .nodes
                 .get(&from.node_id)
-                .ok_or(JsValue::from_str("From node not found"))?
+                .expect("From node not found")
                 .pos();
             let to_node_pos = self
                 .nodes
                 .get(&to.node_id)
-                .ok_or(JsValue::from_str("To node not found"))?
+                .expect("To node not found")
                 .pos();
 
             let cast_x = (from_node_pos.x + to_node_pos.x) / 2.0;
@@ -157,87 +154,70 @@ impl WebGraph {
                 },
             });
         } else {
-            return Ok(());
+            return;
         }
 
-        self.execute(tx)
+        self.execute(tx);
     }
-    pub fn start_wiring(
-        &mut self,
-        start: &PenguinPinRef,
-        ctw: &ClientToWorld,
-    ) -> Result<(), JsValue> {
+    pub fn start_wiring(&mut self, start: &PenguinPinRef, ctw: &ClientToWorld) {
         let Some(node) = self.nodes.get(&start.node_id) else {
-            return Err(JsValue::from_str("Unknown Node"));
+            panic!("Unknown Node");
         };
 
         let Some(pin) = node.pin(start) else {
-            return Err(JsValue::from_str("Unknown Pin"));
+            panic!("Unknown Pin");
         };
 
         self.temp_wire
-            .show(&pin.hitbox, start.r#type, start.is_output, ctw)?;
+            .show(&pin.hitbox, start.r#type, start.is_output, ctw);
 
         for node in self.nodes.values_mut() {
             for pin in node.inputs.values_mut() {
                 pin.show_wiring(start);
             }
         }
-
-        Ok(())
     }
 
-    pub fn update_wiring(&self, wpos: WorldPoint) -> Result<(), JsValue> {
+    pub fn update_wiring(&self, wpos: WorldPoint) {
         self.temp_wire.update(wpos)
     }
 
-    pub fn stop_wiring(&mut self) -> Result<(), JsValue> {
-        self.temp_wire.hide()?;
+    pub fn stop_wiring(&mut self) {
+        self.temp_wire.hide();
 
         for node in self.nodes.values_mut() {
             for pin in node.inputs.values_mut() {
                 pin.hide_wiring();
             }
         }
-
-        Ok(())
     }
 
     /// moves node, without appending to history
     /// WARN: make sure to call finish_move
-    pub fn move_node(
-        &mut self,
-        node_id: &PenguinNodeID,
-        new_pos: WorldPoint,
-    ) -> Result<(), JsValue> {
+    pub fn move_node(&mut self, node_id: &PenguinNodeID, new_pos: WorldPoint) {
         let Some(node) = self.nodes.get_mut(node_id) else {
-            return Err(JsValue::from_str("Unknown Node"));
+            panic!("Unknown Node");
         };
 
-        node.set_pos(new_pos)?;
-        self.redraw_node_wires(node_id)?;
-
-        Ok(())
+        node.set_pos(new_pos);
+        self.redraw_node_wires(node_id);
     }
 
-    pub fn finish_moves(
-        &mut self,
-        moves: Vec<(PenguinNodeID, WorldPoint, WorldPoint)>,
-    ) -> Result<(), JsValue> {
+    pub fn finish_moves(&mut self, moves: Vec<(PenguinNodeID, WorldPoint, WorldPoint)>) {
         if moves.is_empty() {
-            return Ok(());
+            return;
         }
 
         let tx = Transaction::single(Command::MoveNodes { moves });
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn get_node_pos(&self, node_id: &PenguinNodeID) -> Result<WorldPoint, JsValue> {
+    pub fn get_node_pos(&self, node_id: &PenguinNodeID) -> WorldPoint {
         let Some(node) = self.nodes.get(node_id) else {
-            return Err(JsValue::from_str("Unknown Node"));
+            panic!("Unknown Node");
         };
 
-        Ok(node.pos())
+        node.pos()
     }
 
     pub fn handle_input_change(
@@ -245,7 +225,7 @@ impl WebGraph {
         node_id: PenguinNodeID,
         r#type: WebInputType,
         new_value: String,
-    ) -> Result<(), JsValue> {
+    ) {
         let old_value = if let Some(node) = self.nodes.get(&node_id) {
             match &r#type {
                 WebInputType::Pin(pin_id) => node
@@ -264,7 +244,7 @@ impl WebGraph {
         };
 
         let Some(old_value) = old_value else {
-            return Ok(());
+            return;
         };
 
         let tx = Transaction::single(Command::ChangeNodeInput {
@@ -274,7 +254,7 @@ impl WebGraph {
             new_value,
         });
 
-        self.execute(tx)
+        self.execute(tx);
     }
 
     pub fn handle_input_resize(
@@ -282,7 +262,7 @@ impl WebGraph {
         node_id: PenguinNodeID,
         r#type: WebInputType,
         new_size: (i32, i32),
-    ) -> Result<(), JsValue> {
+    ) {
         let old_size = if let Some(node) = self.nodes.get(&node_id) {
             match &r#type {
                 WebInputType::Pin(pin_id) => {
@@ -299,11 +279,11 @@ impl WebGraph {
         };
 
         let Some(old_size) = old_size else {
-            return Ok(());
+            return;
         };
 
         if old_size == new_size {
-            return Ok(());
+            return;
         }
 
         let tx = Transaction::single(Command::ResizeNodeInput {
@@ -313,20 +293,16 @@ impl WebGraph {
             new_size,
         });
 
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn handle_node_resize(
-        &mut self,
-        node_id: PenguinNodeID,
-        new_size: (i32, i32),
-    ) -> Result<(), JsValue> {
+    pub fn handle_node_resize(&mut self, node_id: PenguinNodeID, new_size: (i32, i32)) {
         let Some(old_size) = self.nodes.get(&node_id).and_then(|node| node.inner.size) else {
-            return Ok(());
+            return;
         };
 
         if old_size == new_size {
-            return Ok(());
+            return;
         }
 
         let tx = Transaction::single(Command::ResizeNode {
@@ -335,16 +311,12 @@ impl WebGraph {
             new_size,
         });
 
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn swap_node_variant(
-        &mut self,
-        node_id: PenguinNodeID,
-        new_node_name: String,
-    ) -> Result<(), JsValue> {
+    pub fn swap_node_variant(&mut self, node_id: PenguinNodeID, new_node_name: String) {
         let Some(cur_web_node) = self.nodes.get(&node_id) else {
-            return Err(JsValue::from_str("Node not found"));
+            panic!("Node not found");
         };
 
         let mut new_node_inner = cur_web_node.inner().clone();
@@ -353,7 +325,7 @@ impl WebGraph {
         let new_defn = self
             .registry
             .get_defn(&new_node_inner.defn_ref)
-            .ok_or(JsValue::from_str("New node definition not found"))?;
+            .expect("New node definition not found");
 
         // collect wires
         let mut wires_to_remove = Vec::new();
@@ -411,23 +383,20 @@ impl WebGraph {
             });
         }
 
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn split_wire_with_reroute(
-        &mut self,
-        wire_id: PenguinWireID,
-        wpos: WorldPoint,
-    ) -> Result<(), JsValue> {
+    pub fn split_wire_with_reroute(&mut self, wire_id: PenguinWireID, wpos: WorldPoint) {
         let Some(wire) = self.wires.get(&wire_id) else {
-            return Ok(());
+            return;
         };
+
         let original_wire = wire.inner().clone();
 
         let node_name = format!("Reroute {}", original_wire.r#type);
         let defn_ref = PenguinNodeDefnRef::new("Standard Library", &node_name, 1);
         if self.registry.get_defn(&defn_ref).is_none() {
-            return Err(JsValue::from_str("Reroute node definition not found"));
+            panic!("Reroute node definition not found");
         }
 
         let node_id = PenguinNodeID(self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1);
@@ -473,6 +442,6 @@ impl WebGraph {
             },
         });
 
-        self.execute(tx)
+        self.execute(tx);
     }
 }

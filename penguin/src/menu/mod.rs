@@ -1,99 +1,82 @@
-use igloo_interface::penguin::{PenguinPinRef, PenguinRegistry};
-use wasm_bindgen::JsValue;
-use web_sys::Element;
-
 use crate::{
-    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    dom::{self, Div, events::EventTarget, node::DomNode},
     menu::search::MenuSearch,
     viewport::ClientPoint,
 };
+use igloo_interface::penguin::{PenguinPinRef, PenguinRegistry};
 
 mod search;
 
 #[derive(Debug)]
 pub struct Menu {
-    backdrop: Element,
-    menu: Element,
+    backdrop: DomNode<Div>,
+    menu: DomNode<Div>,
     search: MenuSearch,
-    listeners: Listeners,
-}
-
-impl Drop for Menu {
-    fn drop(&mut self) {
-        self.backdrop.remove();
-    }
 }
 
 impl Menu {
-    pub fn new(registry: &PenguinRegistry, parent: &Element) -> Result<Self, JsValue> {
-        let document = document();
+    pub fn new<T>(registry: &PenguinRegistry, parent: &DomNode<T>) -> Self {
+        let backdrop = dom::div()
+            .id("penguin-menu-backdrop")
+            .hide()
+            .event_target(EventTarget::MenuBackdrop)
+            .listen_mousedown()
+            .listen_mouseup()
+            .listen_mousemove()
+            .listen_contextmenu()
+            .listen_wheel()
+            .listen_keydown()
+            .listen_copy()
+            .listen_paste()
+            .listen_cut()
+            .mount(parent);
 
-        let backdrop = document.create_element("div")?;
-        backdrop.set_id("penguin-menu-backdrop");
-        backdrop.set_attribute("style", "display: none;")?;
-        parent.append_child(&backdrop)?;
+        let menu = dom::div()
+            .id("penguin-menu-menu")
+            .attr("onmousedown", "event.stopPropagation();")
+            .attr("onmouseup", "event.stopPropagation();")
+            .attr("onwheel", "event.stopPropagation();")
+            .hide()
+            .mount(parent);
 
-        let menu = document.create_element("div")?;
-        menu.set_id("penguin-menu-menu");
-        backdrop.append_child(&menu)?;
-        menu.set_attribute("onmousedown", "event.stopPropagation();")?;
-        menu.set_attribute("onmouseup", "event.stopPropagation();")?;
-        menu.set_attribute("onwheel", "event.stopPropagation();")?;
-
-        let listeners = ListenerBuilder::new(&backdrop, EventTarget::MenuBackdrop)
-            .add_mousedown()?
-            .add_mouseup()?
-            .add_mousemove()?
-            .add_contextmenu()?
-            .add_wheel()?
-            .add_keydown()?
-            .add_copy()?
-            .add_paste()?
-            .add_cut()?
-            .build();
-
-        Ok(Self {
+        Self {
             backdrop,
-            search: MenuSearch::new(registry, &menu)?,
+            search: MenuSearch::new(registry, &menu),
             menu,
-            listeners,
-        })
+        }
     }
 
-    pub fn show_options(&mut self, pos: ClientPoint) -> Result<(), JsValue> {
-        self.show()?;
+    // pub fn show_options(&mut self, _pos: ClientPoint) {
+    //     self.show();
 
-        todo!()
+    //     todo!()
+    // }
+
+    pub fn show_search(&mut self, cpos: ClientPoint, from_pin: &Option<PenguinPinRef>) {
+        self.show();
+        self.search.show(from_pin);
+        self.set_pos(cpos);
     }
 
-    pub fn show_search(
-        &mut self,
-        cpos: ClientPoint,
-        from_pin: &Option<PenguinPinRef>,
-    ) -> Result<(), JsValue> {
-        self.show()?;
-        self.search.show(from_pin)?;
-        self.set_pos(cpos)
+    pub fn hide(&mut self) {
+        self.backdrop.hide();
+        self.menu.hide();
+        self.search.hide();
     }
 
-    pub fn hide(&mut self) -> Result<(), JsValue> {
-        self.backdrop.set_attribute("style", "display: none;")?;
-        self.search.hide()?;
-        Ok(())
+    fn show(&self) {
+        self.backdrop.show();
+        self.menu.show();
     }
 
-    fn show(&self) -> Result<(), JsValue> {
-        self.backdrop.remove_attribute("style")
-    }
-
-    fn set_pos(&self, cpos: ClientPoint) -> Result<(), JsValue> {
+    fn set_pos(&self, cpos: ClientPoint) {
         let cpos = cpos.cast::<f64>();
         let (bwidth, bheight) = {
-            let rect = self.backdrop.get_bounding_client_rect();
+            let rect = self.backdrop.client_box();
             (rect.width(), rect.height())
         };
         let (mwidth, mheight) = {
-            let rect = self.menu.get_bounding_client_rect();
+            let rect = self.menu.client_box();
             (rect.width(), rect.height())
         };
 
@@ -101,32 +84,32 @@ impl Menu {
         let mut x = cpos.x;
         let mut y = cpos.y;
         if x + mwidth <= bwidth && y + mheight <= bheight {
-            let style = format!("left: {}px; top: {}px;", x, y);
-            return self.menu.set_attribute("style", &style);
+            self.menu.set_left(x);
+            self.menu.set_top(y);
         }
 
         // try top right
         x = cpos.x;
         y = cpos.y - mheight;
         if x + mwidth <= bwidth && y >= 0.0 {
-            let style = format!("left: {}px; top: {}px;", x, y);
-            return self.menu.set_attribute("style", &style);
+            self.menu.set_left(x);
+            self.menu.set_top(y);
         }
 
         // try bottom left
         x = cpos.x - mwidth;
         y = cpos.y;
         if x >= 0.0 && y + mheight <= bheight {
-            let style = format!("left: {}px; top: {}px;", x, y);
-            return self.menu.set_attribute("style", &style);
+            self.menu.set_left(x);
+            self.menu.set_top(y);
         }
 
         // try top left
         x = cpos.x - mwidth;
         y = cpos.y - mheight;
         if x >= 0.0 && y >= 0.0 {
-            let style = format!("left: {}px; top: {}px;", x, y);
-            return self.menu.set_attribute("style", &style);
+            self.menu.set_left(x);
+            self.menu.set_top(y);
         }
 
         // clamp
@@ -137,11 +120,11 @@ impl Menu {
             .min(bheight - mheight - EDGE_PADDING)
             .max(EDGE_PADDING);
 
-        let style = format!("left: {}px; top: {}px;", x, y);
-        self.menu.set_attribute("style", &style)
+        self.menu.set_left(x);
+        self.menu.set_top(y);
     }
 
-    pub fn handle_search_input(&mut self) -> Result<(), JsValue> {
-        self.search.handle_input()
+    pub fn handle_search_input(&mut self) {
+        self.search.handle_input();
     }
 }

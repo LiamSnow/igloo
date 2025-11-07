@@ -55,6 +55,7 @@ pub struct NodeInputFeature {
 pub enum NodeInputType {
     Input,
     Select(Vec<String>),
+    TextArea,
 }
 
 impl PenguinNodeDefnRef {

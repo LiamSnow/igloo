@@ -1,18 +1,15 @@
-use crate::{
-    app::{
-        event::{Clientable, Event, EventTarget, EventValue, ListenerBuilder, Listeners, document},
-        mode::Mode,
-    },
-    graph::WebGraph,
-    menu::Menu,
-    viewport::{ClientPoint, Viewport},
+use crate::app::mode::Mode;
+use crate::dom::{
+    self, Div,
+    events::{Clientable, Event, EventTarget, EventValue},
+    node::DomNode,
 };
+use crate::graph::WebGraph;
+use crate::menu::Menu;
+use crate::viewport::{ClientPoint, Viewport};
 use igloo_interface::penguin::{PenguinRegistry, graph::PenguinGraph};
 use std::cell::RefCell;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlElement};
 
-pub mod event;
 pub mod mode;
 
 thread_local! {
@@ -21,63 +18,50 @@ thread_local! {
 
 #[derive(Debug)]
 pub struct App {
-    pub(self) el: HtmlElement,
+    pub(self) el: DomNode<Div>,
+    _doc: DomNode<()>,
 
     pub(self) mode: Mode,
 
     pub(self) graph: WebGraph,
     pub(self) viewport: Viewport,
     pub(self) menu: Menu,
-    pub(self) box_el: Element,
+    pub(self) box_el: DomNode<Div>,
 
     pub(self) mouse_pos: ClientPoint,
-    pub(self) listeners: [Listeners; 2],
 }
 
 impl App {
-    pub fn init() -> Result<(), JsValue> {
-        let document = document();
+    pub fn init() {
+        let el = dom::wrap::<Div>(dom::query_id("penguin").expect("Cannot find #penguin"))
+            .tab_index(0)
+            .event_target(EventTarget::Global)
+            .listen_mousedown()
+            .listen_contextmenu()
+            .listen_wheel()
+            .listen_keydown()
+            .listen_copy()
+            .listen_paste()
+            .listen_cut()
+            .remove_on_drop()
+            .build();
 
-        let el = document
-            .get_element_by_id("penguin")
-            .ok_or(JsValue::from_str("Cannot find #penguin element"))?
-            .dyn_into::<HtmlElement>()?;
+        let _doc = dom::wrap::<()>(dom::document())
+            .event_target(EventTarget::Global)
+            .listen_mousemove()
+            .listen_mouseup()
+            .build();
 
-        el.set_tab_index(0);
+        let grid_svg = dom::svg().id("penguin-grid").mount(&el);
 
-        let listeners = [
-            ListenerBuilder::new(&document, EventTarget::Global)
-                .add_mousemove()?
-                .add_mouseup()?
-                .build(),
-            ListenerBuilder::new(&el, EventTarget::Global)
-                .add_mousedown()?
-                .add_contextmenu()?
-                .add_wheel()?
-                .add_keydown()?
-                .add_copy()?
-                .add_paste()?
-                .add_cut()?
-                .build(),
-        ];
+        let viewport_el = dom::div().id("penguin-viewport").mount(&el);
 
-        let grid_svg = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "svg")?;
-        grid_svg.set_id("penguin-grid");
-        el.append_child(&grid_svg)?;
-
-        let viewport_el = document.create_element("div")?;
-        viewport_el.set_id("penguin-viewport");
-        el.append_child(&viewport_el)?;
-
-        let box_el = document.create_element("div")?;
-        box_el.set_id("penguin-selection-box");
-        box_el.set_attribute("style", "display: none;")?;
-        el.append_child(&box_el)?;
+        let box_el = dom::div().id("penguin-selection-box").hide().mount(&el);
 
         let registry = PenguinRegistry::default();
-        let menu = Menu::new(&registry, &el)?;
-        let mut graph = WebGraph::new(registry, &viewport_el)?;
-        let viewport = Viewport::new(el.clone(), viewport_el, grid_svg)?;
+        let menu = Menu::new(&registry, &el);
+        let mut graph = WebGraph::new(registry, &viewport_el);
+        let viewport = Viewport::new(el.dupe(), viewport_el, grid_svg);
         graph.ctw = viewport.client_to_world_transform();
 
         let me = App {
@@ -86,24 +70,22 @@ impl App {
             graph,
             viewport,
             box_el,
-            listeners,
             mouse_pos: ClientPoint::default(),
             el,
+            _doc,
         };
 
         APP.with(|a| {
             let mut b = a.borrow_mut();
             *b = Some(me);
         });
-
-        Ok(())
     }
 
-    pub fn load(&mut self, graph: PenguinGraph) -> Result<(), JsValue> {
-        self.graph.load(graph)
+    pub fn load(&mut self, graph: PenguinGraph) {
+        self.graph.load(graph);
     }
 
-    pub fn handle(&mut self, event: Event) -> Result<(), JsValue> {
+    pub fn handle(&mut self, event: Event) {
         if let EventValue::MouseMove(e)
         | EventValue::MouseDown(e)
         | EventValue::MouseUp(e)
@@ -117,23 +99,25 @@ impl App {
             && (e.key() == "z" || e.key() == "Z")
             && (e.ctrl_key() || e.meta_key())
         {
-            return if e.shift_key() {
+            if e.shift_key() {
                 self.graph.redo()
             } else {
                 self.graph.undo()
-            };
+            }
+
+            return;
         }
 
         // menu
         if matches!(event.target, EventTarget::MenuBackdrop) {
-            return if matches!(
+            if matches!(
                 event.value,
                 EventValue::MouseDown(_) | EventValue::ContextMenu(_)
             ) {
-                self.set_mode(Mode::Idle)
-            } else {
-                Ok(())
+                self.set_mode(Mode::Idle);
             };
+
+            return;
         }
 
         // node inputs
@@ -156,11 +140,13 @@ impl App {
                 _ => {}
             };
 
-            return match event.value {
+            match event.value {
                 EventValue::Input(value) => self.graph.handle_input_change(node_id, r#type, value),
                 EventValue::Resize(size) => self.graph.handle_input_resize(node_id, r#type, size),
-                _ => Ok(()),
-            };
+                _ => {}
+            }
+
+            return;
         }
 
         if matches!(event.target, EventTarget::Node(..))
@@ -174,7 +160,9 @@ impl App {
                 unreachable!()
             };
 
-            return self.graph.handle_node_resize(node_id, size);
+            self.graph.handle_node_resize(node_id, size);
+
+            return;
         }
 
         // node variadic
@@ -183,11 +171,14 @@ impl App {
                 unreachable!()
             };
 
-            return self.graph.swap_node_variant(node_id, new_node_path);
+            self.graph.swap_node_variant(node_id, new_node_path);
+
+            return;
         }
 
         if matches!(event.target, EventTarget::MenuSearch) {
-            return self.menu.handle_search_input();
+            self.menu.handle_search_input();
+            return;
         }
 
         // focus #penguin so keyboard input works
@@ -204,9 +195,9 @@ impl App {
         match (&event.target, &event.value) {
             (EventTarget::Global, EventValue::Wheel(e)) => {
                 e.prevent_default();
-                self.viewport.handle_wheel(e)?;
+                self.viewport.handle_wheel(e);
                 self.graph.ctw = self.viewport.client_to_world_transform();
-                return Ok(());
+                return;
             }
 
             (EventTarget::Global, EventValue::KeyDown(e)) => match e.key().as_str() {
@@ -230,51 +221,65 @@ impl App {
             },
 
             (EventTarget::Global, EventValue::Copy(e)) => {
-                return self.graph.handle_copy(e);
+                self.graph.handle_copy(e);
+                return;
             }
             (EventTarget::Global, EventValue::Paste(e)) => {
-                return self
-                    .graph
+                self.graph
                     .handle_paste(e, self.viewport.client_to_world(self.mouse_pos));
+                return;
             }
             (EventTarget::Global, EventValue::Cut(e)) => {
-                return self.graph.handle_cut(e);
+                self.graph.handle_cut(e);
+                return;
             }
 
             // toolbar
             (EventTarget::ToolbarButton(btn), EventValue::MouseClick(_)) => {
-                return self.viewport.handle_toolbar_button(*btn);
+                self.viewport.handle_toolbar_button(*btn);
+                return;
             }
 
             _ => {}
         }
 
         match &self.mode {
-            Mode::Idle => self.handle_idle_mode(event),
-            Mode::Panning(_) => self.handle_panning_mode(event),
-            Mode::Dragging(_) => self.handle_dragging_mode(event),
-            Mode::BoxSelecting(_) => self.handle_box_selecting_mode(event),
-            Mode::Wiring(_) => self.handle_wiring_mode(event),
-            Mode::Menu(_) => self.handle_menu_mode(event),
+            Mode::Idle => {
+                self.handle_idle_mode(event);
+            }
+            Mode::Panning(_) => {
+                self.handle_panning_mode(event);
+            }
+            Mode::Dragging(_) => {
+                self.handle_dragging_mode(event);
+            }
+            Mode::BoxSelecting(_) => {
+                self.handle_box_selecting_mode(event);
+            }
+            Mode::Wiring(_) => {
+                self.handle_wiring_mode(event);
+            }
+            Mode::Menu(_) => {
+                self.handle_menu_mode(event);
+            }
         }
     }
 
-    pub fn set_mode(&mut self, new_mode: Mode) -> Result<(), JsValue> {
+    pub fn set_mode(&mut self, new_mode: Mode) {
         // complete last mode
         match &self.mode {
-            Mode::Wiring(_) => self.finish_wiring_mode()?,
-            Mode::Menu(_) => self.finish_menu_mode()?,
-            Mode::BoxSelecting(_) => self.finish_box_selecting_mode()?,
-            Mode::Dragging(_) => self.finish_dragging_mode()?,
+            Mode::Wiring(_) => self.finish_wiring_mode(),
+            Mode::Menu(_) => self.finish_menu_mode(),
+            Mode::BoxSelecting(_) => self.finish_box_selecting_mode(),
+            Mode::Dragging(_) => self.finish_dragging_mode(),
             Mode::Idle => {}
             Mode::Panning(_) => {}
         }
 
         self.mode = new_mode;
-        Ok(())
     }
 
-    pub fn focus(&self) -> Result<(), JsValue> {
-        self.el.focus()
+    pub fn focus(&self) {
+        self.el.focus();
     }
 }

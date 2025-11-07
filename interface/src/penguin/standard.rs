@@ -142,7 +142,7 @@ pub fn std_library() -> PenguinLibrary {
                     PenguinPinDefn::unnamed_flow(),
                 ),
                 (
-                    PenguinPinID::from_str("Wait (seconds)"),
+                    PenguinPinID::from_str("Seconds"),
                     PenguinPinDefn::named_val(IglooType::Integer),
                 ),
             ]),
@@ -165,7 +165,7 @@ pub fn std_library() -> PenguinLibrary {
                     PenguinPinDefn::unnamed_flow(),
                 ),
                 (
-                    PenguinPinID::from_str("Wait (ms)"),
+                    PenguinPinID::from_str("Milliseconds"),
                     PenguinPinDefn::named_val(IglooType::Integer),
                 ),
             ]),
@@ -290,7 +290,7 @@ pub fn std_library() -> PenguinLibrary {
             )]),
             input_features: vec![NodeInputFeature {
                 value_type: IglooType::Text,
-                input_type: NodeInputType::Input,
+                input_type: NodeInputType::TextArea,
                 id: NodeInputFeatureID::from_str("value"),
             }],
             ..Default::default()

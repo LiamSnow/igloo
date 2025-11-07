@@ -72,7 +72,7 @@ impl PenguinNode {
         if !self.input_feature_values.contains_key(&feature.id) {
             self.input_feature_values.insert(
                 feature.id.clone(),
-                PenguinInputValue::new(IglooValue::default(&feature.r#type)),
+                PenguinInputValue::new(IglooValue::default(&feature.value_type)),
             );
         }
     }

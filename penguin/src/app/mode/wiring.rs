@@ -1,19 +1,20 @@
-use crate::app::{
-    App,
-    event::{Event, EventTarget, EventValue},
-    mode::{MenuMode, Mode},
+use crate::{
+    app::{
+        App,
+        mode::{MenuMode, Mode},
+    },
+    dom::events::{Event, EventTarget, EventValue},
 };
 use igloo_interface::penguin::PenguinPinRef;
-use wasm_bindgen::JsValue;
 
 impl App {
-    pub fn start_wiring_mode(&mut self, start_pin: PenguinPinRef) -> Result<(), JsValue> {
+    pub fn start_wiring_mode(&mut self, start_pin: PenguinPinRef) {
         let ctw = self.viewport.client_to_world_transform();
         self.graph.start_wiring(&start_pin, &ctw);
-        self.set_mode(Mode::Wiring(start_pin))
+        self.set_mode(Mode::Wiring(start_pin));
     }
 
-    pub fn handle_wiring_mode(&mut self, event: Event) -> Result<(), JsValue> {
+    pub fn handle_wiring_mode(&mut self, event: Event) {
         let Mode::Wiring(ref mut start_pin) = self.mode else {
             unreachable!();
         };
@@ -22,17 +23,16 @@ impl App {
             // move wire around
             (_, EventValue::MouseMove(_)) => {
                 let world_pos = self.viewport.client_to_world(self.mouse_pos);
-                self.graph.update_wiring(world_pos)?;
-                Ok(())
+                self.graph.update_wiring(world_pos);
             }
 
             // place wire
             (EventTarget::Pin(end_pin), EventValue::MouseUp(_)) => {
                 if start_pin.can_connect_to(&end_pin) {
-                    self.graph.add_wire(start_pin.clone(), end_pin)?;
+                    self.graph.add_wire(start_pin.clone(), end_pin);
                 }
 
-                self.set_mode(Mode::Idle)
+                self.set_mode(Mode::Idle);
             }
 
             // open context menu to add node onto wire
@@ -41,19 +41,18 @@ impl App {
 
                 let ws = Some(start_pin.clone());
 
-                self.menu.show_search(self.mouse_pos, &ws)?;
+                self.menu.show_search(self.mouse_pos, &ws);
                 self.set_mode(Mode::Menu(MenuMode {
                     pos: wpos,
                     from_pin: ws,
-                }))
+                }));
             }
 
-            _ => Ok(()),
+            _ => {}
         }
     }
 
-    pub fn finish_wiring_mode(&mut self) -> Result<(), JsValue> {
+    pub fn finish_wiring_mode(&mut self) {
         self.graph.stop_wiring();
-        Ok(())
     }
 }

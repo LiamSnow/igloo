@@ -1,69 +1,64 @@
 use crate::{
-    app::event::{EventTarget, ListenerBuilder, Listeners, document},
-    viewport::{ClientBox, ClientToWorld, WorldPoint, rect_center},
+    dom::{self, Div, Path, Svg, events::EventTarget, node::DomNode},
+    viewport::{ClientBox, ClientToWorld, WorldPoint},
 };
 use euclid::Box2D;
 use igloo_interface::penguin::{
     PenguinPinType,
     graph::{PenguinWire, PenguinWireID},
 };
-use wasm_bindgen::JsValue;
-use web_sys::{Element, HtmlElement};
 
 #[derive(Debug)]
 pub struct WebWire {
     pub inner: PenguinWire,
-    from_hitbox: HtmlElement,
-    to_hitbox: HtmlElement,
-    svg: Element,
-    path: Element,
+    from_hitbox: DomNode<Div>,
+    to_hitbox: DomNode<Div>,
+    #[allow(dead_code)]
+    svg: DomNode<Svg>,
+    path: DomNode<Path>,
     from_pos: (f64, f64),
     to_pos: (f64, f64),
-    listeners: Listeners,
 }
 
 #[derive(Debug)]
 pub struct WebTempWire {
-    r#type: PenguinPinType,
-    start_pos: (f64, f64),
     is_output: bool,
-    svg: Element,
-    path: Element,
+    svg: DomNode<Svg>,
+    path: DomNode<Path>,
+    start_pos: (f64, f64),
 }
 
-fn make_els(parent: &Element, r#type: PenguinPinType) -> Result<(Element, Element), JsValue> {
-    let document = document();
+fn make<T>(parent: &DomNode<T>, r#type: PenguinPinType) -> (DomNode<Svg>, DomNode<Path>) {
+    let svg = dom::svg()
+        .attr("class", "penguin-wire")
+        .remove_on_drop()
+        .mount(parent);
 
-    let svg = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "svg")?;
-    svg.set_attribute("class", "penguin-wire")?;
-    parent.append_child(&svg)?;
+    let path = dom::path()
+        .stroke(r#type.stroke())
+        .stroke_width(r#type.stroke_width() as f64)
+        .fill("none")
+        .mount(&svg);
 
-    let path = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "path")?;
-    path.set_attribute("stroke", r#type.stroke())?;
-    path.set_attribute("stroke-width", &r#type.stroke_width().to_string())?;
-    path.set_attribute("fill", "none")?;
-    svg.append_child(&path)?;
-
-    Ok((svg, path))
+    (svg, path)
 }
 
 impl WebWire {
-    pub fn new(
-        parent: &Element,
+    pub fn new<T>(
+        parent: &DomNode<T>,
         id: PenguinWireID,
         inner: PenguinWire,
-        from_hitbox: HtmlElement,
-        to_hitbox: HtmlElement,
-    ) -> Result<Self, JsValue> {
-        let (svg, path) = make_els(parent, inner.r#type)?;
+        from_hitbox: DomNode<Div>,
+        to_hitbox: DomNode<Div>,
+    ) -> Self {
+        let (svg, mut path) = make(parent, inner.r#type);
 
-        let listeners = ListenerBuilder::new(&path, EventTarget::Wire(id))
-            .add_mouseclick()?
-            .add_mousedoubleclick()?
-            .add_contextmenu()?
-            .build();
+        path.event_target(EventTarget::Wire(id));
+        path.listen_click();
+        path.listen_dblclick();
+        path.listen_contextmenu();
 
-        Ok(Self {
+        Self {
             inner,
             from_hitbox,
             to_hitbox,
@@ -71,35 +66,32 @@ impl WebWire {
             path,
             from_pos: (0., 0.),
             to_pos: (0., 0.),
-            listeners,
-        })
+        }
     }
 
-    pub fn redraw_from(&mut self, ctw: &ClientToWorld) -> Result<(), JsValue> {
-        let rect = self.from_hitbox.get_bounding_client_rect();
-        let client_pos = rect_center(&rect);
-        let world_pos = ctw.transform_point(client_pos.cast());
-        self.from_pos = (world_pos.x, world_pos.y);
-        self.update_path()
+    pub fn redraw_from(&mut self, ctw: &ClientToWorld) {
+        let cpos = self.from_hitbox.client_box().center();
+        let wpos = ctw.transform_point(cpos.cast());
+        self.from_pos = (wpos.x, wpos.y);
+        self.update_path();
     }
 
-    pub fn redraw_to(&mut self, ctw: &ClientToWorld) -> Result<(), JsValue> {
-        let rect = self.to_hitbox.get_bounding_client_rect();
-        let client_pos = rect_center(&rect);
-        let world_pos = ctw.transform_point(client_pos.cast());
-        self.to_pos = (world_pos.x, world_pos.y);
-        self.update_path()
+    pub fn redraw_to(&mut self, ctw: &ClientToWorld) {
+        let cpos = self.to_hitbox.client_box().center();
+        let wpos = ctw.transform_point(cpos.cast());
+        self.to_pos = (wpos.x, wpos.y);
+        self.update_path();
     }
 
-    fn update_path(&self) -> Result<(), JsValue> {
-        draw_bezier_path(&self.path, self.from_pos, self.to_pos)
+    fn update_path(&self) {
+        draw_bezier_path(&self.path, self.from_pos, self.to_pos);
     }
 
-    pub fn select(&self, selected: bool) -> Result<(), JsValue> {
+    pub fn select(&self, selected: bool) {
         if selected {
-            self.path.set_attribute("class", "selected")
+            self.path.set_attr("class", "selected");
         } else {
-            self.path.set_attribute("class", "")
+            self.path.set_attr("class", "");
         }
     }
 
@@ -153,70 +145,57 @@ impl WebWire {
     }
 }
 
-impl Drop for WebWire {
-    fn drop(&mut self) {
-        self.svg.remove();
-    }
-}
-
 impl WebTempWire {
-    pub fn new(parent: &Element) -> Result<Self, JsValue> {
+    pub fn new<T>(parent: &DomNode<T>) -> Self {
         let r#type = PenguinPinType::Flow;
 
-        let (svg, path) = make_els(parent, r#type)?;
+        let (svg, path) = make(parent, r#type);
         svg.set_id("penguin-temp-wire");
-        path.set_attribute("stroke-dasharray", "5 5")?;
+        svg.hide();
+        path.set_stroke_dasharray("5 5");
 
-        let me = Self {
-            r#type,
+        Self {
             start_pos: (0., 0.),
             is_output: false,
             svg,
             path,
-        };
-
-        me.hide()?;
-
-        Ok(me)
+        }
     }
 
     pub fn show(
         &mut self,
-        start_hitbox: &HtmlElement,
+        start_hitbox: &DomNode<Div>,
         r#type: PenguinPinType,
         is_output: bool,
         ctw: &ClientToWorld,
-    ) -> Result<(), JsValue> {
-        self.path.set_attribute("stroke", r#type.stroke())?;
-        self.path
-            .set_attribute("stroke-width", &r#type.stroke_width().to_string())?;
+    ) {
+        self.path.set_stroke(r#type.stroke());
+        self.path.set_stroke_width(r#type.stroke_width() as f64);
 
-        let rect = start_hitbox.get_bounding_client_rect();
-        let client_pos = rect_center(&rect);
-        let world_pos = ctw.transform_point(client_pos.cast());
-        self.start_pos = (world_pos.x, world_pos.y);
+        let cpos = start_hitbox.client_box().center();
+        let wpos = ctw.transform_point(cpos.cast());
+        self.start_pos = (wpos.x, wpos.y);
 
         self.is_output = is_output;
-        self.svg.remove_attribute("style")?;
-        Ok(())
+        self.svg.show();
     }
 
-    pub fn update(&self, mouse_pos: WorldPoint) -> Result<(), JsValue> {
+    pub fn update(&self, mouse_pos: WorldPoint) {
         let (from, to) = if self.is_output {
             (self.start_pos, (mouse_pos.x, mouse_pos.y))
         } else {
             ((mouse_pos.x, mouse_pos.y), self.start_pos)
         };
 
-        draw_bezier_path(&self.path, from, to)
+        draw_bezier_path(&self.path, from, to);
     }
 
-    pub fn hide(&self) -> Result<(), JsValue> {
-        self.svg.set_attribute("style", "display: none;")
+    pub fn hide(&self) {
+        self.svg.hide();
     }
 }
 
-fn draw_bezier_path(path_el: &Element, from: (f64, f64), to: (f64, f64)) -> Result<(), JsValue> {
+fn draw_bezier_path(path_el: &DomNode<Path>, from: (f64, f64), to: (f64, f64)) {
     let (from_x, from_y) = from;
     let (to_x, to_y) = to;
 
@@ -224,9 +203,5 @@ fn draw_bezier_path(path_el: &Element, from: (f64, f64), to: (f64, f64)) -> Resu
     let cx1 = from_x + offset;
     let cx2 = to_x - offset;
 
-    let path_data = format!(
-        "M {} {} C {} {}, {} {}, {} {}",
-        from_x, from_y, cx1, from_y, cx2, to_y, to_x, to_y
-    );
-    path_el.set_attribute("d", &path_data)
+    path_el.set_path_bezier(from_x, from_y, cx1, from_y, cx2, to_y, to_x, to_y);
 }

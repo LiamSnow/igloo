@@ -3,7 +3,6 @@ use crate::{
     viewport::WorldPoint,
 };
 use igloo_interface::penguin::graph::{PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID};
-use wasm_bindgen::JsValue;
 
 const MAX_HISTORY: usize = 500;
 
@@ -75,63 +74,58 @@ impl Transaction {
 }
 
 impl WebGraph {
-    pub fn execute(&mut self, tx: Transaction) -> Result<(), JsValue> {
+    pub fn execute(&mut self, tx: Transaction) {
         if tx.is_empty() {
-            return Ok(());
+            return;
         }
 
         // squash Command::*NodeInput
-        if tx.commands.len() == 1 && self.try_squash_command(&tx.commands[0])? {
-            return Ok(());
+        if tx.commands.len() == 1 && self.try_squash_command(&tx.commands[0]) {
+            return;
         }
 
-        self.apply_transaction(&tx, false)?;
+        self.apply_transaction(&tx, false);
         self.past.push(tx);
         self.future.clear();
 
         if self.past.len() > MAX_HISTORY {
             self.past.remove(0);
         }
-
-        Ok(())
     }
 
-    pub fn undo(&mut self) -> Result<(), JsValue> {
+    pub fn undo(&mut self) {
         let Some(tx) = self.past.pop() else {
-            return Ok(());
+            return;
         };
 
         let reversed_tx = Transaction {
             commands: tx.commands.iter().rev().map(|cmd| cmd.reverse()).collect(),
         };
 
-        self.apply_transaction(&reversed_tx, true)?;
+        self.apply_transaction(&reversed_tx, true);
         self.future.push(tx);
-        Ok(())
     }
 
-    pub fn redo(&mut self) -> Result<(), JsValue> {
+    pub fn redo(&mut self) {
         let Some(tx) = self.future.pop() else {
-            return Ok(());
+            return;
         };
 
-        self.apply_transaction(&tx, true)?;
+        self.apply_transaction(&tx, true);
         self.past.push(tx);
-        Ok(())
     }
 
-    fn apply_transaction(&mut self, tx: &Transaction, historical: bool) -> Result<(), JsValue> {
+    fn apply_transaction(&mut self, tx: &Transaction, historical: bool) {
         for cmd in &tx.commands {
-            self.apply_command(cmd, historical)?;
+            self.apply_command(cmd, historical);
         }
-        Ok(())
     }
 
-    pub(super) fn apply_command(&mut self, cmd: &Command, historical: bool) -> Result<(), JsValue> {
+    pub(super) fn apply_command(&mut self, cmd: &Command, historical: bool) {
         match cmd {
             Command::AddNode { id, node } => {
                 let web_node =
-                    WebNode::new(&self.nodes_el, &self.registry, None, node.clone(), *id)?;
+                    WebNode::new(&self.nodes_el, &self.registry, None, node.clone(), *id);
                 self.nodes.insert(*id, web_node);
             }
 
@@ -144,36 +138,33 @@ impl WebGraph {
                     let from_node = self
                         .nodes
                         .get_mut(&wire.from_node)
-                        .ok_or(JsValue::from_str("Missing from_node"))?;
+                        .expect("Missing from_node");
                     let from_pin = from_node
                         .outputs
                         .get_mut(&wire.from_pin)
-                        .ok_or(JsValue::from_str("Missing from_pin"))?;
-                    from_pin.add_connection(*id)?;
-                    from_pin.hitbox.clone()
+                        .expect("Missing from_pin");
+                    from_pin.add_connection(*id);
+                    from_pin.hitbox.dupe()
                 };
 
                 let to_hitbox = {
-                    let to_node = self
-                        .nodes
-                        .get_mut(&wire.to_node)
-                        .ok_or(JsValue::from_str("Missing to_node"))?;
+                    let to_node = self.nodes.get_mut(&wire.to_node).expect("Missing to_node");
                     let to_pin = to_node
                         .inputs
                         .get_mut(&wire.to_pin)
-                        .ok_or(JsValue::from_str("Missing to_pin"))?;
-                    to_pin.add_connection(*id)?;
-                    to_pin.hitbox.clone()
+                        .expect("Missing to_pin");
+                    to_pin.add_connection(*id);
+                    to_pin.hitbox.dupe()
                 };
 
                 let mut web_wire =
-                    WebWire::new(&self.wires_el, *id, wire.clone(), from_hitbox, to_hitbox)?;
+                    WebWire::new(&self.wires_el, *id, wire.clone(), from_hitbox, to_hitbox);
 
-                web_wire.redraw_from(&self.ctw)?;
-                web_wire.redraw_to(&self.ctw)?;
+                web_wire.redraw_from(&self.ctw);
+                web_wire.redraw_to(&self.ctw);
 
-                self.redraw_node_wires(&wire.to_node)?;
-                self.redraw_node_wires(&wire.from_node)?;
+                self.redraw_node_wires(&wire.to_node);
+                self.redraw_node_wires(&wire.from_node);
 
                 self.wires.insert(*id, web_wire);
             }
@@ -183,12 +174,12 @@ impl WebGraph {
                     if let Some(from_node) = self.nodes.get_mut(&wire.from_node)
                         && let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin)
                     {
-                        from_pin.remove_connection(*id)?;
+                        from_pin.remove_connection(*id);
                     }
                     if let Some(to_node) = self.nodes.get_mut(&wire.to_node)
                         && let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin)
                     {
-                        to_pin.remove_connection(*id)?;
+                        to_pin.remove_connection(*id);
                     }
                 }
             }
@@ -196,8 +187,8 @@ impl WebGraph {
             Command::MoveNodes { moves } => {
                 for (id, _old_pos, new_pos) in moves {
                     if let Some(node) = self.nodes.get_mut(id) {
-                        node.set_pos(*new_pos)?;
-                        self.redraw_node_wires(id)?;
+                        node.set_pos(*new_pos);
+                        self.redraw_node_wires(id);
                     }
                 }
             }
@@ -221,7 +212,7 @@ impl WebGraph {
                     }
 
                     if historical {
-                        node.update_input_value(r#type, new_value)?;
+                        node.update_input_value(r#type, new_value);
                     }
                 }
             }
@@ -245,10 +236,10 @@ impl WebGraph {
                     }
 
                     if historical {
-                        node.update_input_size(r#type, *new_size)?;
+                        node.update_input_size(r#type, *new_size);
                     }
 
-                    self.redraw_node_wires(node_id)?;
+                    self.redraw_node_wires(node_id);
                 }
             }
 
@@ -259,20 +250,18 @@ impl WebGraph {
                     node.inner.size = Some(*new_size);
 
                     if historical {
-                        node.update_size(*new_size)?;
+                        node.update_size(*new_size);
                     }
 
-                    self.redraw_node_wires(node_id)?;
+                    self.redraw_node_wires(node_id);
                 }
             }
         }
-
-        Ok(())
     }
 
-    pub fn redraw_node_wires(&mut self, node_id: &PenguinNodeID) -> Result<(), JsValue> {
+    pub fn redraw_node_wires(&mut self, node_id: &PenguinNodeID) {
         let Some(node) = self.nodes.get(node_id) else {
-            return Ok(());
+            return;
         };
 
         let mut wire_ids = Vec::new();
@@ -286,18 +275,16 @@ impl WebGraph {
         for wire_id in wire_ids {
             if let Some(wire) = self.wires.get_mut(&wire_id) {
                 if wire.inner().from_node == *node_id {
-                    wire.redraw_from(&self.ctw)?;
+                    wire.redraw_from(&self.ctw);
                 }
                 if wire.inner().to_node == *node_id {
-                    wire.redraw_to(&self.ctw)?;
+                    wire.redraw_to(&self.ctw);
                 }
             }
         }
-
-        Ok(())
     }
 
-    fn try_squash_command(&mut self, cmd: &Command) -> Result<bool, JsValue> {
+    fn try_squash_command(&mut self, cmd: &Command) -> bool {
         let should_squash = if let Some(last_tx) = self.past.last() {
             if last_tx.commands.len() == 1 {
                 commands_are_squashable(&last_tx.commands[0], cmd)
@@ -309,16 +296,16 @@ impl WebGraph {
         };
 
         if !should_squash {
-            return Ok(false);
+            return false;
         }
 
-        self.apply_command(cmd, false)?;
+        self.apply_command(cmd, false);
 
         if let Some(last_tx) = self.past.last_mut() {
             squash_commands(&mut last_tx.commands[0], cmd);
         }
 
-        Ok(true)
+        true
     }
 }
 

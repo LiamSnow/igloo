@@ -2,13 +2,12 @@ use super::cmds::*;
 use crate::{graph::WebGraph, viewport::WorldPoint};
 use igloo_interface::penguin::graph::{PenguinGraph, PenguinNodeID, PenguinWireID};
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 use web_sys::ClipboardEvent;
 
 impl WebGraph {
-    pub fn handle_copy(&self, e: &ClipboardEvent) -> Result<(), JsValue> {
+    pub fn handle_copy(&self, e: &ClipboardEvent) {
         if self.selection.nodes.is_empty() {
-            return Ok(());
+            return;
         }
 
         let mut graph = PenguinGraph {
@@ -51,33 +50,25 @@ impl WebGraph {
             }
         }
 
-        let json = serde_json::to_string(&graph)
-            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+        let json = serde_json::to_string(&graph).unwrap();
 
         if let Some(clipboard) = e.clipboard_data() {
-            clipboard.set_data("application/x-penguin", &json)?;
-            clipboard.set_data("text/plain", &json)?;
+            clipboard.set_data("application/x-penguin", &json).unwrap();
+            clipboard.set_data("text/plain", &json).unwrap();
             e.prevent_default();
         }
-
-        Ok(())
     }
 
-    pub fn handle_paste(
-        &mut self,
-        e: &ClipboardEvent,
-        mouse_pos: WorldPoint,
-    ) -> Result<(), JsValue> {
+    pub fn handle_paste(&mut self, e: &ClipboardEvent, mouse_pos: WorldPoint) {
         let Some(clipboard) = e.clipboard_data() else {
-            return Ok(());
+            return;
         };
 
         let Ok(json) = clipboard.get_data("application/x-penguin") else {
-            return Ok(());
+            return;
         };
 
-        let graph: PenguinGraph = serde_json::from_str(&json)
-            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        let graph: PenguinGraph = serde_json::from_str(&json).unwrap();
 
         let next_node_id = self.nodes.keys().map(|id| id.0).max().unwrap_or(0) + 1;
         let next_wire_id = self.wires.keys().map(|id| id.0).max().unwrap_or(0) + 1;
@@ -112,11 +103,11 @@ impl WebGraph {
         }
 
         e.prevent_default();
-        self.execute(tx)
+        self.execute(tx);
     }
 
-    pub fn handle_cut(&mut self, e: &ClipboardEvent) -> Result<(), JsValue> {
-        self.handle_copy(e)?;
-        self.delete_selection()
+    pub fn handle_cut(&mut self, e: &ClipboardEvent) {
+        self.handle_copy(e);
+        self.delete_selection();
     }
 }

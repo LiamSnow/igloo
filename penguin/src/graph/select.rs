@@ -8,7 +8,6 @@ use igloo_interface::penguin::{
     graph::{PenguinNodeID, PenguinWireID},
 };
 use std::collections::HashSet;
-use wasm_bindgen::JsValue;
 
 #[derive(Debug, Default)]
 pub struct Selection {
@@ -36,10 +35,8 @@ impl WebGraph {
 
         self.selection.wires.insert(wire_id);
 
-        if let Some(wire) = self.wires.get(&wire_id)
-            && let Err(e) = wire.select(true)
-        {
-            log::error!("Failed to select {wire_id:?}: {e:?}");
+        if let Some(wire) = self.wires.get(&wire_id) {
+            wire.select(true)
         }
     }
 
@@ -70,7 +67,7 @@ impl WebGraph {
         self.selection.wires.clear();
     }
 
-    pub fn delete_selection(&mut self) -> Result<(), JsValue> {
+    pub fn delete_selection(&mut self) {
         let mut tx =
             Transaction::with_capacity(self.selection.nodes.len() + self.selection.wires.len());
 
@@ -123,7 +120,7 @@ impl WebGraph {
         let nodes: Vec<_> = self
             .nodes
             .iter()
-            .filter(|(_, node)| cbox.intersects(&node.client_box()))
+            .filter(|(_, node)| cbox.cast().intersects(&node.client_box()))
             .map(|(id, _)| *id)
             .collect();
 
@@ -143,11 +140,11 @@ impl WebGraph {
         }
     }
 
-    pub fn selection_poses(&self) -> Result<Vec<(PenguinNodeID, WorldPoint)>, JsValue> {
+    pub fn selection_poses(&self) -> Vec<(PenguinNodeID, WorldPoint)> {
         let mut res = Vec::with_capacity(self.selection.nodes.len());
         for node_id in &self.selection.nodes {
-            res.push((*node_id, self.get_node_pos(node_id)?));
+            res.push((*node_id, self.get_node_pos(node_id)));
         }
-        Ok(res)
+        res
     }
 }

@@ -1,8 +1,5 @@
-use wasm_bindgen::JsValue;
-use web_sys::Element;
-
 use crate::{
-    app::event::{EventTarget, ListenerBuilder, Listeners, document},
+    dom::{self, Button, events::EventTarget, node::DomNode},
     viewport::grid::GridSettings,
 };
 
@@ -15,83 +12,63 @@ pub enum ToolbarButton {
 
 #[derive(Debug)]
 pub struct Toolbar {
-    el: Element,
-    grid_enable_el: Element,
-    grid_snap_el: Element,
-    grid_size_el: Element,
-    listeners: [Listeners; 3],
+    grid_enable_el: DomNode<Button>,
+    grid_snap_el: DomNode<Button>,
+    grid_size_el: DomNode<Button>,
 }
 
 impl Toolbar {
-    pub fn new(parent: &Element) -> Result<Self, JsValue> {
-        let document = document();
+    pub fn new<T>(parent: &DomNode<T>) -> Self {
+        let el = dom::div()
+            .class("penguin-grid-settings-toolbar")
+            .mount(parent);
 
-        let el = document.create_element("div")?;
-        el.set_class_name("penguin-grid-settings-toolbar");
-        parent.append_child(&el)?;
+        let grid_enable_el = dom::button()
+            .class("penguin-grid-setting-button")
+            .text("#")
+            .event_target(EventTarget::ToolbarButton(ToolbarButton::GridEnable))
+            .listen_click()
+            .remove_on_drop()
+            .mount(&el);
 
-        let grid_enable_el = document.create_element("button")?;
-        grid_enable_el.set_inner_html("#");
-        el.append_child(&grid_enable_el)?;
+        let grid_snap_el = dom::button()
+            .class("penguin-grid-setting-button")
+            .text("S")
+            .event_target(EventTarget::ToolbarButton(ToolbarButton::GridSnap))
+            .listen_click()
+            .remove_on_drop()
+            .mount(&el);
 
-        let grid_snap_el = document.create_element("button")?;
-        grid_snap_el.set_inner_html("S");
-        el.append_child(&grid_snap_el)?;
+        let grid_size_el = dom::button()
+            .class("penguin-grid-setting-button")
+            .event_target(EventTarget::ToolbarButton(ToolbarButton::GridSize))
+            .listen_click()
+            .remove_on_drop()
+            .mount(&el);
 
-        let grid_size_el = document.create_element("button")?;
-        grid_size_el.set_class_name("penguin-grid-setting-button");
-        el.append_child(&grid_size_el)?;
-
-        let listeners = [
-            ListenerBuilder::new(
-                &grid_enable_el,
-                EventTarget::ToolbarButton(ToolbarButton::GridEnable),
-            )
-            .add_mouseclick()?
-            .build(),
-            ListenerBuilder::new(
-                &grid_snap_el,
-                EventTarget::ToolbarButton(ToolbarButton::GridSnap),
-            )
-            .add_mouseclick()?
-            .build(),
-            ListenerBuilder::new(
-                &grid_size_el,
-                EventTarget::ToolbarButton(ToolbarButton::GridSize),
-            )
-            .add_mouseclick()?
-            .build(),
-        ];
-
-        Ok(Self {
-            el,
+        Self {
             grid_enable_el,
             grid_snap_el,
             grid_size_el,
-            listeners,
-        })
+        }
     }
 
-    pub fn update_grid_settings(&self, settings: &GridSettings) -> Result<(), JsValue> {
+    pub fn update_grid_settings(&self, settings: &GridSettings) {
         if settings.enabled {
             self.grid_enable_el
-                .set_class_name("penguin-grid-setting-button active");
+                .set_class("penguin-grid-setting-button active");
         } else {
-            self.grid_enable_el
-                .set_class_name("penguin-grid-setting-button");
+            self.grid_enable_el.set_class("penguin-grid-setting-button");
         }
 
         if settings.snap {
             self.grid_snap_el
-                .set_class_name("penguin-grid-setting-button active");
+                .set_class("penguin-grid-setting-button active");
         } else {
-            self.grid_snap_el
-                .set_class_name("penguin-grid-setting-button");
+            self.grid_snap_el.set_class("penguin-grid-setting-button");
         }
 
         self.grid_size_el
-            .set_inner_html(&(settings.size as u8 / 10).to_string());
-
-        Ok(())
+            .set_text(&(settings.size as u8 / 10).to_string());
     }
 }

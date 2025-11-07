@@ -11,9 +11,10 @@ use igloo_interface::{
 };
 use log::Level;
 use std::{collections::HashMap, panic};
-use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+use wasm_bindgen::prelude::wasm_bindgen;
 
 mod app;
+mod dom;
 mod graph;
 mod menu;
 mod viewport;
@@ -26,28 +27,22 @@ fn init() {
 }
 
 #[wasm_bindgen]
-pub fn penguin_start() -> Result<(), JsValue> {
+pub fn penguin_start() {
     log::info!("Starting Penguin");
 
-    app::App::init()?;
+    app::App::init();
 
     APP.with(|a| {
         let mut b = a.borrow_mut();
-        if let Err(e) = b.as_mut().unwrap().load(test_graph()) {
-            log::error!("Error loading graph: {e:?}");
-        }
+        b.as_mut().unwrap().load(test_graph());
     });
-
-    Ok(())
 }
 
 #[wasm_bindgen]
-pub fn penguin_stop() -> Result<(), JsValue> {
+pub fn penguin_stop() {
     APP.with(|app| {
         app.borrow_mut().take();
     });
-
-    Ok(())
 }
 
 fn test_graph() -> PenguinGraph {

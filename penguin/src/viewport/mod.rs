@@ -1,14 +1,13 @@
 use euclid::{Box2D, Point2D, Transform2D, Vector2D};
-use wasm_bindgen::JsValue;
-use web_sys::{DomRect, Element, HtmlElement, WheelEvent};
 
 pub mod grid;
 pub mod toolbar;
 
 use grid::*;
+use web_sys::WheelEvent;
 
 use crate::{
-    app::event::Clientable,
+    dom::{Div, Svg, events::Clientable, node::DomNode},
     viewport::toolbar::{Toolbar, ToolbarButton},
 };
 
@@ -33,9 +32,9 @@ pub struct Viewport {
     pan: PenguinVector,
     zoom: f64,
     /// #penguin
-    penguin_el: HtmlElement,
+    penguin_el: DomNode<Div>,
     /// #penguin-viewport
-    viewport_el: Element,
+    viewport_el: DomNode<Div>,
     grid: Grid,
     toolbar: Toolbar,
     grid_settings: GridSettings,
@@ -43,18 +42,18 @@ pub struct Viewport {
 
 impl Viewport {
     pub fn new(
-        penguin_el: HtmlElement,
-        viewport_el: Element,
-        grid_svg: Element,
-    ) -> Result<Self, JsValue> {
-        let toolbar = Toolbar::new(&penguin_el)?;
-        let grid = Grid::new(grid_svg)?;
+        penguin_el: DomNode<Div>,
+        viewport_el: DomNode<Div>,
+        grid_svg: DomNode<Svg>,
+    ) -> Self {
+        let toolbar = Toolbar::new(&penguin_el);
+        let grid = Grid::new(grid_svg);
 
         let grid_settings = GridSettings::default();
-        toolbar.update_grid_settings(&grid_settings)?;
-        grid.update_grid_settings(&grid_settings)?;
+        toolbar.update_grid_settings(&grid_settings);
+        grid.update_grid_settings(&grid_settings);
 
-        Ok(Self {
+        Self {
             pan: PenguinVector::zero(),
             zoom: 1.0,
             toolbar,
@@ -62,27 +61,25 @@ impl Viewport {
             grid_settings,
             penguin_el,
             viewport_el,
-        })
+        }
     }
 
-    pub fn update(&self) -> Result<(), JsValue> {
-        let transform = format!(
-            "transform: translate({}px, {}px) scale({});",
-            self.pan.x, self.pan.y, self.zoom
-        );
-        self.viewport_el.set_attribute("style", &transform)?;
+    pub fn update(&self) {
+        self.viewport_el
+            .translate_scale(self.pan.x, self.pan.y, self.zoom);
 
-        let rect = self.penguin_el.get_bounding_client_rect();
+        let rect = self.penguin_el.client_box();
         let view_x = -self.pan.x / self.zoom;
         let view_y = -self.pan.y / self.zoom;
         let view_width = rect.width() / self.zoom;
         let view_height = rect.height() / self.zoom;
 
-        let viewbox = format!("{} {} {} {}", view_x, view_y, view_width, view_height);
-        self.grid.grid_svg.set_attribute("viewBox", &viewbox)
+        self.grid
+            .grid_svg
+            .set_viewbox(view_x, view_y, view_width, view_height);
     }
 
-    pub fn zoom_at(&mut self, pos: PenguinPoint, delta: f64) -> Result<(), JsValue> {
+    pub fn zoom_at(&mut self, pos: PenguinPoint, delta: f64) {
         let pos = pos.cast::<f64>();
         let new_zoom = (self.zoom * delta).clamp(0.1, 3.0);
         let zoom_ratio = new_zoom / self.zoom;
@@ -91,12 +88,12 @@ impl Viewport {
         self.pan.y = pos.y - (pos.y - self.pan.y) * zoom_ratio;
         self.zoom = new_zoom;
 
-        self.update()
+        self.update();
     }
 
-    pub fn pan_by(&mut self, delta: PenguinVector) -> Result<(), JsValue> {
+    pub fn pan_by(&mut self, delta: PenguinVector) {
         self.pan += delta;
-        self.update()
+        self.update();
     }
 
     pub fn world_to_penguin_transform(&self) -> Transform2D<f64, WorldSpace, PenguinSpace> {
@@ -107,9 +104,9 @@ impl Viewport {
         self.world_to_penguin_transform().inverse().unwrap()
     }
 
-    pub fn world_to_penguin(&self, point: WorldPoint) -> Point2D<f64, PenguinSpace> {
-        self.world_to_penguin_transform().transform_point(point)
-    }
+    // pub fn world_to_penguin(&self, point: WorldPoint) -> Point2D<f64, PenguinSpace> {
+    //     self.world_to_penguin_transform().transform_point(point)
+    // }
 
     pub fn penguin_to_world(&self, point: PenguinPoint) -> WorldPoint {
         self.penguin_to_world_transform()
@@ -117,10 +114,10 @@ impl Viewport {
     }
 
     pub fn client_to_penguin(&self, client_pos: ClientPoint) -> PenguinPoint {
-        let rect = self.penguin_el.get_bounding_client_rect();
+        let rect = self.penguin_el.client_box();
         PenguinPoint::new(
-            client_pos.x - rect.left() as i32,
-            client_pos.y - rect.top() as i32,
+            client_pos.x - rect.min.x as i32,
+            client_pos.y - rect.min.y as i32,
         )
     }
 
@@ -129,8 +126,8 @@ impl Viewport {
     }
 
     pub fn client_to_world_transform(&self) -> ClientToWorld {
-        let rect = self.penguin_el.get_bounding_client_rect();
-        Transform2D::translation(-rect.left(), -rect.top()).then(&self.penguin_to_world_transform())
+        let rect = self.penguin_el.client_box();
+        Transform2D::translation(-rect.min.x, -rect.min.y).then(&self.penguin_to_world_transform())
     }
 
     pub fn snap(&self, delta: WorldPoint) -> WorldPoint {
@@ -145,13 +142,13 @@ impl Viewport {
         )
     }
 
-    pub fn handle_wheel(&mut self, e: &WheelEvent) -> Result<(), JsValue> {
+    pub fn handle_wheel(&mut self, e: &WheelEvent) {
         let pos = self.client_to_penguin(e.client_pos());
         let delta = if e.delta_y() > 0.0 { 0.9 } else { 1.1 };
-        self.zoom_at(pos, delta)
+        self.zoom_at(pos, delta);
     }
 
-    pub fn handle_toolbar_button(&mut self, button: ToolbarButton) -> Result<(), JsValue> {
+    pub fn handle_toolbar_button(&mut self, button: ToolbarButton) {
         match button {
             ToolbarButton::GridEnable => {
                 self.grid_settings.enabled = !self.grid_settings.enabled;
@@ -167,15 +164,7 @@ impl Viewport {
                 };
             }
         }
-        self.toolbar.update_grid_settings(&self.grid_settings)?;
-        self.grid.update_grid_settings(&self.grid_settings)?;
-        Ok(())
+        self.toolbar.update_grid_settings(&self.grid_settings);
+        self.grid.update_grid_settings(&self.grid_settings);
     }
-}
-
-pub fn rect_center(rect: &DomRect) -> ClientPoint {
-    ClientPoint::new(
-        (rect.x() + rect.width() / 2.0) as i32,
-        (rect.y() + rect.height() / 2.0) as i32,
-    )
 }

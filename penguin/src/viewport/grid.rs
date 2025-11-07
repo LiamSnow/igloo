@@ -1,7 +1,4 @@
-use wasm_bindgen::JsValue;
-use web_sys::Element;
-
-use crate::app::event::document;
+use crate::dom::{self, Pattern, Rect, Svg, node::DomNode};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GridSettings {
@@ -22,59 +19,54 @@ impl Default for GridSettings {
 
 #[derive(Debug)]
 pub struct Grid {
-    pub grid_svg: Element,
-    pattern_el: Element,
-    rect_el: Element,
+    pub grid_svg: DomNode<Svg>,
+    pattern: DomNode<Pattern>,
+    rect: DomNode<Rect>,
 }
 
 impl Grid {
-    pub fn new(grid_svg: Element) -> Result<Self, JsValue> {
-        let document = document();
+    pub fn new(mut grid_svg: DomNode<Svg>) -> Self {
+        grid_svg.remove_on_drop();
 
-        let defs = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "defs")?;
-        grid_svg.append_child(&defs)?;
+        let defs = dom::defs().mount(&grid_svg);
 
-        let pattern_el =
-            document.create_element_ns(Some("http://www.w3.org/2000/svg"), "pattern")?;
-        pattern_el.set_id("penguin-dot-grid");
-        pattern_el.set_attribute("x", "0")?;
-        pattern_el.set_attribute("y", "0")?;
-        pattern_el.set_attribute("patternUnits", "userSpaceOnUse")?;
+        let pattern = dom::pattern()
+            .id("penguin-dot-grid")
+            .x(0.)
+            .y(0.)
+            .pattern_units("userSpaceOnUse")
+            .mount(&defs);
 
-        let circle = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "circle")?;
-        circle.set_attribute("cx", "0")?;
-        circle.set_attribute("cy", "0")?;
-        circle.set_attribute("r", "1.5")?;
-        circle.set_attribute("fill", "rgba(255,255,255,0.15)")?;
-        pattern_el.append_child(&circle)?;
+        dom::circle()
+            .cx(0.)
+            .cy(0.)
+            .r(1.5)
+            .fill("rgba(255,255,255,0.15)")
+            .mount(&pattern);
 
-        defs.append_child(&pattern_el)?;
+        let rect = dom::rect()
+            .x(-10000.)
+            .y(-10000.)
+            .width(20000.)
+            .height(20000.)
+            .fill("url(#penguin-dot-grid)")
+            .mount(&grid_svg);
 
-        let rect_el = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "rect")?;
-        rect_el.set_id("grid-background");
-        rect_el.set_attribute("x", "-10000")?;
-        rect_el.set_attribute("y", "-10000")?;
-        rect_el.set_attribute("width", "20000")?;
-        rect_el.set_attribute("height", "20000")?;
-        rect_el.set_attribute("fill", "url(#penguin-dot-grid)")?;
-        grid_svg.append_child(&rect_el)?;
-
-        Ok(Self {
+        Self {
             grid_svg,
-            pattern_el,
-            rect_el,
-        })
+            pattern,
+            rect,
+        }
     }
 
-    pub fn update_grid_settings(&self, gs: &GridSettings) -> Result<(), JsValue> {
+    pub fn update_grid_settings(&self, gs: &GridSettings) {
         if gs.enabled {
-            self.rect_el.remove_attribute("style")?;
+            self.rect.show();
         } else {
-            self.rect_el.set_attribute("style", "display: none;")?;
+            self.rect.hide();
         }
 
-        let s = gs.size.to_string();
-        self.pattern_el.set_attribute("width", &s)?;
-        self.pattern_el.set_attribute("height", &s)
+        self.pattern.set_svg_width(gs.size);
+        self.pattern.set_svg_height(gs.size);
     }
 }

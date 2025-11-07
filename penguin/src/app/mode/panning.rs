@@ -1,11 +1,6 @@
-use wasm_bindgen::JsValue;
-
 use crate::{
-    app::{
-        App,
-        event::{Event, EventValue},
-        mode::Mode,
-    },
+    app::{App, mode::Mode},
+    dom::events::{Event, EventValue},
     viewport::{ClientPoint, PenguinVector},
 };
 
@@ -16,7 +11,7 @@ pub struct PanningMode {
 }
 
 impl App {
-    pub fn handle_panning_mode(&mut self, event: Event) -> Result<(), JsValue> {
+    pub fn handle_panning_mode(&mut self, event: Event) {
         let Mode::Panning(ref mut pm) = self.mode else {
             unreachable!();
         };
@@ -24,12 +19,10 @@ impl App {
         match event.value {
             EventValue::MouseMove(_) => {
                 let delta = (self.mouse_pos - pm.last_pos).cast::<f64>();
-                self.viewport.pan_by(PenguinVector::new(delta.x, delta.y))?;
+                self.viewport.pan_by(PenguinVector::new(delta.x, delta.y));
                 self.graph.ctw = self.viewport.client_to_world_transform();
 
                 pm.last_pos = self.mouse_pos;
-
-                Ok(())
             }
             EventValue::MouseUp(_) => {
                 let distance = pm
@@ -42,9 +35,9 @@ impl App {
                     self.graph.clear_selection();
                 }
 
-                self.set_mode(Mode::Idle)
+                self.set_mode(Mode::Idle);
             }
-            _ => Ok(()),
+            _ => {}
         }
     }
 }

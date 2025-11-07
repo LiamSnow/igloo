@@ -1,15 +1,10 @@
-use std::collections::HashMap;
-use wasm_bindgen::JsValue;
-
 use crate::{
-    app::{
-        App,
-        event::{Event, EventTarget, EventValue},
-        mode::Mode,
-    },
+    app::{App, mode::Mode},
+    dom::events::{Event, EventTarget, EventValue},
     viewport::WorldPoint,
 };
 use igloo_interface::penguin::{PenguinPinRef, graph::PenguinNode};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuMode {
@@ -18,7 +13,7 @@ pub struct MenuMode {
 }
 
 impl App {
-    pub fn handle_menu_mode(&mut self, event: Event) -> Result<(), JsValue> {
+    pub fn handle_menu_mode(&mut self, event: Event) {
         let Mode::Menu(ref mut mm) = self.mode else {
             unreachable!();
         };
@@ -29,7 +24,7 @@ impl App {
                     .graph
                     .registry
                     .get_defn(&defn_ref)
-                    .ok_or(JsValue::from_str("Unknown node definition"))?
+                    .expect("Unknown node definition")
                     .clone();
 
                 let node = PenguinNode {
@@ -41,7 +36,7 @@ impl App {
                     ..Default::default()
                 };
 
-                let node_id = self.graph.place_node(node)?;
+                let node_id = self.graph.place_node(node);
 
                 // auto wire
                 if let Some(start_pin) = &mm.from_pin
@@ -54,21 +49,19 @@ impl App {
                         r#type: pin_defn.r#type,
                     };
 
-                    self.graph.add_wire(start_pin.clone(), end_pin)?;
+                    self.graph.add_wire(start_pin.clone(), end_pin);
                 }
 
                 // close menu
                 if !e.shift_key() {
-                    self.set_mode(Mode::Idle)?;
+                    self.set_mode(Mode::Idle);
                 }
-
-                Ok(())
             }
-            _ => Ok(()),
+            _ => {}
         }
     }
 
-    pub fn finish_menu_mode(&mut self) -> Result<(), JsValue> {
-        self.menu.hide()
+    pub fn finish_menu_mode(&mut self) {
+        self.menu.hide();
     }
 }
