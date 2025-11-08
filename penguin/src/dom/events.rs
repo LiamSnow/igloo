@@ -245,7 +245,6 @@ impl<T> DomNode<T> {
 
     pub fn listen_input_no_value(&mut self) {
         let target = self.get_event_target();
-        log::info!("Adding INV t={target:?}");
         let closure = add_listener(&self.element, "input", target, |_: web_sys::Event| {
             EventValue::InputNoValue
         });

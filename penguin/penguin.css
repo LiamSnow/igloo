@@ -371,7 +371,6 @@
 
 textarea.penguin-input {
   min-width: 80px;
-  max-width: 200px;
   resize: both;
 }
 
@@ -380,21 +379,18 @@ input.penguin-input[type="text"] {
 }
 
 .penguin-input[type="number"] {
-  width: 40px;
+  width: 60px;
 }
 
-.penguin-input[type="number"]::-webkit-inner-spin-button,
-.penguin-input[type="number"]::-webkit-outer-spin-button {
-  opacity: 1;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.1);
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
-  cursor: pointer;
+input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
-.penguin-input[type="number"]::-webkit-inner-spin-button:hover,
-.penguin-input[type="number"]::-webkit-outer-spin-button:hover {
-  background: rgba(255, 255, 255, 0.2);
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .penguin-input[type="checkbox"] {

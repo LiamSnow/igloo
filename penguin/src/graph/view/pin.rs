@@ -57,6 +57,7 @@ pub fn make<T>(
                     .fill(UNCONNECTED_COLOR)
                     .stroke(defn.r#type.color())
                     .stroke_width(2.)
+                    .attr("stroke-linejoin", "round")
                     .mount(&svg),
             )
         }
