@@ -12,28 +12,14 @@ euclid = "0.22.11"
 wasm-bindgen = "0.2.104"
 web-sys = { version = "0.3.81", features = [
   "Window",
-  "Document",
+  "Performance",
   "MouseEvent",
   "WheelEvent",
   "Element",
-  "DomRect",
-  "NodeList",
-  "SvgElement",
-  "SvgPatternElement",
-  "SvgPathElement",
-  "SvgGeometryElement",
-  "SvgPoint",
-  "Navigator",
-  "Clipboard",
   "ClipboardEvent",
   "DataTransfer",
-  "console",
-  "CssStyleDeclaration",
-  "HtmlElement",
   "ResizeObserver",
   "KeyboardEvent",
-  "HtmlInputElement",
-  "HtmlTextAreaElement",
   "InputEvent",
 ] }
 igloo-interface = { path = "../interface/", features = ["penguin"] }
@@ -43,7 +29,7 @@ indexmap = "2.12.0"
 serde_json = "1.0.145"
 serde = { version = "1.0.228", features = ["derive"] }
 console_error_panic_hook = "0.1.7"
-either = { version = "1.15.0", features = ["use_std"] }
+either = "1.15.0"
 
 [profile.release]
 opt-level = 3

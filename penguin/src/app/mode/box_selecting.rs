@@ -14,6 +14,11 @@ pub struct BoxSelectingMode {
 }
 
 impl App {
+    pub fn start_box_selecting_mode(&mut self, bm: BoxSelectingMode) {
+        self.el.set_class("disable-wire-events disable-node-events disable-pin-events");
+        self.set_mode(Mode::BoxSelecting(bm))
+    }
+
     pub fn handle_box_selecting_mode(&mut self, event: Event) {
         let Mode::BoxSelecting(ref mut bs) = self.mode else {
             unreachable!();
@@ -45,10 +50,10 @@ impl App {
                     // just a click -> open context menu
                     let wpos = self.viewport.client_to_world(end_pos);
                     self.menu.show_search(end_pos, &None);
-                    self.set_mode(Mode::Menu(MenuMode {
+                    self.start_menu_mode(MenuMode {
                         pos: wpos,
                         from_pin: None,
-                    }));
+                    });
                 } else {
                     // complete box selection
                     let cbox = ClientBox::new(
@@ -67,7 +72,7 @@ impl App {
                         self.viewport.client_to_world_transform(),
                         bs.append,
                     );
-                    self.set_mode(Mode::Idle);
+                    self.start_idle_mode();
                 }
             }
             _ => {}
@@ -75,6 +80,7 @@ impl App {
     }
 
     pub fn finish_box_selecting_mode(&mut self) {
+        self.el.set_class("");
         self.box_el.hide();
     }
 }

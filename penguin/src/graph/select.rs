@@ -120,7 +120,9 @@ impl WebGraph {
         let nodes: Vec<_> = self
             .nodes
             .iter()
-            .filter(|(_, node)| cbox.cast().intersects(&node.client_box()))
+            .filter(|(_, node)| {
+                node.section.is_none() && cbox.cast().intersects(&node.client_box())
+            })
             .map(|(id, _)| *id)
             .collect();
 

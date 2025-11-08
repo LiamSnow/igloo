@@ -13,6 +13,12 @@
   outline: none;
 }
 
+#penguin.disable-wire-events .penguin-wire-border,
+#penguin.disable-node-events .penguin-node,
+#penguin.disable-pin-events .penguin-pin-hitbox {
+  pointer-events: none !important;
+}
+
 #penguin-viewport {
   position: absolute;
   left: 0;
@@ -21,6 +27,7 @@
   bottom: 0;
   transform-origin: 0 0;
   pointer-events: none;
+  will-change: transform;
 }
 
 #penguin-grid {
@@ -32,6 +39,7 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+  will-change: viewBox;
 }
 
 #penguin-nodes {
@@ -56,6 +64,7 @@
   grid-template-columns: auto 1fr auto;
   grid-template-rows: auto 1fr auto;
   border: 2px solid #333;
+  will-change: transform;
 }
 
 .penguin-node:not(.penguin-dummy-node) {
@@ -86,18 +95,9 @@
 .penguin-node.selected {
   border: 2px solid #2196F3 !important;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(33, 150, 243, 0.5);
-}
-
-.penguin-node.selected>.penguin-node-title {
-  /* border: 2px solid #2196F3; */
-  /* border-bottom: none; */
 }
 
 .penguin-node-title {
-  /* border: 2px solid #191919; */
-  /* border-bottom: none; */
-  /* margin: -2px -2px 0 -2px; */
   grid-column: 1 / -1;
   grid-row: 1;
   text-align: center;
@@ -157,14 +157,6 @@
   justify-content: center;
   margin-right: -12px;
 }
-
-/* .penguin-node-inputs:not(:empty) { */
-/* padding-right: 20px; */
-/* } */
-
-/* .penguin-node-outputs:not(:empty) { */
-/* padding-left: 20px; */
-/* } */
 
 .penguin-variadic-controls {
   position: absolute;
@@ -352,18 +344,15 @@
   pointer-events: none;
 }
 
-.penguin-wire>path {
+.penguin-wire-path {
+  pointer-events: none;
+  will-change: transform;
+}
+
+.penguin-wire-border {
   pointer-events: stroke;
   cursor: pointer;
-}
-
-.penguin-wire>path:hover {
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5));
-}
-
-.penguin-wire>path.selected {
-  filter:
-    drop-shadow(0 1px 0 #2196F3) drop-shadow(1px 0 0 #2196F3) drop-shadow(0 -1px 0 #2196F3) drop-shadow(-1px 0 0 #2196F3) drop-shadow(1px 1px 0 #2196F3) drop-shadow(-1px -1px 0 #2196F3) drop-shadow(1px -1px 0 #2196F3) drop-shadow(-1px 1px 0 #2196F3);
+  will-change: transform;
 }
 
 .penguin-input {
@@ -622,6 +611,7 @@ input.penguin-input[type="text"] {
   overflow: auto;
   min-width: 350px;
   min-height: 100px;
+  cursor: default;
 }
 
 .penguin-node[data-is-section="true"]>.penguin-node-content {

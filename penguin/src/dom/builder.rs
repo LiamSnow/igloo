@@ -100,11 +100,13 @@ impl<T> DomBuilder<T> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn width(self, value: f64) -> Self {
         self.node.set_width(value);
         self
     }
 
+    #[allow(dead_code)]
     pub fn height(self, value: f64) -> Self {
         self.node.set_height(value);
         self
@@ -196,22 +198,6 @@ impl DomBuilder<Path> {
     #[allow(dead_code)]
     pub fn path_d(self, d: &str) -> Self {
         js::set_path_d(&self.node.element, d);
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn path_bezier(
-        self,
-        x1: f64,
-        y1: f64,
-        cx1: f64,
-        cy1: f64,
-        cx2: f64,
-        cy2: f64,
-        x2: f64,
-        y2: f64,
-    ) -> Self {
-        js::set_path_bezier(&self.node.element, x1, y1, cx1, cy1, cx2, cy2, x2, y2);
         self
     }
 

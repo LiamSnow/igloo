@@ -133,10 +133,6 @@ export function setPathD(element, d) {
     element.setAttribute('d', d);
 }
 
-export function setPathBezier(element, x1, y1, cx1, cy1, cx2, cy2, x2, y2) {
-    element.setAttribute('d', `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`);
-}
-
 export function setStroke(element, color) {
     element.setAttribute('stroke', color);
 }
@@ -245,3 +241,32 @@ export function removeElement(element) {
 export function setTabIndex(element, index) {
     element.tabIndex = index;
 }
+
+export function redrawWire(element1, element2, from_x, from_y, to_x, to_y) {
+    const width = to_x - from_x;
+    const height = to_y - from_y;
+    const offset = Math.abs(width) * 0.5;
+    const cx1 = offset;
+    const cx2 = width - offset;
+    
+    const path = 'M 0 0 C ' + cx1 + ' 0, ' + cx2 + ' ' + height + ', ' + width + ' ' + height;
+    
+    if (element1.__cachedPath !== path) {
+        element1.setAttribute('d', path);
+        if (element2) {
+            element2.setAttribute('d', path);
+        }
+        element1.__cachedPath = path;
+    }
+    
+    if (element1.__cachedTransX !== from_x || element1.__cachedTransY !== from_y) {
+        const s = 'translate(' + from_x + 'px, ' + from_y + 'px)';
+        element1.style.transform = s;
+        if (element2) {
+            element2.style.transform = s;
+        }
+        element1.__cachedTransX = from_x;
+        element1.__cachedTransY = from_y;
+    }
+}
+

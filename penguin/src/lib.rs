@@ -19,6 +19,10 @@ mod graph;
 mod menu;
 mod viewport;
 
+pub fn perf_now() -> f64 {
+    web_sys::window().unwrap().performance().unwrap().now()
+}
+
 #[wasm_bindgen(start)]
 fn init() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -43,6 +47,51 @@ pub fn penguin_stop() {
     APP.with(|app| {
         app.borrow_mut().take();
     });
+}
+
+fn stress_test_graph(node_count: usize) -> PenguinGraph {
+    let mut g = PenguinGraph::default();
+
+    for i in 0..node_count {
+        g.nodes.insert(
+            PenguinNodeID(i as u16),
+            PenguinNode::new(
+                PenguinNodeDefnRef::new("Standard Library", "Add Reals 2", 1),
+                100. + (i % 50) as f64 * 150.,
+                100. + (i / 50) as f64 * 150.,
+            ),
+        );
+
+        if i == 0 || i % 50 == 0 {
+            continue;
+        }
+
+        let w = i << 2;
+
+        g.wires.insert(
+            PenguinWireID(w as u16),
+            PenguinWire {
+                from_node: PenguinNodeID((i - 1) as u16),
+                from_pin: PenguinPinID::from_str("Output"),
+                to_node: PenguinNodeID(i as u16),
+                to_pin: PenguinPinID::from_str("Input 0"),
+                r#type: PenguinPinType::Value(IglooType::Real),
+            },
+        );
+
+        g.wires.insert(
+            PenguinWireID((w + 1) as u16),
+            PenguinWire {
+                from_node: PenguinNodeID((i - 1) as u16),
+                from_pin: PenguinPinID::from_str("Output"),
+                to_node: PenguinNodeID(i as u16),
+                to_pin: PenguinPinID::from_str("Input 1"),
+                r#type: PenguinPinType::Value(IglooType::Real),
+            },
+        );
+    }
+
+    g
 }
 
 fn test_graph() -> PenguinGraph {

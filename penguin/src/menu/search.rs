@@ -21,6 +21,15 @@ impl MenuSearch {
             .placeholder("Search nodes...")
             .event_target(EventTarget::MenuSearch)
             .listen_input_no_value()
+            .attr("onmousedown", "event.stopPropagation();")
+            .attr("onmouseup", "event.stopPropagation();")
+            .attr("onmousemove", "event.stopPropagation();")
+            .attr("oncontextmenu", "event.stopPropagation();")
+            .attr("onwheel", "event.stopPropagation();")
+            .attr("onkeydown", "event.stopPropagation();")
+            .attr("oncopy", "event.stopPropagation();")
+            .attr("onpaste", "event.stopPropagation();")
+            .attr("oncut", "event.stopPropagation();")
             .hide()
             .mount(parent);
 

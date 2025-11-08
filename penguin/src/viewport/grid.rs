@@ -47,8 +47,7 @@ impl Grid {
         let rect = dom::rect()
             .x(-10000.)
             .y(-10000.)
-            .width(20000.)
-            .height(20000.)
+            .size(20000., 20000.)
             .fill("url(#penguin-dot-grid)")
             .mount(&grid_svg);
 

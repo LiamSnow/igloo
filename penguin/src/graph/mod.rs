@@ -11,7 +11,7 @@ use igloo_interface::penguin::{
     PenguinRegistry,
     graph::{PenguinGraph, PenguinNodeID, PenguinWireID},
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod cmds;
 pub mod view;
@@ -71,8 +71,16 @@ impl WebGraph {
     pub fn load(&mut self, graph: PenguinGraph) {
         self.clear();
 
+        let mut dirty_nodes = HashSet::new();
+        let mut dirty_wires = HashSet::new();
+
         for (id, node) in graph.nodes {
-            self.apply_command(&Command::AddNode { id, node }, false);
+            self.apply_command(
+                &Command::AddNode { id, node },
+                false,
+                &mut dirty_nodes,
+                &mut dirty_wires,
+            );
         }
 
         for (id, wire) in graph.wires {
@@ -82,10 +90,21 @@ impl WebGraph {
                     wire: wire.clone(),
                 },
                 false,
+                &mut dirty_nodes,
+                &mut dirty_wires,
             )
+        }
+
+        for node in self.nodes.values_mut() {
+            node.cache_pin_offsets(&self.ctw);
+        }
+
+        for wire_id in self.wires.keys().cloned().collect::<Vec<_>>() {
+            self.redraw_wire(&wire_id);
         }
     }
 
+    #[allow(dead_code)]
     pub fn penguin(&self) -> PenguinGraph {
         let mut res = PenguinGraph {
             nodes: HashMap::with_capacity(self.nodes.len()),

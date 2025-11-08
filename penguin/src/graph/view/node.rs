@@ -1,10 +1,10 @@
 use crate::{
-    dom::{self, Div, events::EventTarget, node::DomNode},
+    dom::{self, Button, Div, events::EventTarget, node::DomNode},
     graph::{
         input::{WebInput, WebInputType},
         pin::{self, WebPin},
     },
-    viewport::{ClientSpace, WorldPoint},
+    viewport::{ClientSpace, ClientToWorld, WorldPoint},
 };
 use euclid::Box2D;
 use igloo_interface::penguin::{
@@ -19,13 +19,13 @@ use web_sys::MouseEvent;
 #[derive(Debug)]
 pub struct WebNode {
     pub inner: PenguinNode,
-    // id: PenguinNodeID,
-    // defn: PenguinNodeDefn,
     el: DomNode<Div>,
     pub inputs: IndexMap<PenguinPinID, WebPin>,
     pub outputs: IndexMap<PenguinPinID, WebPin>,
     input_feature_els: IndexMap<NodeInputFeatureID, WebInput>,
-    section: Option<DomNode<Div>>,
+    pub section: Option<DomNode<Div>>,
+    #[allow(clippy::type_complexity)]
+    _variadic: Option<(Option<DomNode<Button>>, Option<DomNode<Button>>)>,
 }
 
 fn make<T>(
@@ -201,29 +201,29 @@ impl WebNode {
             }
         }
 
-        if let Some(vf) = &defn.variadic_feature {
+        let _variadic = defn.variadic_feature.map(|vf| {
             let controls = dom::div().class("penguin-variadic-controls").mount(&el);
-
-            if let Some(prev) = &vf.prev {
-                dom::button()
-                    .class("penguin-variadic-button")
-                    .text("-")
-                    .event_target(EventTarget::NodeVariadic(id, prev.clone()))
-                    .listen_mousedown()
-                    .listen_click()
-                    .mount(&controls);
-            }
-
-            if let Some(next) = &vf.next {
-                dom::button()
-                    .class("penguin-variadic-button")
-                    .text("+")
-                    .event_target(EventTarget::NodeVariadic(id, next.clone()))
-                    .listen_mousedown()
-                    .listen_click()
-                    .mount(&controls);
-            }
-        }
+            (
+                vf.prev.map(|prev| {
+                    dom::button()
+                        .class("penguin-variadic-button")
+                        .text("-")
+                        .event_target(EventTarget::NodeVariadic(id, prev.clone()))
+                        .listen_mousedown()
+                        .listen_click()
+                        .mount(&controls)
+                }),
+                vf.next.map(|next| {
+                    dom::button()
+                        .class("penguin-variadic-button")
+                        .text("+")
+                        .event_target(EventTarget::NodeVariadic(id, next.clone()))
+                        .listen_mousedown()
+                        .listen_click()
+                        .mount(&controls)
+                }),
+            )
+        });
 
         let section = if defn.is_section {
             inputs_el.remove();
@@ -242,22 +242,21 @@ impl WebNode {
 
             let mut section = dom::div()
                 .class("penguin-node-section")
-                .width(width as f64)
-                .height(height as f64)
+                .size(width as f64, height as f64)
                 .event_target(EventTarget::Global)
                 .listen_contextmenu()
                 .mount(&el);
 
-            let section_el = section.element.clone();
-            section.listen_resize(&section_el);
+            let section_1 = section.element_clone();
             section.listen_mousedown_conditional(move |e: &MouseEvent| {
-                let rect = section_el.get_bounding_client_rect();
-                let x = e.client_x() as f64 - rect.left();
-                let y = e.client_y() as f64 - rect.top();
+                let rect = section_1.client_box();
+                let x = e.client_x() as f64 - rect.min.x;
+                let y = e.client_y() as f64 - rect.min.y;
                 !(x > rect.width() - 20.0 && y > rect.height() - 20.0)
             });
 
             section.event_target(EventTarget::Node(id));
+            section.listen_resize();
 
             Some(section)
         } else {
@@ -273,6 +272,7 @@ impl WebNode {
             outputs,
             input_feature_els,
             section,
+            _variadic,
         };
 
         me.update_transform();
@@ -280,7 +280,17 @@ impl WebNode {
         me
     }
 
-    pub fn update_transform(&self) {
+    pub fn cache_pin_offsets(&mut self, ctw: &ClientToWorld) {
+        let node_pos = self.pos();
+        for pin in self.inputs.values_mut() {
+            pin.cache_offset(node_pos, ctw);
+        }
+        for pin in self.outputs.values_mut() {
+            pin.cache_offset(node_pos, ctw);
+        }
+    }
+
+    fn update_transform(&self) {
         self.el.translate(self.inner.x, self.inner.y);
     }
 
@@ -354,8 +364,22 @@ impl WebNode {
 
     pub fn update_size(&self, size: (i32, i32)) {
         if let Some(section) = &self.section {
-            section.set_width(size.0 as f64);
-            section.set_height(size.1 as f64);
+            section.set_size(size.0 as f64, size.1 as f64);
         }
+    }
+
+    pub fn connections(&self) -> Vec<PenguinWireID> {
+        let mut wires = Vec::with_capacity(self.inputs.len() + self.outputs.len());
+        for pin in self.inputs.values() {
+            for wire_id in pin.connections().iter().copied() {
+                wires.push(wire_id);
+            }
+        }
+        for pin in self.outputs.values() {
+            for wire_id in pin.connections().iter().copied() {
+                wires.push(wire_id);
+            }
+        }
+        wires
     }
 }

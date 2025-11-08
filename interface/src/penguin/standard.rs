@@ -110,7 +110,7 @@ pub fn std_library() -> PenguinLibrary {
             version: 1,
             input_features: vec![NodeInputFeature {
                 value_type: IglooType::Text,
-                input_type: NodeInputType::Input,
+                input_type: NodeInputType::TextArea,
                 id: NodeInputFeatureID::from_str("Value"),
             }],
             ..Default::default()

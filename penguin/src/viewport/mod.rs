@@ -24,6 +24,7 @@ pub type PenguinVector = Vector2D<f64, PenguinSpace>;
 // Transformed world space
 pub struct WorldSpace;
 pub type WorldPoint = Point2D<f64, WorldSpace>;
+pub type WorldVector = Vector2D<f64, WorldSpace>;
 
 pub type ClientToWorld = Transform2D<f64, ClientSpace, WorldSpace>;
 

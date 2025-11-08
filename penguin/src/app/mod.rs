@@ -61,7 +61,7 @@ impl App {
         let registry = PenguinRegistry::default();
         let menu = Menu::new(&registry, &el);
         let mut graph = WebGraph::new(registry, &viewport_el);
-        let viewport = Viewport::new(el.dupe(), viewport_el, grid_svg);
+        let viewport = Viewport::new(el.element_clone(), viewport_el, grid_svg);
         graph.ctw = viewport.client_to_world_transform();
 
         let me = App {
@@ -109,23 +109,17 @@ impl App {
         }
 
         // menu
-        if matches!(event.target, EventTarget::MenuBackdrop) {
-            if matches!(
-                event.value,
-                EventValue::MouseDown(_) | EventValue::ContextMenu(_)
-            ) {
-                self.set_mode(Mode::Idle);
-            };
-
+        if matches!(*event.target, EventTarget::MenuBackdrop) {
+            self.start_idle_mode();
             return;
         }
 
         // node inputs
-        if matches!(event.target, EventTarget::NodeInput(..)) &&
+        if matches!(*event.target, EventTarget::NodeInput(..)) &&
             // ignore textarea resizes while in other modes
             (!matches!(event.value, EventValue::MouseMove(_)) || matches!(self.mode, Mode::Idle))
         {
-            let EventTarget::NodeInput(node_id, r#type) = event.target else {
+            let EventTarget::NodeInput(node_id, r#type) = &*event.target else {
                 unreachable!()
             };
 
@@ -135,24 +129,31 @@ impl App {
                 | EventValue::Input(_)
                 | EventValue::Resize(_) => {
                     self.graph.clear_selection();
-                    self.set_mode(Mode::Idle);
+                    self.start_idle_mode();
                 }
                 _ => {}
             };
 
             match event.value {
-                EventValue::Input(value) => self.graph.handle_input_change(node_id, r#type, value),
-                EventValue::Resize(size) => self.graph.handle_input_resize(node_id, r#type, size),
+                EventValue::Input(value) => {
+                    self.graph
+                        .handle_input_change(*node_id, r#type.clone(), value)
+                }
+                EventValue::Resize(size) => {
+                    self.graph
+                        .handle_input_resize(*node_id, r#type.clone(), size)
+                }
                 _ => {}
             }
 
             return;
         }
 
-        if matches!(event.target, EventTarget::Node(..))
+        // node section resized by user
+        if matches!(*event.target, EventTarget::Node(..))
             && matches!(event.value, EventValue::Resize(..))
         {
-            let EventTarget::Node(node_id) = event.target else {
+            let EventTarget::Node(node_id) = *event.target else {
                 unreachable!()
             };
 
@@ -160,29 +161,30 @@ impl App {
                 unreachable!()
             };
 
-            self.graph.handle_node_resize(node_id, size);
+            self.graph.handle_node_section_resize(node_id, size);
 
             return;
         }
 
         // node variadic
-        if matches!(event.target, EventTarget::NodeVariadic(..)) {
-            let EventTarget::NodeVariadic(node_id, new_node_path) = event.target else {
+        if matches!(*event.target, EventTarget::NodeVariadic(..)) {
+            let EventTarget::NodeVariadic(node_id, new_node_path) = &*event.target else {
                 unreachable!()
             };
 
-            self.graph.swap_node_variant(node_id, new_node_path);
+            self.graph
+                .swap_node_variant(*node_id, new_node_path.to_string());
 
             return;
         }
 
-        if matches!(event.target, EventTarget::MenuSearch) {
+        if matches!(*event.target, EventTarget::MenuSearch) {
             self.menu.handle_search_input();
             return;
         }
 
         // focus #penguin so keyboard input works
-        if matches!(event.target, EventTarget::Global)
+        if matches!(*event.target, EventTarget::Global)
             && !matches!(
                 event.value,
                 EventValue::MouseMove(_) | EventValue::MouseUp(_)
@@ -192,7 +194,7 @@ impl App {
         }
 
         // mode agnostic
-        match (&event.target, &event.value) {
+        match (&*event.target, &event.value) {
             (EventTarget::Global, EventValue::Wheel(e)) => {
                 e.prevent_default();
                 self.viewport.handle_wheel(e);
@@ -208,7 +210,7 @@ impl App {
                         self.graph.clear_selection();
                     }
 
-                    self.set_mode(Mode::Idle);
+                    self.start_idle_mode();
                 }
                 "Backspace" | "Delete" => {
                     e.prevent_default();
@@ -243,40 +245,7 @@ impl App {
             _ => {}
         }
 
-        match &self.mode {
-            Mode::Idle => {
-                self.handle_idle_mode(event);
-            }
-            Mode::Panning(_) => {
-                self.handle_panning_mode(event);
-            }
-            Mode::Dragging(_) => {
-                self.handle_dragging_mode(event);
-            }
-            Mode::BoxSelecting(_) => {
-                self.handle_box_selecting_mode(event);
-            }
-            Mode::Wiring(_) => {
-                self.handle_wiring_mode(event);
-            }
-            Mode::Menu(_) => {
-                self.handle_menu_mode(event);
-            }
-        }
-    }
-
-    pub fn set_mode(&mut self, new_mode: Mode) {
-        // complete last mode
-        match &self.mode {
-            Mode::Wiring(_) => self.finish_wiring_mode(),
-            Mode::Menu(_) => self.finish_menu_mode(),
-            Mode::BoxSelecting(_) => self.finish_box_selecting_mode(),
-            Mode::Dragging(_) => self.finish_dragging_mode(),
-            Mode::Idle => {}
-            Mode::Panning(_) => {}
-        }
-
-        self.mode = new_mode;
+        self.handle_mode(event);
     }
 
     pub fn focus(&self) {

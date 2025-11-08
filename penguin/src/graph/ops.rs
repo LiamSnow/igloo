@@ -159,6 +159,7 @@ impl WebGraph {
 
         self.execute(tx);
     }
+
     pub fn start_wiring(&mut self, start: &PenguinPinRef, ctw: &ClientToWorld) {
         let Some(node) = self.nodes.get(&start.node_id) else {
             panic!("Unknown Node");
@@ -179,7 +180,7 @@ impl WebGraph {
     }
 
     pub fn update_wiring(&self, wpos: WorldPoint) {
-        self.temp_wire.update(wpos)
+        self.temp_wire.redraw(wpos)
     }
 
     pub fn stop_wiring(&mut self) {
@@ -192,15 +193,18 @@ impl WebGraph {
         }
     }
 
-    /// moves node, without appending to history
-    /// WARN: make sure to call finish_move
+    /// moves node, without appending to history, or redrawing wires
+    /// WARN: make sure to call finish_move for history
     pub fn move_node(&mut self, node_id: &PenguinNodeID, new_pos: WorldPoint) {
         let Some(node) = self.nodes.get_mut(node_id) else {
             panic!("Unknown Node");
         };
 
         node.set_pos(new_pos);
-        self.redraw_node_wires(node_id);
+
+        for wire_id in node.connections() {
+            self.redraw_wire(&wire_id);
+        }
     }
 
     pub fn finish_moves(&mut self, moves: Vec<(PenguinNodeID, WorldPoint, WorldPoint)>) {
@@ -296,7 +300,7 @@ impl WebGraph {
         self.execute(tx);
     }
 
-    pub fn handle_node_resize(&mut self, node_id: PenguinNodeID, new_size: (i32, i32)) {
+    pub fn handle_node_section_resize(&mut self, node_id: PenguinNodeID, new_size: (i32, i32)) {
         let Some(old_size) = self.nodes.get(&node_id).and_then(|node| node.inner.size) else {
             return;
         };
@@ -305,7 +309,7 @@ impl WebGraph {
             return;
         }
 
-        let tx = Transaction::single(Command::ResizeNode {
+        let tx = Transaction::single(Command::ResizeNodeSection {
             node_id,
             old_size,
             new_size,

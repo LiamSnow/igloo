@@ -1,6 +1,7 @@
 use crate::{
     dom::{self, Div, Polygon, events::EventTarget, node::DomNode},
     graph::input::{WebInput, WebInputType},
+    viewport::{ClientToWorld, WorldPoint, WorldVector},
 };
 use either::Either;
 use igloo_interface::penguin::{
@@ -21,6 +22,7 @@ pub struct WebPin {
     pin_el: PinElement,
     pub(super) input_el: Option<WebInput>,
     connections: Vec<PenguinWireID>,
+    pub node_offset: WorldVector,
 }
 
 const UNCONNECTED_COLOR: &str = "#111";
@@ -45,8 +47,7 @@ pub fn make<T>(
         PenguinPinType::Flow => {
             let svg = dom::svg()
                 .attr("class", "penguin-pin flow")
-                .width(16.)
-                .height(16.)
+                .size(16., 16.)
                 .viewbox(0., 0., 16., 16.)
                 .mount(&hitbox);
 
@@ -124,6 +125,7 @@ impl WebPin {
             pin_el,
             input_el,
             connections,
+            node_offset: WorldVector::default(),
         };
 
         me.update_fill();
@@ -131,26 +133,41 @@ impl WebPin {
         me
     }
 
+    pub fn cache_offset(&mut self, node_pos: WorldPoint, ctw: &ClientToWorld) {
+        let client_pos = self.hitbox.client_box().center();
+        let world_pos = ctw.transform_point(client_pos.cast());
+        self.node_offset = world_pos - node_pos;
+    }
+
     pub fn connections(&self) -> &[PenguinWireID] {
         &self.connections
     }
 
-    /// WARN: make sure to update node wires
-    pub fn remove_connection(&mut self, wire_id: PenguinWireID) {
+    /// returns if fill changed
+    /// WARN: mark node dirty if true
+    pub fn remove_connection(&mut self, wire_id: PenguinWireID) -> bool {
         self.connections.retain(|&id| id != wire_id);
-        self.update_fill();
+
+        if self.connections.is_empty() {
+            self.update_fill();
+            true
+        } else {
+            false
+        }
     }
 
-    // pub fn take_connections(&mut self) -> Vec<PenguinWireID> {
-    //     let mut o = Vec::new();
-    //     mem::swap(&mut self.connections, &mut o);
-    //     self.update_fill();
-    //     o
-    // }
-
-    pub fn add_connection(&mut self, connection: PenguinWireID) {
+    /// returns if fill chagned
+    /// WARN: mark node dirty if true
+    pub fn add_connection(&mut self, connection: PenguinWireID) -> bool {
+        let was_empty = self.connections.is_empty();
         self.connections.push(connection);
-        self.update_fill();
+
+        if was_empty {
+            self.update_fill();
+            true
+        } else {
+            false
+        }
     }
 
     fn update_fill(&self) {

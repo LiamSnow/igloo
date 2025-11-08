@@ -14,6 +14,12 @@ pub struct DraggingMode {
 }
 
 impl App {
+    pub fn start_dragging_mode(&mut self, dm: DraggingMode) {
+        self.el
+            .set_class("disable-wire-events disable-node-events disable-pin-events");
+        self.set_mode(Mode::Dragging(dm))
+    }
+
     pub fn handle_dragging_mode(&mut self, event: Event) {
         let Mode::Dragging(ref mut dm) = self.mode else {
             unreachable!();
@@ -32,13 +38,15 @@ impl App {
                 }
             }
             EventValue::MouseUp(_) => {
-                self.set_mode(Mode::Idle);
+                self.start_idle_mode();
             }
             _ => {}
         }
     }
 
     pub fn finish_dragging_mode(&mut self) {
+        self.el.set_class("");
+
         if let Mode::Dragging(dm) = &self.mode {
             let mut moves = Vec::with_capacity(dm.node_poses.len());
 

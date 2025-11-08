@@ -4,6 +4,7 @@ use crate::viewport::ClientSpace;
 use euclid::Box2D;
 use std::any::Any;
 use std::marker::PhantomData;
+use std::rc::Rc;
 use web_sys::{Element, ResizeObserver};
 
 #[derive(Debug)]
@@ -11,7 +12,7 @@ pub struct DomNode<T = ()> {
     pub element: Element,
     pub(super) closures: Vec<Box<dyn Any>>,
     pub(super) observer: Option<ResizeObserver>,
-    pub(super) event_target: Option<EventTarget>,
+    pub(super) event_target: Option<Rc<EventTarget>>,
     pub remove_on_drop: bool,
     _marker: PhantomData<T>,
 }
@@ -39,7 +40,7 @@ impl<T> DomNode<T> {
         }
     }
 
-    pub fn dupe(&self) -> Self {
+    pub fn element_clone(&self) -> Self {
         Self {
             element: self.element.clone(),
             closures: Vec::new(),
@@ -55,7 +56,7 @@ impl<T> DomNode<T> {
     }
 
     pub fn event_target(&mut self, target: EventTarget) {
-        self.event_target = Some(target);
+        self.event_target = Some(Rc::new(target));
     }
 
     #[allow(dead_code)]
@@ -164,6 +165,14 @@ impl<T> DomNode<T> {
     pub fn remove(&self) {
         js::remove_element(&self.element);
     }
+
+    pub fn offset_width(&self) -> i32 {
+        js::get_offset_width(&self.element)
+    }
+
+    pub fn offset_height(&self) -> i32 {
+        js::get_offset_height(&self.element)
+    }
 }
 
 impl DomNode<Input> {
@@ -249,16 +258,6 @@ impl DomNode<Div> {
         js::blur(&self.element);
     }
 
-    #[allow(dead_code)]
-    pub fn offset_width(&self) -> i32 {
-        js::get_offset_width(&self.element)
-    }
-
-    #[allow(dead_code)]
-    pub fn offset_height(&self) -> i32 {
-        js::get_offset_height(&self.element)
-    }
-
     pub fn set_tab_index(&self, idx: i32) {
         js::set_tab_index(&self.element, idx);
     }
@@ -274,20 +273,6 @@ impl DomNode<Path> {
     #[allow(dead_code)]
     pub fn set_path_d(&self, d: &str) {
         js::set_path_d(&self.element, d);
-    }
-
-    pub fn set_path_bezier(
-        &self,
-        x1: f64,
-        y1: f64,
-        cx1: f64,
-        cy1: f64,
-        cx2: f64,
-        cy2: f64,
-        x2: f64,
-        y2: f64,
-    ) {
-        js::set_path_bezier(&self.element, x1, y1, cx1, cy1, cx2, cy2, x2, y2);
     }
 
     pub fn set_stroke(&self, color: &str) {

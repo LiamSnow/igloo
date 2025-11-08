@@ -6,17 +6,15 @@ use crate::viewport::{ClientPoint, toolbar::ToolbarButton};
 use igloo_interface::penguin::graph::{PenguinNodeID, PenguinWireID};
 use igloo_interface::penguin::{PenguinNodeDefnRef, PenguinPinRef};
 use std::any::Any;
+use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::{
-    ClipboardEvent, Element, EventTarget as WebEventTarget, HtmlElement, KeyboardEvent, MouseEvent,
-    ResizeObserver, WheelEvent,
-};
+use web_sys::{ClipboardEvent, KeyboardEvent, MouseEvent, ResizeObserver, WheelEvent};
 
 #[derive(Debug, Clone)]
 pub struct Event {
     pub value: EventValue,
-    pub target: EventTarget,
+    pub target: Rc<EventTarget>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,9 +60,9 @@ impl Clientable for MouseEvent {
 }
 
 fn add_listener<E, F>(
-    element: &impl AsRef<WebEventTarget>,
+    element: &impl AsRef<web_sys::EventTarget>,
     event_name: &str,
-    event_target: EventTarget,
+    event_target: Rc<EventTarget>,
     handler: F,
 ) -> Box<dyn Any>
 where
@@ -94,9 +92,9 @@ where
 }
 
 fn add_mouseevent_conditional_listener<E, F, C>(
-    element: &impl AsRef<WebEventTarget>,
+    element: &impl AsRef<web_sys::EventTarget>,
     event_name: &str,
-    event_target: EventTarget,
+    event_target: Rc<EventTarget>,
     handler: F,
     condition: C,
 ) -> Box<dyn Any>
@@ -129,19 +127,16 @@ where
     Box::new(closure)
 }
 
-fn add_resize_listener(
-    observe_el: &Element,
-    size_element: HtmlElement,
-    event_target: EventTarget,
+fn add_resize_listener<T: 'static>(
+    node: DomNode<T>,
+    event_target: Rc<EventTarget>,
 ) -> (Box<dyn Any>, ResizeObserver) {
+    let node_1 = node.element_clone();
     let onresize = Closure::wrap(Box::new(move |_: web_sys::Event| {
         APP.with(|app| {
             if let Some(app) = app.borrow_mut().as_mut() {
                 app.handle(Event {
-                    value: EventValue::Resize((
-                        size_element.offset_width(),
-                        size_element.offset_height(),
-                    )),
+                    value: EventValue::Resize((node_1.offset_width(), node_1.offset_height())),
                     target: event_target.clone(),
                 });
             }
@@ -149,13 +144,13 @@ fn add_resize_listener(
     }) as Box<dyn FnMut(_)>);
 
     let observer = ResizeObserver::new(onresize.as_ref().unchecked_ref()).unwrap();
-    observer.observe(observe_el);
+    observer.observe(&node.element);
 
     (Box::new(onresize), observer)
 }
 
 impl<T> DomNode<T> {
-    fn get_event_target(&self) -> EventTarget {
+    fn get_event_target(&self) -> Rc<EventTarget> {
         self.event_target
             .clone()
             .expect("EventTarget not set. Call .event_target() first")
@@ -250,6 +245,7 @@ impl<T> DomNode<T> {
 
     pub fn listen_input_no_value(&mut self) {
         let target = self.get_event_target();
+        log::info!("Adding INV t={target:?}");
         let closure = add_listener(&self.element, "input", target, |_: web_sys::Event| {
             EventValue::InputNoValue
         });
@@ -279,11 +275,12 @@ impl<T> DomNode<T> {
         });
         self.add_closure(closure);
     }
+}
 
-    pub fn listen_resize(&mut self, observe_el: &Element) {
+impl<T: 'static> DomNode<T> {
+    pub fn listen_resize(&mut self) {
         let target = self.get_event_target();
-        let element = self.element.clone().dyn_into::<HtmlElement>().unwrap();
-        let (closure, observer) = add_resize_listener(observe_el, element, target);
+        let (closure, observer) = add_resize_listener(self.element_clone(), target);
 
         self.add_closure(closure);
         self.set_observer(observer);
@@ -364,6 +361,13 @@ impl<T> DomBuilder<T> {
 
     pub fn listen_cut(mut self) -> Self {
         self.node.listen_cut();
+        self
+    }
+}
+
+impl<T: 'static> DomBuilder<T> {
+    pub fn listen_resize(mut self) -> Self {
+        self.node.listen_resize();
         self
     }
 }

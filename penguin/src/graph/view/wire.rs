@@ -11,13 +11,12 @@ use igloo_interface::penguin::{
 #[derive(Debug)]
 pub struct WebWire {
     pub inner: PenguinWire,
-    from_hitbox: DomNode<Div>,
-    to_hitbox: DomNode<Div>,
+    pub from: WorldPoint,
+    pub to: WorldPoint,
     #[allow(dead_code)]
     svg: DomNode<Svg>,
     path: DomNode<Path>,
-    from_pos: (f64, f64),
-    to_pos: (f64, f64),
+    border_path: DomNode<Path>,
 }
 
 #[derive(Debug)]
@@ -25,98 +24,89 @@ pub struct WebTempWire {
     is_output: bool,
     svg: DomNode<Svg>,
     path: DomNode<Path>,
-    start_pos: (f64, f64),
-}
-
-fn make<T>(parent: &DomNode<T>, r#type: PenguinPinType) -> (DomNode<Svg>, DomNode<Path>) {
-    let svg = dom::svg()
-        .attr("class", "penguin-wire")
-        .remove_on_drop()
-        .mount(parent);
-
-    let path = dom::path()
-        .stroke(r#type.stroke())
-        .stroke_width(r#type.stroke_width() as f64)
-        .fill("none")
-        .mount(&svg);
-
-    (svg, path)
+    start_pos: WorldPoint,
 }
 
 impl WebWire {
-    pub fn new<T>(
-        parent: &DomNode<T>,
-        id: PenguinWireID,
-        inner: PenguinWire,
-        from_hitbox: DomNode<Div>,
-        to_hitbox: DomNode<Div>,
-    ) -> Self {
-        let (svg, mut path) = make(parent, inner.r#type);
+    pub fn new<T>(parent: &DomNode<T>, id: PenguinWireID, inner: PenguinWire) -> Self {
+        let svg = dom::svg()
+            .attr("class", "penguin-wire")
+            .remove_on_drop()
+            .mount(parent);
 
-        path.event_target(EventTarget::Wire(id));
-        path.listen_click();
-        path.listen_dblclick();
-        path.listen_contextmenu();
+        let border_path = dom::path()
+            .attr("class", "penguin-wire-border")
+            .stroke("transparent")
+            .stroke_width((inner.r#type.stroke_width() + 4) as f64)
+            .fill("none")
+            .event_target(EventTarget::Wire(id))
+            .listen_click()
+            .listen_dblclick()
+            .listen_contextmenu()
+            .mount(&svg);
+
+        let path = dom::path()
+            .attr("class", "penguin-wire-path")
+            .stroke(inner.r#type.stroke())
+            .stroke_width(inner.r#type.stroke_width() as f64)
+            .fill("none")
+            .mount(&svg);
 
         Self {
             inner,
-            from_hitbox,
-            to_hitbox,
             svg,
             path,
-            from_pos: (0., 0.),
-            to_pos: (0., 0.),
+            border_path,
+            from: WorldPoint::default(),
+            to: WorldPoint::default(),
         }
     }
 
-    pub fn redraw_from(&mut self, ctw: &ClientToWorld) {
-        let cpos = self.from_hitbox.client_box().center();
-        let wpos = ctw.transform_point(cpos.cast());
-        self.from_pos = (wpos.x, wpos.y);
-        self.update_path();
-    }
-
-    pub fn redraw_to(&mut self, ctw: &ClientToWorld) {
-        let cpos = self.to_hitbox.client_box().center();
-        let wpos = ctw.transform_point(cpos.cast());
-        self.to_pos = (wpos.x, wpos.y);
-        self.update_path();
-    }
-
-    fn update_path(&self) {
-        draw_bezier_path(&self.path, self.from_pos, self.to_pos);
+    pub fn redraw(&self) {
+        dom::js::redraw_wire(
+            &self.path.element,
+            Some(&self.border_path.element),
+            self.from.x,
+            self.from.y,
+            self.to.x,
+            self.to.y,
+        );
     }
 
     pub fn select(&self, selected: bool) {
         if selected {
-            self.path.set_attr("class", "selected");
+            self.border_path.set_stroke("#2196F3");
         } else {
-            self.path.set_attr("class", "");
+            self.border_path.set_stroke("transparent");
         }
     }
 
     pub fn intersects(&self, cbox: &ClientBox, ctw: &ClientToWorld) -> bool {
         let wbox = ctw.outer_transformed_box(&cbox.to_f64());
 
-        let (from_x, from_y) = self.from_pos;
-        let (to_x, to_y) = self.to_pos;
-        let offset = (to_x - from_x).abs() * 0.5;
-        let cx1 = from_x + offset;
-        let cx2 = to_x - offset;
+        let offset = (self.to.x - self.from.x).abs() * 0.5;
+        let cx1 = self.from.x + offset;
+        let cx2 = self.to.x - offset;
 
-        let min_x = from_x.min(cx1).min(cx2).min(to_x);
-        let max_x = from_x.max(cx1).max(cx2).max(to_x);
-        let min_y = from_y.min(to_y);
-        let max_y = from_y.max(to_y);
+        let min_x = self.from.x.min(cx1).min(cx2).min(self.to.x);
+        let max_x = self.from.x.max(cx1).max(cx2).max(self.to.x);
+        let min_y = self.from.y.min(self.to.y);
+        let max_y = self.from.y.max(self.to.y);
 
         let wire_bbox = Box2D::new(WorldPoint::new(min_x, min_y), WorldPoint::new(max_x, max_y));
 
+        // no overlap
         if !wire_bbox.intersects(&wbox) {
             return false;
         }
 
-        let dx = to_x - from_x;
-        let dy = to_y - from_y;
+        // selection box fully contains wire bbox
+        if wbox.contains_box(&wire_bbox) {
+            return true;
+        }
+
+        let dx = self.to.x - self.from.x;
+        let dy = self.to.y - self.from.y;
         let length = (dx * dx + dy * dy).sqrt();
         let samples = ((length / 10.0).ceil() as usize).clamp(10, 500);
 
@@ -128,8 +118,11 @@ impl WebWire {
             let t2 = t * t;
             let t3 = t2 * t;
 
-            let x = mt3 * from_x + 3.0 * mt2 * t * cx1 + 3.0 * mt * t2 * cx2 + t3 * to_x;
-            let y = mt3 * from_y + 3.0 * mt2 * t * from_y + 3.0 * mt * t2 * to_y + t3 * to_y;
+            let x = mt3 * self.from.x + 3.0 * mt2 * t * cx1 + 3.0 * mt * t2 * cx2 + t3 * self.to.x;
+            let y = mt3 * self.from.y
+                + 3.0 * mt2 * t * self.from.y
+                + 3.0 * mt * t2 * self.to.y
+                + t3 * self.to.y;
 
             let point = WorldPoint::new(x, y);
             if wbox.contains(point) {
@@ -149,13 +142,21 @@ impl WebTempWire {
     pub fn new<T>(parent: &DomNode<T>) -> Self {
         let r#type = PenguinPinType::Flow;
 
-        let (svg, path) = make(parent, r#type);
-        svg.set_id("penguin-temp-wire");
-        svg.hide();
-        path.set_stroke_dasharray("5 5");
+        let svg = dom::svg()
+            .id("penguin-temp-wire")
+            .attr("class", "penguin-wire")
+            .hide()
+            .mount(parent);
+
+        let path = dom::path()
+            .stroke(r#type.stroke())
+            .stroke_width(r#type.stroke_width() as f64)
+            .fill("none")
+            .stroke_dasharray("5 5")
+            .mount(&svg);
 
         Self {
-            start_pos: (0., 0.),
+            start_pos: WorldPoint::default(),
             is_output: false,
             svg,
             path,
@@ -173,35 +174,23 @@ impl WebTempWire {
         self.path.set_stroke_width(r#type.stroke_width() as f64);
 
         let cpos = start_hitbox.client_box().center();
-        let wpos = ctw.transform_point(cpos.cast());
-        self.start_pos = (wpos.x, wpos.y);
+        self.start_pos = ctw.transform_point(cpos.cast());
 
         self.is_output = is_output;
         self.svg.show();
     }
 
-    pub fn update(&self, mouse_pos: WorldPoint) {
+    pub fn redraw(&self, mouse_pos: WorldPoint) {
         let (from, to) = if self.is_output {
-            (self.start_pos, (mouse_pos.x, mouse_pos.y))
+            (self.start_pos, mouse_pos)
         } else {
-            ((mouse_pos.x, mouse_pos.y), self.start_pos)
+            (mouse_pos, self.start_pos)
         };
 
-        draw_bezier_path(&self.path, from, to);
+        dom::js::redraw_wire(&self.path.element, None, from.x, from.y, to.x, to.y);
     }
 
     pub fn hide(&self) {
         self.svg.hide();
     }
-}
-
-fn draw_bezier_path(path_el: &DomNode<Path>, from: (f64, f64), to: (f64, f64)) {
-    let (from_x, from_y) = from;
-    let (to_x, to_y) = to;
-
-    let offset = (to_x - from_x).abs() * 0.5;
-    let cx1 = from_x + offset;
-    let cx2 = to_x - offset;
-
-    path_el.set_path_bezier(from_x, from_y, cx1, from_y, cx2, to_y, to_x, to_y);
 }

@@ -14,8 +14,6 @@ pub enum WebInputType {
 #[derive(Debug)]
 pub struct WebInput {
     el: WebInputElement,
-    // node_id: PenguinNodeID,
-    // mode: WebInputType,
     value_type: IglooType,
 }
 
@@ -66,7 +64,9 @@ impl WebInput {
                         el.set_type("number");
                         el.set_attr("step", "any");
                     }
-                    IglooType::Text => {}
+                    IglooType::Text => {
+                        el.set_type("text");
+                    }
                     IglooType::Boolean => {
                         el.set_type("checkbox");
                         el.set_checked(initial_value == "true");
@@ -90,8 +90,7 @@ impl WebInput {
 
                 let mut el = dom::textarea()
                     .class("penguin-input")
-                    .width(width as f64)
-                    .height(height as f64)
+                    .size(width as f64, height as f64)
                     .event_target(EventTarget::NodeInput(node_id, mode.clone()))
                     .listen_mousedown()
                     .listen_mousemove()
@@ -100,12 +99,12 @@ impl WebInput {
                     .listen_copy()
                     .listen_paste()
                     .listen_cut()
+                    .listen_resize()
                     .value(initial_value)
                     .remove_on_drop()
                     .mount(parent);
 
                 let inner = el.element.clone();
-                el.listen_resize(&inner);
                 el.listen_input(move || dom::js::get_value(&inner));
 
                 WebInputElement::TextArea(el)
@@ -113,12 +112,7 @@ impl WebInput {
             NodeInputType::Select(_) => todo!(),
         };
 
-        Self {
-            el,
-            // node_id,
-            // mode,
-            value_type,
-        }
+        Self { el, value_type }
     }
 
     pub fn set_visible(&self, visible: bool) {
@@ -144,8 +138,7 @@ impl WebInput {
 
     pub fn update_size(&self, size: (i32, i32)) {
         if let WebInputElement::Input(el) = &self.el {
-            el.set_width(size.0 as f64);
-            el.set_height(size.1 as f64);
+            el.set_size(size.0 as f64, size.1 as f64);
         }
     }
 }

@@ -105,19 +105,6 @@ extern "C" {
     #[wasm_bindgen(js_name = setPathD)]
     pub fn set_path_d(element: &Element, d: &str);
 
-    #[wasm_bindgen(js_name = setPathBezier)]
-    pub fn set_path_bezier(
-        element: &Element,
-        x1: f64,
-        y1: f64,
-        cx1: f64,
-        cy1: f64,
-        cx2: f64,
-        cy2: f64,
-        x2: f64,
-        y2: f64,
-    );
-
     #[wasm_bindgen(js_name = setStroke)]
     pub fn set_stroke(element: &Element, color: &str);
 
@@ -198,6 +185,16 @@ extern "C" {
 
     #[wasm_bindgen(js_name = setTabIndex)]
     pub fn set_tab_index(element: &Element, index: i32);
+
+    #[wasm_bindgen(js_name = redrawWire)]
+    pub fn redraw_wire(
+        element1: &Element,
+        element2: Option<&Element>,
+        from_x: f64,
+        from_y: f64,
+        to_x: f64,
+        to_y: f64,
+    );
 }
 
 pub fn get_client_rect(element: &Element) -> Box2D<f64, ClientSpace> {

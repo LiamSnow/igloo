@@ -8,9 +8,14 @@ use crate::{
 pub struct PanningMode {
     pub start_pos: ClientPoint,
     pub last_pos: ClientPoint,
+    pub moved: bool,
 }
 
 impl App {
+    pub fn start_panning_mode(&mut self, pm: PanningMode) {
+        self.set_mode(Mode::Panning(pm));
+    }
+
     pub fn handle_panning_mode(&mut self, event: Event) {
         let Mode::Panning(ref mut pm) = self.mode else {
             unreachable!();
@@ -23,21 +28,34 @@ impl App {
                 self.graph.ctw = self.viewport.client_to_world_transform();
 
                 pm.last_pos = self.mouse_pos;
+
+                if !pm.moved {
+                    let distance = pm
+                        .start_pos
+                        .cast::<f64>()
+                        .distance_to(pm.last_pos.cast::<f64>());
+
+                    if distance > 10.0 {
+                        pm.moved = true;
+                        self.el.set_class(
+                            "disable-wire-events disable-node-events disable-pin-events",
+                        );
+                    }
+                }
             }
             EventValue::MouseUp(_) => {
-                let distance = pm
-                    .start_pos
-                    .cast::<f64>()
-                    .distance_to(pm.last_pos.cast::<f64>());
-
-                // it was just a click
-                if distance < 10.0 {
+                // was just a click
+                if !pm.moved {
                     self.graph.clear_selection();
                 }
 
-                self.set_mode(Mode::Idle);
+                self.start_idle_mode();
             }
             _ => {}
         }
+    }
+
+    pub fn finish_panning_mode(&mut self) {
+        self.el.set_class("");
     }
 }

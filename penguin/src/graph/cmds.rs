@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     graph::{WebGraph, input::WebInputType, node::WebNode, wire::WebWire},
     viewport::WorldPoint,
@@ -39,7 +41,7 @@ pub enum Command {
         old_size: (i32, i32),
         new_size: (i32, i32),
     },
-    ResizeNode {
+    ResizeNodeSection {
         node_id: PenguinNodeID,
         old_size: (i32, i32),
         new_size: (i32, i32),
@@ -116,12 +118,35 @@ impl WebGraph {
     }
 
     fn apply_transaction(&mut self, tx: &Transaction, historical: bool) {
+        let mut dirty_nodes = HashSet::new();
+        let mut dirty_wires = HashSet::new();
+
         for cmd in &tx.commands {
-            self.apply_command(cmd, historical);
+            self.apply_command(cmd, historical, &mut dirty_nodes, &mut dirty_wires);
+        }
+
+        self.clean(dirty_nodes, dirty_wires);
+    }
+
+    fn clean(&mut self, dirty_nodes: HashSet<PenguinNodeID>, dirty_wires: HashSet<PenguinWireID>) {
+        for node_id in &dirty_nodes {
+            if let Some(node) = self.nodes.get_mut(node_id) {
+                node.cache_pin_offsets(&self.ctw);
+            }
+        }
+
+        for wire_id in &dirty_wires {
+            self.redraw_wire(wire_id);
         }
     }
 
-    pub(super) fn apply_command(&mut self, cmd: &Command, historical: bool) {
+    pub(super) fn apply_command(
+        &mut self,
+        cmd: &Command,
+        historical: bool,
+        dirty_nodes: &mut HashSet<PenguinNodeID>,
+        dirty_wires: &mut HashSet<PenguinWireID>,
+    ) {
         match cmd {
             Command::AddNode { id, node } => {
                 let web_node =
@@ -134,52 +159,53 @@ impl WebGraph {
             }
 
             Command::AddWire { id, wire } => {
-                let from_hitbox = {
-                    let from_node = self
-                        .nodes
-                        .get_mut(&wire.from_node)
-                        .expect("Missing from_node");
-                    let from_pin = from_node
-                        .outputs
-                        .get_mut(&wire.from_pin)
-                        .expect("Missing from_pin");
-                    from_pin.add_connection(*id);
-                    from_pin.hitbox.dupe()
-                };
+                let web_wire = WebWire::new(&self.wires_el, *id, wire.clone());
 
-                let to_hitbox = {
-                    let to_node = self.nodes.get_mut(&wire.to_node).expect("Missing to_node");
-                    let to_pin = to_node
-                        .inputs
-                        .get_mut(&wire.to_pin)
-                        .expect("Missing to_pin");
-                    to_pin.add_connection(*id);
-                    to_pin.hitbox.dupe()
-                };
-
-                let mut web_wire =
-                    WebWire::new(&self.wires_el, *id, wire.clone(), from_hitbox, to_hitbox);
-
-                web_wire.redraw_from(&self.ctw);
-                web_wire.redraw_to(&self.ctw);
-
-                self.redraw_node_wires(&wire.to_node);
-                self.redraw_node_wires(&wire.from_node);
+                dirty_wires.insert(*id);
 
                 self.wires.insert(*id, web_wire);
+
+                if let Some(from_node) = self.nodes.get_mut(&wire.from_node)
+                    && let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin)
+                    && from_pin.add_connection(*id)
+                {
+                    dirty_nodes.insert(wire.from_node);
+                    for wire_id in from_node.connections() {
+                        dirty_wires.insert(wire_id);
+                    }
+                }
+                if let Some(to_node) = self.nodes.get_mut(&wire.to_node)
+                    && let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin)
+                    && to_pin.add_connection(*id)
+                {
+                    dirty_nodes.insert(wire.to_node);
+                    for wire_id in to_node.connections() {
+                        dirty_wires.insert(wire_id);
+                    }
+                }
             }
 
             Command::DeleteWire { id, wire } => {
-                if self.wires.remove(id).is_some() {
-                    if let Some(from_node) = self.nodes.get_mut(&wire.from_node)
-                        && let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin)
-                    {
-                        from_pin.remove_connection(*id);
+                if self.wires.remove(id).is_none() {
+                    return;
+                }
+
+                if let Some(from_node) = self.nodes.get_mut(&wire.from_node)
+                    && let Some(from_pin) = from_node.outputs.get_mut(&wire.from_pin)
+                    && from_pin.remove_connection(*id)
+                {
+                    dirty_nodes.insert(wire.from_node);
+                    for wire_id in from_node.connections() {
+                        dirty_wires.insert(wire_id);
                     }
-                    if let Some(to_node) = self.nodes.get_mut(&wire.to_node)
-                        && let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin)
-                    {
-                        to_pin.remove_connection(*id);
+                }
+                if let Some(to_node) = self.nodes.get_mut(&wire.to_node)
+                    && let Some(to_pin) = to_node.inputs.get_mut(&wire.to_pin)
+                    && to_pin.remove_connection(*id)
+                {
+                    dirty_nodes.insert(wire.to_node);
+                    for wire_id in to_node.connections() {
+                        dirty_wires.insert(wire_id);
                     }
                 }
             }
@@ -188,7 +214,9 @@ impl WebGraph {
                 for (id, _old_pos, new_pos) in moves {
                     if let Some(node) = self.nodes.get_mut(id) {
                         node.set_pos(*new_pos);
-                        self.redraw_node_wires(id);
+                        for wire_id in node.connections() {
+                            dirty_wires.insert(wire_id);
+                        }
                     }
                 }
             }
@@ -223,6 +251,7 @@ impl WebGraph {
                 new_size,
                 ..
             } => {
+                log::info!("resize input");
                 if let Some(node) = self.nodes.get_mut(node_id) {
                     let iv = match r#type {
                         WebInputType::Pin(pin_id) => node.inner.input_pin_values.get_mut(pin_id),
@@ -239,13 +268,17 @@ impl WebGraph {
                         node.update_input_size(r#type, *new_size);
                     }
 
-                    self.redraw_node_wires(node_id);
+                    dirty_nodes.insert(*node_id);
+                    for wire_id in node.connections() {
+                        dirty_wires.insert(wire_id);
+                    }
                 }
             }
 
-            Command::ResizeNode {
+            Command::ResizeNodeSection {
                 node_id, new_size, ..
             } => {
+                log::info!("resize section");
                 if let Some(node) = self.nodes.get_mut(node_id) {
                     node.inner.size = Some(*new_size);
 
@@ -253,35 +286,44 @@ impl WebGraph {
                         node.update_size(*new_size);
                     }
 
-                    self.redraw_node_wires(node_id);
+                    dirty_nodes.insert(*node_id);
+                    for wire_id in node.connections() {
+                        dirty_wires.insert(wire_id);
+                    }
                 }
             }
         }
     }
 
-    pub fn redraw_node_wires(&mut self, node_id: &PenguinNodeID) {
-        let Some(node) = self.nodes.get(node_id) else {
+    pub fn redraw_wire(&mut self, wire_id: &PenguinWireID) {
+        let Some(wire) = self.wires.get_mut(wire_id) else {
             return;
         };
 
-        let mut wire_ids = Vec::new();
-        for pin in node.outputs.values() {
-            wire_ids.extend(pin.connections().iter().copied());
-        }
-        for pin in node.inputs.values() {
-            wire_ids.extend(pin.connections().iter().copied());
-        }
+        let from_node_pos = self.nodes.get(&wire.inner.from_node).unwrap().pos();
+        let to_node_pos = self.nodes.get(&wire.inner.to_node).unwrap().pos();
 
-        for wire_id in wire_ids {
-            if let Some(wire) = self.wires.get_mut(&wire_id) {
-                if wire.inner().from_node == *node_id {
-                    wire.redraw_from(&self.ctw);
-                }
-                if wire.inner().to_node == *node_id {
-                    wire.redraw_to(&self.ctw);
-                }
-            }
-        }
+        let from_pin = self
+            .nodes
+            .get(&wire.inner.from_node)
+            .unwrap()
+            .outputs
+            .get(&wire.inner.from_pin)
+            .unwrap();
+        let to_pin = self
+            .nodes
+            .get(&wire.inner.to_node)
+            .unwrap()
+            .inputs
+            .get(&wire.inner.to_pin)
+            .unwrap();
+
+        let from_pos = from_node_pos + from_pin.node_offset;
+        let to_pos = to_node_pos + to_pin.node_offset;
+
+        wire.from = from_pos;
+        wire.to = to_pos;
+        wire.redraw();
     }
 
     fn try_squash_command(&mut self, cmd: &Command) -> bool {
@@ -299,11 +341,16 @@ impl WebGraph {
             return false;
         }
 
-        self.apply_command(cmd, false);
+        let mut dirty_nodes = HashSet::new();
+        let mut dirty_wires = HashSet::new();
+
+        self.apply_command(cmd, false, &mut dirty_nodes, &mut dirty_wires);
 
         if let Some(last_tx) = self.past.last_mut() {
             squash_commands(&mut last_tx.commands[0], cmd);
         }
+
+        self.clean(dirty_nodes, dirty_wires);
 
         true
     }
@@ -409,11 +456,11 @@ impl Command {
                 old_size: *new_size,
                 new_size: *old_size,
             },
-            Command::ResizeNode {
+            Command::ResizeNodeSection {
                 node_id,
                 old_size,
                 new_size,
-            } => Command::ResizeNode {
+            } => Command::ResizeNodeSection {
                 node_id: *node_id,
                 old_size: *new_size,
                 new_size: *old_size,
