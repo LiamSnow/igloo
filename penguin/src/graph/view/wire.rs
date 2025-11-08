@@ -81,26 +81,28 @@ impl WebWire {
         }
     }
 
+    fn bezier_control_points(&self) -> (WorldPoint, WorldPoint) {
+        let width = self.to.x - self.from.x;
+        let height = self.to.y - self.from.y;
+        let offset = width.abs().max(height.abs()) * 0.5;
+
+        let cx1 = WorldPoint::new(self.from.x + offset, self.from.y);
+        let cx2 = WorldPoint::new(self.to.x - offset, self.to.y);
+        (cx1, cx2)
+    }
+
     pub fn intersects(&self, cbox: &ClientBox, ctw: &ClientToWorld) -> bool {
         let wbox = ctw.outer_transformed_box(&cbox.to_f64());
 
-        let offset = (self.to.x - self.from.x).abs() * 0.5;
-        let cx1 = self.from.x + offset;
-        let cx2 = self.to.x - offset;
-
-        let min_x = self.from.x.min(cx1).min(cx2).min(self.to.x);
-        let max_x = self.from.x.max(cx1).max(cx2).max(self.to.x);
-        let min_y = self.from.y.min(self.to.y);
-        let max_y = self.from.y.max(self.to.y);
-
-        let wire_bbox = Box2D::new(WorldPoint::new(min_x, min_y), WorldPoint::new(max_x, max_y));
+        let (cx1, cx2) = self.bezier_control_points();
+        let wire_bbox = Box2D::from_points([self.from, self.to, cx1, cx2]);
 
         // no overlap
         if !wire_bbox.intersects(&wbox) {
             return false;
         }
 
-        // selection box fully contains wire bbox
+        // selection fully contains wire
         if wbox.contains_box(&wire_bbox) {
             return true;
         }
@@ -110,27 +112,11 @@ impl WebWire {
         let length = (dx * dx + dy * dy).sqrt();
         let samples = ((length / 10.0).ceil() as usize).clamp(10, 500);
 
-        for i in 0..=samples {
+        (0..=samples).any(|i| {
             let t = i as f64 / samples as f64;
-            let mt = 1.0 - t;
-            let mt2 = mt * mt;
-            let mt3 = mt2 * mt;
-            let t2 = t * t;
-            let t3 = t2 * t;
-
-            let x = mt3 * self.from.x + 3.0 * mt2 * t * cx1 + 3.0 * mt * t2 * cx2 + t3 * self.to.x;
-            let y = mt3 * self.from.y
-                + 3.0 * mt2 * t * self.from.y
-                + 3.0 * mt * t2 * self.to.y
-                + t3 * self.to.y;
-
-            let point = WorldPoint::new(x, y);
-            if wbox.contains(point) {
-                return true;
-            }
-        }
-
-        false
+            let point = sample_cubic_bezier(t, self.from, cx1, cx2, self.to);
+            wbox.contains(point)
+        })
     }
 
     pub fn inner(&self) -> &PenguinWire {
@@ -193,4 +179,23 @@ impl WebTempWire {
     pub fn hide(&self) {
         self.svg.hide();
     }
+}
+
+fn sample_cubic_bezier(
+    t: f64,
+    p0: WorldPoint,
+    p1: WorldPoint,
+    p2: WorldPoint,
+    p3: WorldPoint,
+) -> WorldPoint {
+    let mt = 1.0 - t;
+    let mt2 = mt * mt;
+    let mt3 = mt2 * mt;
+    let t2 = t * t;
+    let t3 = t2 * t;
+
+    WorldPoint::new(
+        mt3 * p0.x + 3.0 * mt2 * t * p1.x + 3.0 * mt * t2 * p2.x + t3 * p3.x,
+        mt3 * p0.y + 3.0 * mt2 * t * p1.y + 3.0 * mt * t2 * p2.y + t3 * p3.y,
+    )
 }
