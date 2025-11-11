@@ -121,7 +121,11 @@ impl WebGraph {
             .nodes
             .iter()
             .filter(|(_, node)| {
-                node.section.is_none() && cbox.cast().intersects(&node.client_box())
+                if node.section.is_some() {
+                    cbox.cast().contains_box(&node.client_box())
+                } else {
+                    cbox.cast().intersects(&node.client_box())
+                }
             })
             .map(|(id, _)| *id)
             .collect();
