@@ -69,7 +69,7 @@ impl Viewport {
         self.viewport_el
             .translate_scale(self.pan.x, self.pan.y, self.zoom);
 
-        let rect = self.penguin_el.client_box();
+        let rect = self.viewport_el.client_box();
         let view_x = -self.pan.x / self.zoom;
         let view_y = -self.pan.y / self.zoom;
         let view_width = rect.width() / self.zoom;
