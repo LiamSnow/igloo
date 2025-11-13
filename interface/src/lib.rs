@@ -1,17 +1,18 @@
-#[cfg(feature = "server")]
-include!(concat!(env!("OUT_DIR"), "/server.rs"));
-
 include!(concat!(env!("OUT_DIR"), "/out.rs"));
 
-#[cfg(feature = "server")]
-pub mod server;
-#[cfg(feature = "server")]
-pub use server::*;
+// TODO rename to somrthing else
+include!(concat!(env!("OUT_DIR"), "/server.rs"));
+
+pub mod compound;
+pub mod id;
+pub mod query;
+pub mod types;
+
+#[cfg(feature = "web")]
+pub mod web;
 
 #[cfg(feature = "floe")]
 pub mod floe;
 
 #[cfg(feature = "penguin")]
 pub mod penguin;
-
-pub mod types;
