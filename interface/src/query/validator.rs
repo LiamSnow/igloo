@@ -29,58 +29,38 @@ impl Query {
 
         match &self.action {
             QueryAction::Inherit => Err(ValidationError::InheritNotValidatable),
-            QueryAction::GetId => Ok(if self.limit == Some(1) {
-                QueryResultType::Id
-            } else {
-                QueryResultType::Ids
-            }),
-            QueryAction::SnapshotDevice => Ok(if self.limit == Some(1) {
-                QueryResultType::Device
-            } else {
-                QueryResultType::Devices
-            }),
-            QueryAction::SnapshotEntity => Ok(if self.limit == Some(1) {
-                QueryResultType::Entity
-            } else {
-                QueryResultType::Entities
-            }),
-            QueryAction::Get => {
-                let igloo_type = self.extract_igloo_type()?;
-                Ok(if self.limit == Some(1) {
-                    QueryResultType::Component(igloo_type)
-                } else {
-                    QueryResultType::Components(igloo_type)
-                })
-            }
+            QueryAction::GetIds => Ok(QueryResultType::Ids),
+            QueryAction::SnapshotDevices => Ok(QueryResultType::Devices),
+            QueryAction::SnapshotEntities => Ok(QueryResultType::Entities),
+            QueryAction::Get => Ok(QueryResultType::Components(self.extract_type()?)),
             QueryAction::GetAggregate(_) => {
-                let igloo_type = self.extract_igloo_type()?;
-                if !igloo_type.is_aggregatable() {
-                    return Err(ValidationError::TypeNotAggregatable(igloo_type));
+                let r#type = self.extract_type()?;
+                if !r#type.is_aggregatable() {
+                    return Err(ValidationError::TypeNotAggregatable(r#type));
                 }
-                Ok(QueryResultType::Aggregate(igloo_type))
+                Ok(QueryResultType::Aggregate(r#type))
             }
             QueryAction::Count => Ok(QueryResultType::Count),
             QueryAction::Set(_)
             | QueryAction::Put(_)
             | QueryAction::Increment(_)
-            | QueryAction::WatchDevice
-            | QueryAction::WatchEntity => {
+            | QueryAction::WatchDevices
+            | QueryAction::WatchEntities => {
                 if self.action.is_component_action() {
                     self.require_component_filter()?;
                 }
-                Ok(QueryResultType::None)
+                Ok(QueryResultType::Ok)
             }
             QueryAction::Watch => {
                 self.require_component_filter()?;
-                let igloo_type = self.extract_igloo_type()?;
-                Ok(QueryResultType::Components(igloo_type))
+                Ok(QueryResultType::Components(self.extract_type()?))
             }
             QueryAction::WatchAggregate(_) => {
-                let igloo_type = self.extract_igloo_type()?;
-                if !igloo_type.is_aggregatable() {
-                    return Err(ValidationError::TypeNotAggregatable(igloo_type));
+                let r#type = self.extract_type()?;
+                if !r#type.is_aggregatable() {
+                    return Err(ValidationError::TypeNotAggregatable(r#type));
                 }
-                Ok(QueryResultType::Aggregate(igloo_type))
+                Ok(QueryResultType::Aggregate(r#type))
             }
             QueryAction::SnapshotFloes => {
                 self.validate_no_filters()?;
@@ -98,8 +78,8 @@ impl Query {
         if matches!(
             self.action,
             QueryAction::Watch
-                | QueryAction::WatchDevice
-                | QueryAction::WatchEntity
+                | QueryAction::WatchDevices
+                | QueryAction::WatchEntities
                 | QueryAction::WatchAggregate(_)
         ) && self.limit.is_some()
         {
@@ -131,7 +111,7 @@ impl Query {
         Ok(())
     }
 
-    fn extract_igloo_type(&self) -> Result<IglooType, ValidationError> {
+    fn extract_type(&self) -> Result<IglooType, ValidationError> {
         let filter = self
             .component_filter
             .as_ref()
@@ -192,17 +172,17 @@ mod tests {
     fn test_get_id_single() {
         let query = Query {
             limit: Some(1),
-            action: QueryAction::GetId,
+            action: QueryAction::GetIds,
             ..Default::default()
         };
-        assert_eq!(query.validate().unwrap(), QueryResultType::Id);
+        assert_eq!(query.validate().unwrap(), QueryResultType::Ids);
     }
 
     #[test]
     fn test_get_id_multiple() {
         let query = Query {
             limit: None,
-            action: QueryAction::GetId,
+            action: QueryAction::GetIds,
             ..Default::default()
         };
         assert_eq!(query.validate().unwrap(), QueryResultType::Ids);
@@ -258,7 +238,7 @@ mod tests {
         let result = query.validate().unwrap();
         assert!(matches!(
             result,
-            QueryResultType::Component(IglooType::Real)
+            QueryResultType::Aggregate(IglooType::Real)
         ));
     }
 
@@ -276,7 +256,7 @@ mod tests {
         let result = query.validate().unwrap();
         assert!(matches!(
             result,
-            QueryResultType::Component(IglooType::Real)
+            QueryResultType::Components(IglooType::Real)
         ));
     }
 

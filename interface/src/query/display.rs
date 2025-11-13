@@ -18,7 +18,7 @@ impl fmt::Display for Query {
 
         let is_entity_query = matches!(
             &self.action,
-            QueryAction::SnapshotEntity | QueryAction::WatchEntity
+            QueryAction::SnapshotEntities | QueryAction::WatchEntities
         );
 
         match &self.action {
@@ -33,23 +33,19 @@ impl fmt::Display for Query {
                 write!(f, "{}", self.action)?;
 
                 if let Some(comp_type) = self.component_filter.as_ref().and_then(extract_type) {
-                    write!(f, " {:?}", comp_type)?;
+                    write!(f, " {}", pluralize(format!("{comp_type:?}")))?;
                 }
+            }
+            QueryAction::Set(_) | QueryAction::Put(_) | QueryAction::Increment(_) => {
+                write!(f, "{}", pluralize(self.action.to_string()))?;
             }
             QueryAction::Count => {
                 if self.component_filter.is_some() {
-                    write!(f, "count components")?;
+                    write!(f, "count Components")?;
                 } else if self.entity_filter.is_some() {
-                    write!(f, "count entities")?;
+                    write!(f, "count Entities")?;
                 } else {
-                    write!(f, "count devices")?;
-                }
-            }
-            QueryAction::GetId => {
-                if matches!(self.limit, Some(1)) {
-                    write!(f, "get id")?;
-                } else {
-                    write!(f, "get ids")?;
+                    write!(f, "count Devices")?;
                 }
             }
             _ => write!(f, "{}", self.action)?,
@@ -58,17 +54,17 @@ impl fmt::Display for Query {
         if let Some(cf) = &self.component_filter
             && !matches!(cf, ComponentFilter::Type(_))
         {
-            write!(f, " where {cf}")?;
+            write!(f, " with {cf}")?;
         }
 
         if is_component_query || is_entity_query {
-            write!(f, "\nfrom entities")?;
+            write!(f, "\nfrom Entities")?;
             if let Some(ef) = &self.entity_filter {
                 write!(f, " {ef}")?;
             }
         }
 
-        write!(f, "\nfrom devices")?;
+        write!(f, "\nfrom Devices")?;
         if let Some(df) = &self.device_filter {
             write!(f, " {df}")?;
         }
@@ -93,6 +89,55 @@ fn extract_type(filter: &ComponentFilter) -> Option<ComponentType> {
     }
 }
 
+fn pluralize(word: String) -> String {
+    let lower = word.to_lowercase();
+
+    if lower.ends_with("s")
+        || lower.ends_with("x")
+        || lower.ends_with("z")
+        || lower.ends_with("ch")
+        || lower.ends_with("sh")
+    {
+        return format!("{}es", word);
+    }
+
+    // consonant + y -> consonant + ies
+    if lower.ends_with("y") {
+        let before_y = lower.chars().rev().nth(1);
+        if let Some(c) = before_y {
+            if !"aeiou".contains(c) {
+                let mut result = word.clone();
+                result.pop(); // Remove 'y'
+                return format!("{}ies", result);
+            }
+        }
+    }
+
+    if lower.ends_with("fe") {
+        let mut result = word.clone();
+        result.pop();
+        result.pop();
+        return format!("{}ves", result);
+    }
+    if lower.ends_with("f") {
+        let mut result = word.clone();
+        result.pop();
+        return format!("{}ves", result);
+    }
+
+    // consonant + o -> add es
+    if lower.ends_with("o") {
+        let before_o = lower.chars().rev().nth(1);
+        if let Some(c) = before_o {
+            if !"aeiou".contains(c) {
+                return format!("{}es", word);
+            }
+        }
+    }
+
+    format!("{}s", word)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,7 +151,7 @@ mod tests {
     fn test_query_display() {
         let q = Query {
             device_filter: Some(DeviceFilter::Group(GroupID::from_parts(1, 0))),
-            action: QueryAction::GetId,
+            action: QueryAction::GetIds,
             ..Default::default()
         };
         println!("{}\n", q);
@@ -121,7 +166,7 @@ mod tests {
         let q = Query {
             device_filter: Some(DeviceFilter::NameMatches("bedroom*".to_string())),
             limit: Some(1),
-            action: QueryAction::SnapshotDevice,
+            action: QueryAction::SnapshotDevices,
             ..Default::default()
         };
         println!("{}\n", q);
@@ -222,7 +267,7 @@ mod tests {
 
         let q = Query {
             device_filter: Some(DeviceFilter::Owner(FloeID("ESPHome".to_string()))),
-            action: QueryAction::WatchDevice,
+            action: QueryAction::WatchDevices,
             ..Default::default()
         };
         println!("{}\n", q);
@@ -232,7 +277,7 @@ mod tests {
             entity_filter: Some(EntityFilter::HasComponent(ComponentFilter::Type(
                 ComponentType::Light,
             ))),
-            action: QueryAction::WatchEntity,
+            action: QueryAction::WatchEntities,
             ..Default::default()
         };
         println!("{}\n", q);
@@ -295,7 +340,7 @@ mod tests {
         let q = Query {
             device_filter: Some(DeviceFilter::Group(GroupID::from_parts(1, 0))),
             entity_filter: Some(EntityFilter::ComponentCount(ComparisonOp::Gt, 3)),
-            action: QueryAction::SnapshotEntity,
+            action: QueryAction::SnapshotEntities,
             ..Default::default()
         };
         println!("{}\n", q);
@@ -311,7 +356,7 @@ mod tests {
             device_filter: Some(DeviceFilter::Owner(FloeID("ESPHome".to_string()))),
             entity_filter: Some(EntityFilter::UpdatedWithinSeconds(60)),
             limit: Some(1),
-            action: QueryAction::SnapshotEntity,
+            action: QueryAction::SnapshotEntities,
             ..Default::default()
         };
         println!("{}\n", q);

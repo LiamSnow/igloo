@@ -25,19 +25,32 @@ pub struct QueryResult {
 
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum QueryResultValue {
-    None,
+    /// for queries (put, set, increment, watch entity/device)
+    /// that don't return anything
+    Ok,
     Devices(Vec<DeviceSnapshot>),
-    Device(DeviceSnapshot),
     Entities(Vec<EntitySnapshot>),
-    Entity(EntitySnapshot),
     Groups(Vec<GroupSnapshot>),
     Floes(Vec<FloeSnapshot>),
     Components(Vec<ComponentResult>),
-    Component(ComponentResult),
-    Aggregate(IglooValue),
+    Aggregate(Option<IglooValue>),
     Count(usize),
-    Id(DeviceID),
     Ids(Vec<DeviceID>),
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum QueryResultType {
+    /// for queries (put, set, increment, watch entity/device)
+    /// that don't return anything
+    Ok,
+    Devices,
+    Entities,
+    Groups,
+    Floes,
+    Components(IglooType),
+    Aggregate(IglooType),
+    Count,
+    Ids,
 }
 
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
@@ -45,23 +58,6 @@ pub struct ComponentResult {
     pub device: DeviceID,
     pub entity: String,
     pub value: IglooValue,
-}
-
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
-pub enum QueryResultType {
-    None,
-    Devices,
-    Device,
-    Entities,
-    Entity,
-    Groups,
-    Floes,
-    Components(IglooType),
-    Component(IglooType),
-    Aggregate(IglooType),
-    Count,
-    Id,
-    Ids,
 }
 
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
@@ -179,23 +175,23 @@ pub enum ComparisonOp {
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
 pub enum QueryAction {
     /// snapshot all floes
-    #[display("snapshot floes")]
+    #[display("snapshot Floes")]
     SnapshotFloes,
     /// snapshot all groups
-    #[display("snapshot groups")]
+    #[display("snapshot Groups")]
     SnapshotGroups,
 
-    #[display("get id")]
-    GetId,
-    #[display("snapshot device")]
-    SnapshotDevice,
-    #[display("watch entity")]
-    WatchDevice,
+    #[display("get ids")]
+    GetIds,
+    #[display("snapshot Devices")]
+    SnapshotDevices,
+    #[display("watch Devices")]
+    WatchDevices,
 
-    #[display("snapshot entity")]
-    SnapshotEntity,
-    #[display("watch entity")]
-    WatchEntity,
+    #[display("snapshot Entities")]
+    SnapshotEntities,
+    #[display("watch Entities")]
+    WatchEntities,
 
     #[display("get")]
     #[default]
