@@ -12,6 +12,7 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let comp_from_string = gen_comp_from_string(comps);
     let enum_aggregatable = gen_enum_aggregatable(comps);
     let component_aggregate = gen_component_aggregate(comps);
+    let to_igloo_value = gen_to_igloo_value(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
@@ -31,6 +32,8 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
         #enum_aggregatable
 
         #component_aggregate
+
+        #to_igloo_value
     };
 
     // reconstruct, format, and save
@@ -41,6 +44,59 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(out_dir).join("server.rs");
     fs::write(&out_path, formatted).expect("Failed to write server.rs");
+}
+
+fn gen_to_igloo_value(comps: &[Component]) -> TokenStream {
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            
+            match &comp.kind {
+                ComponentKind::Single { kind } => {
+                    let igloo_variant = match kind {
+                        IglooType::Integer => quote! { IglooValue::Integer },
+                        IglooType::Real => quote! { IglooValue::Real },
+                        IglooType::Text => quote! { IglooValue::Text },
+                        IglooType::Boolean => quote! { IglooValue::Boolean },
+                        IglooType::Color => quote! { IglooValue::Color },
+                        IglooType::Date => quote! { IglooValue::Date },
+                        IglooType::Time => quote! { IglooValue::Time },
+                        IglooType::IntegerList => quote! { IglooValue::IntegerList },
+                        IglooType::RealList => quote! { IglooValue::RealList },
+                        IglooType::TextList => quote! { IglooValue::TextList },
+                        IglooType::BooleanList => quote! { IglooValue::BooleanList },
+                        IglooType::ColorList => quote! { IglooValue::ColorList },
+                        IglooType::DateList => quote! { IglooValue::DateList },
+                        IglooType::TimeList => quote! { IglooValue::TimeList },
+                    };
+                    quote! {
+                        Component::#name(v) => Some(#igloo_variant(v.clone()))
+                    }
+                }
+                ComponentKind::Enum { .. } => {
+                    quote! {
+                        Component::#name(v) => Some(IglooValue::Enum(IglooEnumValue::#name(v.clone())))
+                    }
+                }
+                ComponentKind::Marker { .. } => {
+                    quote! {
+                        Component::#name => None
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl Component {
+            pub fn to_igloo_value(&self) -> Option<IglooValue> {
+                match self {
+                    #(#arms,)*
+                }
+            }
+        }
+    }
 }
 
 fn gen_comp_from_string(comps: &[Component]) -> TokenStream {
