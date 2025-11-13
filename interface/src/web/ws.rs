@@ -3,14 +3,14 @@ use derive_more::From;
 
 use crate::{
     Component,
-    dash::Dashboard,
-    query::{SetQuery, Snapshot},
+    query::{DeviceSnapshot, FloeSnapshot, GroupSnapshot},
+    web::dash::Dashboard,
 };
 
 /// WASM -> Igloo
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
 pub enum ClientMessage {
-    ExecSetQuery(SetQuery),
+    // ExecSetQuery(SetQuery),
     Init,
     GetPageData(ClientPage),
 }
@@ -28,7 +28,7 @@ pub enum ClientPage {
 pub enum ServerMessage {
     Dashboards(Vec<DashboardMeta>),
     Dashboard(Option<String>, Box<Dashboard>),
-    Snapshot(Box<Snapshot>),
+    Snapshot(Box<GlobalSnapshot>),
     ElementUpdate(ElementUpdate),
 }
 
@@ -43,4 +43,11 @@ pub struct DashboardMeta {
 pub struct ElementUpdate {
     pub watch_id: u32,
     pub value: Component,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
+pub struct GlobalSnapshot {
+    pub floes: Vec<FloeSnapshot>,
+    pub groups: Vec<GroupSnapshot>,
+    pub devices: Vec<DeviceSnapshot>,
 }

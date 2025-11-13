@@ -16,7 +16,7 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
-        use crate::agg::*;
+        use crate::query::{Aggregatable, AggregationOp};
 
         #comp_enum
 
@@ -52,16 +52,15 @@ fn gen_comp_from_string(comps: &[Component]) -> TokenStream {
             match &comp.kind {
                 ComponentKind::Single { kind } => {
                     let parse_logic = match kind {
-                        IglooType::Integer | IglooType::Real | IglooType::Boolean => {
+                        IglooType::Integer | IglooType::Real | IglooType::Boolean
+                        | IglooType::Color | IglooType::Date | IglooType::Time => {
                             quote! { s.parse().ok().map(Component::#comp_ident) }
                         }
                         IglooType::Text => {
                             quote! { Some(Component::#comp_ident(s)) }
                         }
-                        IglooType::Color | IglooType::Date | IglooType::Time => {
-                            quote! { s.try_into().ok().map(Component::#comp_ident) }
-                        }
-                        IglooType::IntegerList | IglooType::RealList | IglooType::BooleanList => {
+                        IglooType::IntegerList | IglooType::RealList | IglooType::BooleanList
+                        | IglooType::ColorList | IglooType::DateList | IglooType::TimeList => {
                             quote! {
                                 parse_list(&s)?
                                     .into_iter()
@@ -72,15 +71,6 @@ fn gen_comp_from_string(comps: &[Component]) -> TokenStream {
                         }
                         IglooType::TextList => {
                             quote! { parse_list(&s).map(Component::#comp_ident) }
-                        }
-                        IglooType::ColorList | IglooType::DateList | IglooType::TimeList => {
-                            quote! {
-                                parse_list(&s)?
-                                    .into_iter()
-                                    .map(|item| item.try_into().ok())
-                                    .collect::<Option<Vec<_>>>()
-                                    .map(Component::#comp_ident)
-                            }
                         }
                     };
 
@@ -237,6 +227,7 @@ fn gen_comp_enum(comps: &[Component]) -> TokenStream {
 
     quote! {
         #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+        #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
         #[repr(u16)]
         #[borsh(use_discriminant=false)]
         pub enum Component {

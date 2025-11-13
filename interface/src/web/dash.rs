@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::{Display, From};
 
-use crate::{
-    Component, ComponentType,
-    query::{QueryFilter, QueryTarget},
-};
+use crate::{Component, query::Query};
 
 // TODO we need to experiment with different systems
 // for sizing, margins, and padding. For now we will
@@ -15,10 +12,6 @@ use crate::{
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct Dashboard {
     pub display_name: String,
-    /// used for custom queries in this
-    /// dashboard, not defined inside
-    /// CustomElements
-    pub targets: HashMap<String, QueryTarget>,
     pub child: DashElement,
     /// Overwritten by Igloo at runtime
     pub idx: Option<u16>,
@@ -66,34 +59,19 @@ pub enum DashElement {
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct CustomElementDefn {
     pub(super) name: String,
-
-    /// When placing this element, user will
-    /// have to select a QueryTarget:: for each
-    /// of these
-    /// In your query bindings below, you can use
-    /// these query_targets by name
-    pub(super) targets: Vec<String>,
-
     pub(super) children: Vec<DashElement>,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct DashQuery {
-    pub target: String,
-    pub filter: QueryFilter,
-    pub comp_type: ComponentType,
-}
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct DashQueryNoType {
-    pub target: String,
-    pub filter: QueryFilter,
+pub struct DashBinding {
+    pub name: String,
+    pub query: Query,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct CustomElement {
     pub name: String,
-    pub selected_targets: HashMap<String, QueryTarget>,
+    pub binding_mods: HashMap<String, Query>,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -147,7 +125,7 @@ pub struct SwitchElement {
     /// ComponentType must have a bool (ex ::Bool, ::Switch)
     /// Will register a ::WatchAvg query
     /// When interacted, calls a ::Set query
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub size: Size,
     // TODO variant?
 }
@@ -160,7 +138,7 @@ pub struct CheckboxElement {
     /// ComponentType must have a bool (ex ::Bool, ::Switch)
     /// Will register a ::WatchAvg query
     /// When interacted, calls a ::Set query
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub size: Size,
     // TODO variant?
 }
@@ -173,7 +151,7 @@ pub struct ToggleButtonElement {
     /// ComponentType must have a bool (ex ::Bool, ::Switch)
     /// Will register a ::WatchAvg query
     /// When interacted, calls a ::Set query
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub size: Size,
     // TODO variant?
 }
@@ -185,7 +163,7 @@ pub struct IconElement {
     pub watch_id: Option<u32>,
     /// instead of getting icon from `name`
     /// query for Component::Icon
-    pub icon_value: Option<DashQueryNoType>,
+    pub icon_value: Option<DashBinding>,
     pub icon: Option<String>,
     pub size: Size,
 }
@@ -196,7 +174,7 @@ pub struct ButtonElement {
     // TODO should also be able to run Penguin script
     // Or maybe call custom query with specific value?
     // And definetely be able to navigate to other Dashboards
-    pub on_click: Option<DashQueryNoType>,
+    pub on_click: Option<DashBinding>,
     pub size: Size,
     pub variant: ButtonVariant,
     pub children: Vec<DashElement>,
@@ -207,7 +185,7 @@ pub struct TextElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub value: Option<DashQuery>,
+    pub value: Option<DashBinding>,
     pub prefix: String,
     pub suffix: String,
     pub size: Size,
@@ -219,7 +197,7 @@ pub struct TextInputElement {
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
     /// ComponentType must have a string (ex ::Text)
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub title: String,
     pub placeholder: String,
     /// Disables \*MaxLength, \*MinLength, \*Pattern enforcement
@@ -234,7 +212,7 @@ pub struct NumberInputElement {
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
     /// ComponentType must have a number (ex ::Int, ::Float)
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub title: String,
     pub placeholder: String,
     /// If only 1 component is queried, and it's entity
@@ -248,7 +226,7 @@ pub struct TimePickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -256,7 +234,7 @@ pub struct DatePickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -264,7 +242,7 @@ pub struct DateTimePickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -272,7 +250,7 @@ pub struct DurationPickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -280,7 +258,7 @@ pub struct WeekdayPickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
     /// If multi uses WeekdayList
     /// Else Weekday
     pub multi: bool,
@@ -293,7 +271,7 @@ pub struct SliderElement {
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
     /// ComponentType must have a number (ex ::Int, ::Float)
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     /// Find min,max,step from entity Components \*Min,\*Max,\*Step
     /// (ex. IntMax, IntMin, IntStep)
     /// Note: only works if query is for 1 entity
@@ -308,7 +286,7 @@ pub struct ColorPickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
     pub variant: ColorPickerVariant,
 }
 
@@ -320,7 +298,7 @@ pub struct TextSelectElement {
     // Finds entities marked TextSelect
     // Current value is Component::Text
     // Options are Component::TextList
-    pub binding: DashQueryNoType,
+    pub binding: DashBinding,
     pub variant: SelectVariant,
 }
 
@@ -332,7 +310,7 @@ pub struct ModeSelectElement {
     /// Component must have Supported type
     /// For example, you'd put FanOscillation here, the options
     /// will be taken from SupportedFanOscillations
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub variant: SelectVariant,
 }
 
@@ -341,7 +319,7 @@ pub struct CustomSelectElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
     pub watch_id: Option<u32>,
-    pub binding: DashQuery,
+    pub binding: DashBinding,
     pub variant: SelectVariant,
     /// (option name, value)
     pub options: Vec<(String, Component)>,
@@ -475,8 +453,7 @@ pub enum Primitive {
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum Expr {
     Primitive(Primitive),
-    Query(DashQuery),
-    QueryNT(DashQueryNoType),
+    Query(DashBinding),
     Field(Box<Expr>, String),
     Index(Box<Expr>, usize),
     Op(Box<Expr>, Opcode, Box<Expr>),

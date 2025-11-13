@@ -11,6 +11,7 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
     let helper_funcs = gen_helper_funcs(cmds, comps);
     let str_funcs = gen_str_funcs(comps);
     let enum_types = gen_enum_types(comps);
+    let comp_igloo_type = gen_comp_igloo_type(comps);
     let comps = gen_comps(comps);
     let cmds = gen_cmd_payloads(cmds);
 
@@ -18,7 +19,8 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use borsh::{BorshSerialize, BorshDeserialize};
-        pub use crate::types::*;
+        use crate::types::*;
+        use crate::compound::*;
         #[cfg(feature = "floe")]
         use tokio::io::AsyncWriteExt;
         #[cfg(feature = "penguin")]
@@ -34,6 +36,8 @@ pub fn generate(cmds: &[Command], comps: &[Component]) {
         #comp_type
 
         #enum_types
+
+        #comp_igloo_type
 
         #comps
 
@@ -88,6 +92,59 @@ fn gen_str_funcs(comps: &[Component]) -> TokenStream {
             pub fn kebab_name(&self) -> &'static str {
                 match self {
                     #(#kebabs,)*
+                }
+            }
+        }
+    }
+}
+
+fn gen_comp_igloo_type(comps: &[Component]) -> TokenStream {
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+
+            match &comp.kind {
+                ComponentKind::Single { kind } => {
+                    let igloo_type = match kind {
+                        IglooType::Integer => quote! { IglooType::Integer },
+                        IglooType::Real => quote! { IglooType::Real },
+                        IglooType::Text => quote! { IglooType::Text },
+                        IglooType::Boolean => quote! { IglooType::Boolean },
+                        IglooType::Color => quote! { IglooType::Color },
+                        IglooType::Date => quote! { IglooType::Date },
+                        IglooType::Time => quote! { IglooType::Time },
+                        IglooType::IntegerList => quote! { IglooType::IntegerList },
+                        IglooType::RealList => quote! { IglooType::RealList },
+                        IglooType::TextList => quote! { IglooType::TextList },
+                        IglooType::BooleanList => quote! { IglooType::BooleanList },
+                        IglooType::ColorList => quote! { IglooType::ColorList },
+                        IglooType::DateList => quote! { IglooType::DateList },
+                        IglooType::TimeList => quote! { IglooType::TimeList },
+                    };
+                    quote! {
+                        ComponentType::#name => Some(#igloo_type)
+                    }
+                }
+                ComponentKind::Enum { .. } => {
+                    quote! {
+                        ComponentType::#name => Some(IglooType::Enum(IglooEnumType::#name))
+                    }
+                }
+                ComponentKind::Marker { .. } => {
+                    quote! {
+                        ComponentType::#name => None
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl ComponentType {
+            pub fn igloo_type(&self) -> Option<IglooType> {
+                match self {
+                    #(#arms,)*
                 }
             }
         }
@@ -230,6 +287,8 @@ pub fn gen_cmd_ids(cmds: &[Command], comps: &[Component]) -> TokenStream {
     let cmds: Vec<_> = cmds.iter().map(|cmd| cmd.gen_id_const()).collect();
     let comps: Vec<_> = comps.iter().map(|comp| comp.gen_id_const()).collect();
 
+    // TODO FIXME place into module
+
     quote! {
         #(#cmds)*
         #(#comps)*
@@ -280,6 +339,8 @@ impl Component {
 
 fn gen_comps(comps: &[Component]) -> TokenStream {
     let comps: Vec<_> = comps.iter().map(|comp| comp.gen_code()).collect();
+
+    // TODO FIXME place into module
 
     quote! {
         #(#comps)*
