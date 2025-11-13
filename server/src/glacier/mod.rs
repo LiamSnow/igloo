@@ -1,5 +1,8 @@
-use std::{error::Error, path::Path};
-
+use crate::glacier::{
+    floe::FloeManager,
+    query::{QueryEngine, QueryEngineRx, QueryEngineTx},
+    tree::DeviceTree,
+};
 use igloo_interface::{
     CREATE_DEVICE, CreateDevice, DESELECT_ENTITY, DeviceCreated, END_TRANSACTION, REGISTER_ENTITY,
     RegisterEntity, SELECT_ENTITY, START_TRANSACTION, SelectEntity, StartTransaction,
@@ -8,15 +11,9 @@ use igloo_interface::{
     read_component,
 };
 use smallvec::SmallVec;
+use std::{error::Error, path::Path};
 use tokio::{fs, sync::mpsc};
 
-use crate::glacier::{
-    floe::FloeManager,
-    query::{Query, QueryExec},
-    tree::DeviceTree,
-};
-
-mod entity;
 mod floe;
 pub mod query;
 pub mod tree;
@@ -30,17 +27,20 @@ pub struct Command {
     pub payload: Vec<u8>,
 }
 
-pub async fn spawn() -> Result<mpsc::Sender<Query>, Box<dyn Error>> {
+pub async fn spawn() -> Result<QueryEngineTx, Box<dyn Error>> {
     let mut tree = DeviceTree::load().await?;
+    let mut engine = QueryEngine::new();
 
     let (cmds_tx, cmds_rx) = mpsc::channel(100);
     let (query_tx, query_rx) = mpsc::channel(20);
 
-    for name in get_all_floe_names().await? {
-        let (reader, writer, max_supported_component) = floe::init(name.clone()).await?;
+    for fid in get_all_floe_names().await? {
+        let (reader, writer, max_supported_component) = floe::init(fid.clone()).await?;
 
-        let fid = FloeID(name);
-        let fref = tree.attach_floe(fid.clone(), writer, max_supported_component)?;
+        tree.attach_floe(&mut engine, fid.clone(), writer, max_supported_component)
+            .await?;
+
+        let fref = *tree.floe_ref(&fid)?;
 
         let cmds_tx_copy = cmds_tx.clone();
         tokio::spawn(async move {
@@ -54,35 +54,38 @@ pub async fn spawn() -> Result<mpsc::Sender<Query>, Box<dyn Error>> {
         });
     }
 
-    tokio::spawn(run(tree, cmds_rx, query_rx));
+    tokio::spawn(run(tree, engine, cmds_rx, query_rx));
 
     Ok(query_tx)
 }
 
 async fn run(
     mut tree: DeviceTree,
+    mut engine: QueryEngine,
     mut cmds_rx: mpsc::Receiver<(FloeRef, Commands)>,
-    mut query_rx: mpsc::Receiver<Query>,
+    mut query_rx: QueryEngineRx,
 ) {
     loop {
         tokio::select! {
             Some((fref, trans)) = cmds_rx.recv() => {
-                if let Err(e) = handle_cmds(&mut tree, fref, trans).await {
+                if let Err(e) = handle_cmds(&mut tree, &mut engine, fref, trans).await {
                     eprintln!("Error handling commands from Floe #{fref:?}: {e}");
                 }
             }
 
-            Some(query) = query_rx.recv() => {
-                if let Err(e) = query.execute(&mut tree).await {
-                    eprintln!("Error handling query: {e}");
+            Some((query, tx)) = query_rx.recv() => {
+                if let Err(e) = engine.execute(&mut tree, query, tx).await {
+                    eprintln!("Error executing query: {e}");
                 }
             }
         }
     }
 }
 
+// TODO probably move this stuff to tree/
 async fn handle_cmds(
     tree: &mut DeviceTree,
+    engine: &mut QueryEngine,
     fref: FloeRef,
     cmds: Commands,
 ) -> Result<(), Box<dyn Error>> {
@@ -92,19 +95,28 @@ async fn handle_cmds(
     match first.cmd_id {
         START_TRANSACTION => {
             let params: StartTransaction = borsh::from_slice(&first.payload).unwrap();
-            handle_trans(tree, fref, trans, DeviceID::from_comb(params.device_id)).await?;
+            handle_trans(
+                tree,
+                engine,
+                fref,
+                trans,
+                DeviceID::from_comb(params.device_id),
+            )
+            .await?;
         }
         CREATE_DEVICE => {
             let params: CreateDevice = borsh::from_slice(&first.payload)?;
-            let new_id = tree.create_device(params.name.clone(), fref).await?;
-            let floe = tree.floe_mut(fref);
-            floe.writer
+            let new_id = tree
+                .create_device(engine, params.name.clone(), fref)
+                .await?;
+            let writer = tree.floe_writer_mut(fref);
+            writer
                 .device_created(&DeviceCreated {
                     name: params.name,
                     id: new_id.take(),
                 })
                 .await?;
-            floe.writer.flush().await?;
+            writer.flush().await?;
         }
         _ => {
             eprintln!("Floe #{fref:?} sent invalid command set (no start). Skipping..");
@@ -116,11 +128,12 @@ async fn handle_cmds(
 
 async fn handle_trans(
     tree: &mut DeviceTree,
+    engine: &mut QueryEngine,
     fref: FloeRef,
     trans: smallvec::IntoIter<[Command; 6]>,
     did: DeviceID,
 ) -> Result<(), Box<dyn Error>> {
-    let device = tree.device_mut(did).unwrap(); // FIXME unwrap
+    let device = tree.device_mut(&did).unwrap(); // FIXME unwrap
 
     let mut selected_entity: Option<usize> = None;
 
@@ -130,13 +143,7 @@ async fn handle_trans(
                 Some(eidx) => {
                     let val = read_component(line.cmd_id, line.payload).unwrap();
 
-                    // set the entity, if we added
-                    // something new, register it in presense
-                    if let Some(comp_typ) = device.entities[eidx].set(val.clone()) {
-                        device.presense.set(comp_typ);
-                    }
-
-                    device.exec_queries(eidx, val).await;
+                    DeviceTree::write_component(engine, device, did, eidx, val).await?;
 
                     continue;
                 }
@@ -153,22 +160,23 @@ async fn handle_trans(
                 selected_entity = None;
 
                 let params: RegisterEntity = borsh::from_slice(&line.payload).unwrap();
-                if params.entity_idx as usize != device.entities.len() {
-                    panic!(
-                        "Floe #{fref:?} malformed during a transaction with device ID={did}. Tried to make entity idx={}, but should have been {}",
-                        params.entity_idx,
-                        device.entities.len()
-                    );
-                }
 
-                device.register_entity(params.entity_name);
+                DeviceTree::register_entity(
+                    engine,
+                    device,
+                    did,
+                    params.entity_name,
+                    params.entity_idx as usize,
+                )
+                .await?;
+
                 // TODO should this select entity?
             }
 
             SELECT_ENTITY => {
                 let params: SelectEntity = borsh::from_slice(&line.payload).unwrap();
                 let eidx = params.entity_idx as usize;
-                if eidx > device.entities.len() - 1 {
+                if eidx > device.num_entities() - 1 {
                     panic!(
                         "Floe #{fref:?} malformed during a transaction with device ID={did}. Tried to select entity idx={eidx} which is not registered.",
                     );
@@ -195,7 +203,7 @@ async fn handle_trans(
     Ok(())
 }
 
-async fn get_all_floe_names() -> Result<Vec<String>, Box<dyn Error>> {
+async fn get_all_floe_names() -> Result<Vec<FloeID>, Box<dyn Error>> {
     let floes_path = Path::new(FLOES_DIR);
     if !floes_path.exists() {
         fs::create_dir(floes_path).await?;
@@ -219,7 +227,7 @@ async fn get_all_floe_names() -> Result<Vec<String>, Box<dyn Error>> {
             continue;
         };
 
-        res.push(name.to_string());
+        res.push(FloeID(name.to_string()));
     }
 
     Ok(res)

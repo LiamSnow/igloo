@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-igloo-interface = { path = "../interface/", features = ["server", "floe"] }
+igloo-interface = { path = "../interface/", features = ["web", "floe", "penguin"] }
 axum = { version = "0.8.4", features = ["ws"] }
 bcrypt = "0.17.1"
 jiff = "0.2.15"

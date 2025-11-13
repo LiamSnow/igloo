@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
+use crate::glacier::query::QueryEngineTx;
 use axum::extract::ws::Message;
-use igloo_interface::dash::Dashboard;
+use igloo_interface::web::dash::Dashboard;
 use rustc_hash::FxHashMap;
-use tokio::sync::{RwLock, broadcast, mpsc};
-
-use crate::glacier::query::Query;
+use std::sync::Arc;
+use tokio::sync::{RwLock, broadcast};
 
 // TODO glacier should register Floe #0 As internal
 // We should be able to get:
@@ -22,7 +20,8 @@ mod web;
 
 #[derive(Debug, Clone)]
 pub struct GlobalState {
-    query_tx: mpsc::Sender<Query>,
+    #[allow(dead_code)]
+    query_tx: QueryEngineTx,
     cast: broadcast::Sender<(u16, Message)>,
     /// send msgs to dash tasks
     dash_tx: broadcast::Sender<(u16, DashboardRequest)>,

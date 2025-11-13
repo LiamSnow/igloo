@@ -27,11 +27,11 @@ pub struct FloeManager {
 
 // TODO remove unwraps and panics
 pub async fn init(
-    name: String,
+    fid: FloeID,
 ) -> Result<(FloeReaderDefault, FloeWriterDefault, u16), Box<dyn Error>> {
-    println!("Initializing Floe '{name}'");
+    println!("Initializing Floe {fid}");
 
-    let cwd = format!("./floes/{name}");
+    let cwd = format!("./floes/{}", fid.0);
 
     let data_path = format!("{cwd}/data");
     fs::create_dir_all(&data_path).await?;
@@ -46,7 +46,7 @@ pub async fn init(
         .stderr(Stdio::piped())
         .spawn()?;
 
-    proxy_stdio(&mut process, name.to_string());
+    proxy_stdio(&mut process, &fid);
 
     let (stream, _) = listener.accept().await?;
     let (reader, writer) = stream.into_split();
@@ -58,20 +58,20 @@ pub async fn init(
             let res: WhatsUpIgloo = borsh::from_slice(&payload).unwrap();
 
             if res.max_supported_component > MAX_SUPPORTED_COMPONENT {
-                panic!("Floe '{name}' has a newer protocol than Igloo. Please upgrade Igloo",)
+                panic!("{fid} has a newer protocol than Igloo. Please upgrade Igloo",)
             }
 
-            println!("Floe '{name}' initialized!!!");
+            println!("{fid} initialized!");
             res.max_supported_component
         }
         Some(Ok((cmd_id, _))) => {
-            panic!("Floe '{name}' didn't init. Sent {cmd_id} instead.")
+            panic!("{fid} didn't init. Sent {cmd_id} instead.")
         }
         Some(Err(e)) => {
-            panic!("Failed to read Floe '{name}'s init message: {e}")
+            panic!("Failed to read {fid}s init message: {e}")
         }
         None => {
-            panic!("Floe '{name}' immediately closed the socket!")
+            panic!("{fid} immediately closed the socket!")
         }
     };
 
@@ -81,7 +81,7 @@ pub async fn init(
 impl FloeManager {
     /// just forward transactions up to to Glacier
     pub async fn run(mut self) {
-        println!("Floe '{:?}' running as #{:?}", self.fid, self.fref);
+        println!("{} running as {}", self.fid, self.fref);
 
         let mut cur_trans = Commands::new();
 
@@ -89,7 +89,7 @@ impl FloeManager {
             let (cmd_id, payload) = match res {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("Error reading frame from Floe '{:?}': {e}", self.fid);
+                    eprintln!("Error reading frame from {}: {e}", self.fid);
                     continue;
                 }
             };
@@ -99,7 +99,7 @@ impl FloeManager {
                     .cmds_tx
                     .try_send((self.fref, smallvec![Command { cmd_id, payload }]));
                 if let Err(e) = res {
-                    eprintln!("Failed to send transaction to Glacier: {e}");
+                    eprintln!("{} failed to send transaction to Glacier: {e}", self.fid);
                 }
             } else if (START_TRANSACTION..=DESELECT_ENTITY).contains(&cmd_id) || cmd_id >= 64 {
                 cur_trans.push(Command { cmd_id, payload });
@@ -109,40 +109,41 @@ impl FloeManager {
                         .cmds_tx
                         .try_send((self.fref, mem::take(&mut cur_trans)));
                     if let Err(e) = res {
-                        eprintln!("Failed to send transaction to Glacier: {e}");
+                        eprintln!("{} failed to send transaction to Glacier: {e}", self.fid);
                     }
                 }
             } else {
-                eprintln!("Floe '{:?}' send unexpected command {cmd_id}", self.fid);
+                eprintln!("{} send unexpected command {cmd_id}", self.fid);
             }
         }
     }
 }
 
 /// Proxies stdout and stderr to this process prefixed with Floe's name
-fn proxy_stdio(child: &mut Child, name: String) {
+fn proxy_stdio(child: &mut Child, fid: &FloeID) {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
     if let Some(stdout) = stdout {
-        let name_stdout = name.clone();
+        let fid_1 = fid.clone();
         tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                println!("[{name_stdout}] {line}");
+                println!("[{fid_1}] {line}");
             }
         });
     }
 
     if let Some(stderr) = stderr {
+        let fid_1 = fid.clone();
         tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[{name}] {line}");
+                eprintln!("[{fid_1}] {line}");
             }
         });
     }

@@ -10,14 +10,11 @@ use axum::{
 };
 use axum_extra::{TypedHeader, headers::Cookie};
 use futures_util::StreamExt;
-use igloo_interface::ws::{ClientMessage, ClientPage, DashboardMeta, ServerMessage};
+use igloo_interface::web::ws::{ClientMessage, ClientPage, DashboardMeta, ServerMessage};
 use std::error::Error;
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::net::TcpListener;
 
-use crate::{
-    DashboardRequest, GlobalState,
-    glacier::query::{Query, SnapshotQuery},
-};
+use crate::{DashboardRequest, GlobalState};
 
 mod test_dashes;
 mod watch;
@@ -47,7 +44,7 @@ async fn handle_socket(
     state: GlobalState,
     mut socket: WebSocket,
 ) {
-    test_dashes::make(&state).await.unwrap();
+    // test_dashes::make(&state).await.unwrap();
 
     let mut cast_rx = state.cast.subscribe();
     let mut cur_dash_idx = u16::MAX;
@@ -94,7 +91,7 @@ async fn handle_client_msg(
     let msg: ClientMessage = borsh::from_slice(&bytes)?;
 
     match msg {
-        ClientMessage::ExecSetQuery(q) => state.query_tx.send(q.into()).await.unwrap(),
+        // ClientMessage::ExecSetQuery(q) => state.query_tx.send(q.into()).await.unwrap(),
         ClientMessage::Init => {
             let dashs = state.dashs.read().await;
             let mut metas = Vec::with_capacity(dashs.len());
@@ -136,14 +133,15 @@ async fn handle_client_msg(
         }
         ClientMessage::GetPageData(ClientPage::Tree) => {
             *cur_dash_idx = u16::MAX;
-            let (response_tx, response_rx) = oneshot::channel();
-            state
-                .query_tx
-                .send(Query::Snapshot(SnapshotQuery { response_tx }))
-                .await?;
-            let msg: ServerMessage = Box::new(response_rx.await?).into();
-            let bytes = borsh::to_vec(&msg)?;
-            socket.send(Message::Binary(bytes.into())).await?;
+            todo!()
+            // let (response_tx, response_rx) = oneshot::channel();
+            // state
+            //     .query_tx
+            //     .send(Query::Snapshot(SnapshotQuery { response_tx }))
+            //     .await?;
+            // let msg: ServerMessage = Box::new(response_rx.await?).into();
+            // let bytes = borsh::to_vec(&msg)?;
+            // socket.send(Message::Binary(bytes.into())).await?;
         }
         ClientMessage::GetPageData(ClientPage::Settings) => {
             *cur_dash_idx = u16::MAX;
