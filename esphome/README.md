@@ -1,3 +1,5 @@
-# IGLOO ESPHOME
+# Igloo ESPHome
 
-TODO
+## TODO
+- [ ] README
+- [ ] Fix plain/non-noise devices

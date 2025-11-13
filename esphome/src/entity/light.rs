@@ -51,9 +51,9 @@ impl EntityUpdate for api::LightStateResponse {
     async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
         writer
             .color(&Color {
-                r: (self.red * 255.) as u8,
-                g: (self.green * 255.) as u8,
-                b: (self.blue * 255.) as u8,
+                r: self.red as f64,
+                g: self.green as f64,
+                b: self.blue as f64,
             })
             .await?;
         writer.dimmer(&(self.brightness as f64)).await?;
@@ -98,9 +98,9 @@ pub async fn process(
             WRITE_COLOR => {
                 let color: Color = borsh::from_slice(&payload)?;
                 req.has_rgb = true;
-                req.red = (color.r as f32) / 255.;
-                req.green = (color.g as f32) / 255.;
-                req.blue = (color.b as f32) / 255.;
+                req.red = color.r as f32;
+                req.green = color.g as f32;
+                req.blue = color.b as f32;
             }
 
             WRITE_DIMMER => {

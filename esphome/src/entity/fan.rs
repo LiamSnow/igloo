@@ -7,8 +7,8 @@ use crate::{
 };
 use async_trait::async_trait;
 use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, FanDirection, FanOscillation, FanSpeed, IglooText, Integer,
-    Switch, WRITE_FAN_DIRECTION, WRITE_FAN_OSCILLATION, WRITE_INTEGER, WRITE_SWITCH, WRITE_TEXT,
+    DESELECT_ENTITY, END_TRANSACTION, FanDirection, FanOscillation, FanSpeed, Integer, Switch,
+    Text, WRITE_FAN_DIRECTION, WRITE_FAN_OSCILLATION, WRITE_INTEGER, WRITE_SWITCH, WRITE_TEXT,
     floe::FloeWriterDefault,
 };
 
@@ -111,7 +111,7 @@ pub async fn process(
             }
 
             WRITE_TEXT => {
-                let preset: IglooText = borsh::from_slice(&payload)?;
+                let preset: Text = borsh::from_slice(&payload)?;
                 req.has_preset_mode = true;
                 req.preset_mode = preset;
             }

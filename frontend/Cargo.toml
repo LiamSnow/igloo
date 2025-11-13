@@ -27,7 +27,7 @@ web-sys = { version = "0.3.81", features = [
   "console"
 ] }
 borsh = { version = "1.5.7", features = ["derive"] }
-igloo-interface = { path = "../interface/", features = ["server"] }
+igloo-interface = { path = "../interface/", features = ["web", "query"] }
 console_log = "1.0.0"
 log = "0.4.28"
 

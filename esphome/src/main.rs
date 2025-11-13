@@ -52,9 +52,10 @@ async fn main() {
         tokio::spawn(async move {
             let did = device.id;
             if let Err(e) = device.connect().await {
-                eprintln!("Error connecting device ID={did}: {e}");
+                eprintln!("Error connecting to device ID={did}: {e}");
                 return;
             }
+            println!("Device ID={did} connected.");
             if let Err(e) = device.run(shared_writer_copy, stream_rx).await {
                 eprintln!("Error running device ID={did}: {e}");
             }
