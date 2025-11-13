@@ -1,11 +1,11 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::Display;
-
 use crate::{
     Component, ComponentType, IglooType, IglooValue,
     id::{DeviceID, FloeID, GroupID},
-    query::{AggregationOp, DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
+    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
+    types::{agg::AggregationOp, compare::ComparisonOp},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use derive_more::Display;
 
 #[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
 pub struct Query {
@@ -152,24 +152,6 @@ pub enum ComponentFilter {
     Or(Box<ComponentFilter>, Box<ComponentFilter>),
     #[display("not ({_0})")]
     Not(Box<ComponentFilter>),
-}
-
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
-pub enum ComparisonOp {
-    #[display("==")]
-    Eq,
-    #[display("!=")]
-    Neq,
-    #[display(">")]
-    Gt,
-    #[display(">=")]
-    Gte,
-    #[display("<")]
-    Lt,
-    #[display("<=")]
-    Lte,
-    #[display("contains")]
-    Contains,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]

@@ -33,9 +33,9 @@ impl Query {
             QueryAction::SnapshotDevices => Ok(QueryResultType::Devices),
             QueryAction::SnapshotEntities => Ok(QueryResultType::Entities),
             QueryAction::Get => Ok(QueryResultType::Components(self.extract_type()?)),
-            QueryAction::GetAggregate(_) => {
+            QueryAction::GetAggregate(op) => {
                 let r#type = self.extract_type()?;
-                if !r#type.is_aggregatable() {
+                if !op.can_apply(&r#type) {
                     return Err(ValidationError::TypeNotAggregatable(r#type));
                 }
                 Ok(QueryResultType::Aggregate(r#type))
@@ -55,9 +55,9 @@ impl Query {
                 self.require_component_filter()?;
                 Ok(QueryResultType::Components(self.extract_type()?))
             }
-            QueryAction::WatchAggregate(_) => {
+            QueryAction::WatchAggregate(op) => {
                 let r#type = self.extract_type()?;
-                if !r#type.is_aggregatable() {
+                if !op.can_apply(&r#type) {
                     return Err(ValidationError::TypeNotAggregatable(r#type));
                 }
                 Ok(QueryResultType::Aggregate(r#type))

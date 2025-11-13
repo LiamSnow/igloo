@@ -17,7 +17,7 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
-        use crate::query::{Aggregatable, AggregationOp};
+        use crate::types::agg::{Aggregatable, AggregationOp};
 
         #comp_enum
 

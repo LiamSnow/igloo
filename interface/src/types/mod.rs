@@ -1,12 +1,16 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::Display;
-
 use crate::{
     IGLOO_ENUMS, IglooEnumType, IglooEnumValue,
-    compound::{IglooColor, IglooDate, IglooTime},
     id::{DeviceID, FloeID, GroupID},
     query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use derive_more::Display;
+
+pub mod agg;
+pub mod cast;
+pub mod compare;
+pub mod compound;
+pub use compound::*;
 
 pub type IglooInteger = i64;
 pub type IglooReal = f64;
@@ -428,33 +432,6 @@ impl IglooType {
 
             Enum(_) => "#95a5a6",
         }
-    }
-
-    pub fn can_cast(self, to: Self) -> bool {
-        use IglooType::*;
-        matches!(
-            (self, to),
-            (Integer, Real)
-                | (Real, Integer)
-                | (_, Text)
-                | (Integer, Boolean)
-                | (Boolean, Integer)
-                | (IntegerList, RealList)
-                | (RealList, IntegerList)
-                | (IntegerList, TextList)
-                | (RealList, TextList)
-                | (BooleanList, TextList)
-                | (ColorList, TextList)
-                | (DateList, TextList)
-                | (TimeList, TextList)
-        )
-    }
-
-    pub fn cast_name(self, to: Self) -> Option<String> {
-        if !self.can_cast(to) {
-            return None;
-        }
-        Some(format!("Cast {self} to {to}"))
     }
 
     pub fn all() -> Vec<Self> {

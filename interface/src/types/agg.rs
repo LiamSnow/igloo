@@ -1,8 +1,6 @@
+use super::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
-
-use crate::compound::*;
-use crate::types::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, BorshSerialize, BorshDeserialize)]
 pub enum AggregationOp {
@@ -32,13 +30,18 @@ pub const AGGREGATION_OPS: [AggregationOp; 7] = [
     AggregationOp::All,
 ];
 
-impl IglooType {
-    pub fn is_aggregatable(&self) -> bool {
+impl AggregationOp {
+    pub fn can_apply(&self, r#type: &IglooType) -> bool {
+        use AggregationOp::*;
         use IglooType::*;
-        matches!(
-            self,
-            Integer | Real | Boolean | Date | Time | Color | Enum(_)
-        )
+        match r#type {
+            Integer | Real => matches!(self, Mean | Median | Max | Min | Sum),
+            Boolean => matches!(self, Mean | Any | All),
+            Date | Time => matches!(self, Mean | Median | Max | Min),
+            Color => matches!(self, Mean | Median | Max | Min),
+            Enum(_) => matches!(self, Mean),
+            _ => false,
+        }
     }
 }
 

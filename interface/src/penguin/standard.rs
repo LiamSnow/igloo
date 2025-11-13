@@ -1285,7 +1285,7 @@ fn add_reroute(nodes: &mut HashMap<String, PenguinNodeDefn>, pin_type: PenguinPi
 fn add_cast_nodes(nodes: &mut HashMap<String, PenguinNodeDefn>) {
     for from in IglooType::all() {
         for to in IglooType::all() {
-            if let Some(cast_name) = from.cast_name(to) {
+            if let Some(cast_name) = from.cast_node_name(to) {
                 nodes.insert(
                     cast_name,
                     PenguinNodeDefn {

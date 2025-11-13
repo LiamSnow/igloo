@@ -23,7 +23,7 @@ impl PenguinPinType {
 
     pub fn cast_name(self, to: Self) -> Option<String> {
         match (self, to) {
-            (PenguinPinType::Value(from), PenguinPinType::Value(to)) => from.cast_name(to),
+            (PenguinPinType::Value(from), PenguinPinType::Value(to)) => from.cast_node_name(to),
             _ => None,
         }
     }
