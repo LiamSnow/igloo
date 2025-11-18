@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 
-use crate::types::{IglooType, IglooValue};
+use crate::types::{IglooType, IglooValue, cast::CastDirection};
 
 #[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
 pub enum ComparisonOp {
@@ -22,20 +22,20 @@ pub enum ComparisonOp {
 }
 
 impl ComparisonOp {
-    pub fn can_eval(&self, a: &IglooType, b: &IglooType) -> bool {
-        self.can_eval_without_cast(a, b) || choose_cast_direction(a, b).is_some()
+    pub fn can_eval(&self, lhs: &IglooType, rhs: &IglooType) -> bool {
+        self.can_eval_without_cast(lhs, rhs) || choose_cast_direction(lhs, rhs).is_some()
     }
 
-    pub fn can_eval_without_cast(&self, a: &IglooType, b: &IglooType) -> bool {
+    pub fn can_eval_without_cast(&self, lhs: &IglooType, rhs: &IglooType) -> bool {
         use ComparisonOp::*;
         use IglooType::*;
 
         match self {
-            Eq | Neq => a == b,
-            Gt | Gte | Lt | Lte => a == b && matches!(a, Integer | Real | Text | Date | Time),
+            Eq | Neq => lhs == rhs,
+            Gt | Gte | Lt | Lte => lhs == rhs && matches!(lhs, Integer | Real | Text | Date | Time),
             Contains => {
                 matches!(
-                    (a, b),
+                    (lhs, rhs),
                     (IntegerList, Integer)
                         | (RealList, Real)
                         | (TextList, Text)
@@ -58,18 +58,18 @@ impl ComparisonOp {
 }
 
 impl ComparisonOp {
-    pub fn eval(&self, a: &IglooValue, b: &IglooValue) -> Option<bool> {
-        if self.can_eval_without_cast(&a.r#type(), &b.r#type()) {
-            self.eval_without_cast(a, b)
-        } else if let Some(direction) = choose_cast_direction(&a.r#type(), &b.r#type()) {
+    pub fn eval(&self, lhs: &IglooValue, rhs: &IglooValue) -> Option<bool> {
+        if self.can_eval_without_cast(&lhs.r#type(), &rhs.r#type()) {
+            self.eval_without_cast(lhs, rhs)
+        } else if let Some(direction) = choose_cast_direction(&lhs.r#type(), &rhs.r#type()) {
             match direction {
-                CastDirection::AToB => {
-                    let a_casted = a.clone().cast(b.r#type())?;
-                    self.eval_without_cast(&a_casted, b)
+                CastDirection::LTR => {
+                    let a_casted = lhs.clone().cast(rhs.r#type())?;
+                    self.eval_without_cast(&a_casted, rhs)
                 }
-                CastDirection::BToA => {
-                    let b_casted = b.clone().cast(a.r#type())?;
-                    self.eval_without_cast(a, &b_casted)
+                CastDirection::RTL => {
+                    let b_casted = rhs.clone().cast(lhs.r#type())?;
+                    self.eval_without_cast(lhs, &b_casted)
                 }
             }
         } else {
@@ -77,15 +77,15 @@ impl ComparisonOp {
         }
     }
 
-    pub fn eval_without_cast(&self, a: &IglooValue, b: &IglooValue) -> Option<bool> {
+    pub fn eval_without_cast(&self, lhs: &IglooValue, rhs: &IglooValue) -> Option<bool> {
         use ComparisonOp::*;
         use IglooValue::*;
 
         Some(match self {
-            Eq => a == b,
-            Neq => a != b,
+            Eq => lhs == rhs,
+            Neq => lhs != rhs,
 
-            Gt => match (a, b) {
+            Gt => match (lhs, rhs) {
                 (Integer(a), Integer(b)) => a > b,
                 (Real(a), Real(b)) => a > b,
                 (Text(a), Text(b)) => a > b,
@@ -94,7 +94,7 @@ impl ComparisonOp {
                 _ => return None,
             },
 
-            Gte => match (a, b) {
+            Gte => match (lhs, rhs) {
                 (Integer(a), Integer(b)) => a >= b,
                 (Real(a), Real(b)) => a >= b,
                 (Text(a), Text(b)) => a >= b,
@@ -103,7 +103,7 @@ impl ComparisonOp {
                 _ => return None,
             },
 
-            Lt => match (a, b) {
+            Lt => match (lhs, rhs) {
                 (Integer(a), Integer(b)) => a < b,
                 (Real(a), Real(b)) => a < b,
                 (Text(a), Text(b)) => a < b,
@@ -112,7 +112,7 @@ impl ComparisonOp {
                 _ => return None,
             },
 
-            Lte => match (a, b) {
+            Lte => match (lhs, rhs) {
                 (Integer(a), Integer(b)) => a <= b,
                 (Real(a), Real(b)) => a <= b,
                 (Text(a), Text(b)) => a <= b,
@@ -121,7 +121,7 @@ impl ComparisonOp {
                 _ => return None,
             },
 
-            Contains => match (a, b) {
+            Contains => match (lhs, rhs) {
                 (IntegerList(list), Integer(val)) => list.contains(val),
                 (RealList(list), Real(val)) => list.contains(val),
                 (TextList(list), Text(val)) => list.contains(val),
@@ -143,52 +143,44 @@ impl ComparisonOp {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum CastDirection {
-    AToB,
-    BToA,
+impl ComparisonOp {
+    #[inline]
+    pub fn eval_usize(&self, lhs: usize, rhs: usize) -> bool {
+        match self {
+            ComparisonOp::Eq => lhs == rhs,
+            ComparisonOp::Neq => lhs != rhs,
+            ComparisonOp::Lt => lhs < rhs,
+            ComparisonOp::Lte => lhs <= rhs,
+            ComparisonOp::Gt => lhs > rhs,
+            ComparisonOp::Gte => lhs >= rhs,
+            _ => false,
+        }
+    }
 }
 
 fn choose_cast_direction(a: &IglooType, b: &IglooType) -> Option<CastDirection> {
     use CastDirection::*;
     Some(match (a.can_lossless_cast(*b), b.can_lossless_cast(*a)) {
-        (true, false) => AToB,
-        (false, true) => BToA,
+        (true, false) => LTR,
+        (false, true) => RTL,
         (true, true) => {
             if a.type_width() > b.type_width() {
-                BToA
+                RTL
             } else {
-                AToB
+                LTR
             }
         }
         _ => match (a.can_lossy_cast(*b), b.can_lossy_cast(*a)) {
-            (true, false) => AToB,
-            (false, true) => BToA,
+            (true, false) => LTR,
+            (false, true) => RTL,
             (true, true) => {
                 if a.type_width() > b.type_width() {
-                    BToA
+                    RTL
                 } else {
-                    AToB
+                    LTR
                 }
             }
             _ => return None,
         },
     })
-}
-
-impl IglooType {
-    fn type_width(&self) -> u8 {
-        use IglooType::*;
-        match self {
-            Real => 3,
-            Integer => 2,
-            Boolean => 1,
-
-            RealList => 3,
-            IntegerList => 2,
-            BooleanList => 1,
-
-            _ => 0,
-        }
-    }
 }

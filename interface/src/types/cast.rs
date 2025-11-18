@@ -1,5 +1,11 @@
 use crate::types::{IglooType, IglooValue};
 
+#[derive(Debug, Clone, Copy)]
+pub enum CastDirection {
+    LTR,
+    RTL,
+}
+
 impl IglooType {
     pub fn can_cast(self, to: Self) -> bool {
         self.can_lossless_cast(to) || self.can_lossy_cast(to)
@@ -45,6 +51,21 @@ impl IglooType {
             return None;
         }
         Some(format!("Cast {self} to {to}"))
+    }
+
+    pub fn type_width(&self) -> u8 {
+        use IglooType::*;
+        match self {
+            Real => 3,
+            Integer => 2,
+            Boolean => 1,
+
+            RealList => 3,
+            IntegerList => 2,
+            BooleanList => 1,
+
+            _ => 0,
+        }
     }
 }
 
