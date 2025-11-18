@@ -11,8 +11,9 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let comp_inner = gen_comp_inner(comps);
     let comp_from_string = gen_comp_from_string(comps);
     let enum_aggregatable = gen_enum_aggregatable(comps);
-    let component_aggregate = gen_component_aggregate(comps);
+    // let component_aggregate = gen_component_aggregate();
     let to_igloo_value = gen_to_igloo_value(comps);
+    let from_igloo_value = gen_from_igloo_value(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
@@ -31,9 +32,11 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
 
         #enum_aggregatable
 
-        #component_aggregate
+        // #component_aggregate
 
         #to_igloo_value
+
+        #from_igloo_value
     };
 
     // reconstruct, format, and save
@@ -54,24 +57,9 @@ fn gen_to_igloo_value(comps: &[Component]) -> TokenStream {
             
             match &comp.kind {
                 ComponentKind::Single { kind } => {
-                    let igloo_variant = match kind {
-                        IglooType::Integer => quote! { IglooValue::Integer },
-                        IglooType::Real => quote! { IglooValue::Real },
-                        IglooType::Text => quote! { IglooValue::Text },
-                        IglooType::Boolean => quote! { IglooValue::Boolean },
-                        IglooType::Color => quote! { IglooValue::Color },
-                        IglooType::Date => quote! { IglooValue::Date },
-                        IglooType::Time => quote! { IglooValue::Time },
-                        IglooType::IntegerList => quote! { IglooValue::IntegerList },
-                        IglooType::RealList => quote! { IglooValue::RealList },
-                        IglooType::TextList => quote! { IglooValue::TextList },
-                        IglooType::BooleanList => quote! { IglooValue::BooleanList },
-                        IglooType::ColorList => quote! { IglooValue::ColorList },
-                        IglooType::DateList => quote! { IglooValue::DateList },
-                        IglooType::TimeList => quote! { IglooValue::TimeList },
-                    };
+                    let igloo_variant = kind.tokens();
                     quote! {
-                        Component::#name(v) => Some(#igloo_variant(v.clone()))
+                        Component::#name(v) => Some(IglooValue::#igloo_variant(v.clone()))
                     }
                 }
                 ComponentKind::Enum { .. } => {
@@ -92,6 +80,56 @@ fn gen_to_igloo_value(comps: &[Component]) -> TokenStream {
         impl Component {
             pub fn to_igloo_value(&self) -> Option<IglooValue> {
                 match self {
+                    #(#arms,)*
+                }
+            }
+        }
+    }
+}
+
+fn gen_from_igloo_value(comps: &[Component]) -> TokenStream {
+    let arms: Vec<_> = comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            
+            match &comp.kind {
+                ComponentKind::Single { kind } => {
+                    let igloo_variant = kind.tokens();
+                    quote! {
+                        ComponentType::#name => {
+                            if let IglooValue::#igloo_variant(v) = value {
+                                Some(Component::#name(v))
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }
+                ComponentKind::Enum { .. } => {
+                    quote! {
+                        ComponentType::#name => {
+                            if let IglooValue::Enum(IglooEnumValue::#name(v)) = value {
+                                Some(Component::#name(v))
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }
+                ComponentKind::Marker { .. } => {
+                    quote! {
+                        ComponentType::#name => Some(Component::#name)
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl Component {
+            pub fn from_igloo_value(r#type: ComponentType, value: IglooValue) -> Option<Self> {
+                match r#type {
                     #(#arms,)*
                 }
             }
@@ -313,7 +351,17 @@ fn gen_enum_aggregatable(comps: &[Component]) -> TokenStream {
         .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
         .collect();
 
-    let impls: Vec<_> = enum_comps
+    let enum_dispatch_arms: Vec<_> = enum_comps
+        .iter()
+        .map(|comp| {
+            let name = ident(&comp.name);
+            quote! {
+                IglooValue::Enum(IglooEnumValue::#name(_)) => #name::aggregate(iter, op)
+            }
+        })
+        .collect();
+
+    let enum_impls: Vec<_> = enum_comps
         .iter()
         .map(|comp| {
             let name = ident(&comp.name);
@@ -344,12 +392,21 @@ fn gen_enum_aggregatable(comps: &[Component]) -> TokenStream {
 
                 quote! {
                     impl Aggregatable for #name {
-                        fn aggregate<I: IntoIterator<Item = Self>>(items: I, op: AggregationOp) -> Option<Self> {
+                        fn aggregate(
+                            iter: Vec<IglooValue>,
+                            op: AggregationOp
+                        ) -> Option<IglooValue> {
                             match op {
                                 AggregationOp::Mean => {
                                     let mut counts = [0usize; #variant_count];
                                     let mut total = 0;
-                                    for item in items {
+                                    
+                                    for igloo_val in iter {
+                                        let item = match igloo_val {
+                                            IglooValue::Enum(IglooEnumValue::#name(v)) => v,
+                                            _ => return None,
+                                        };
+                                        
                                         let idx = match item {
                                             #(#variant_arms,)*
                                         };
@@ -372,7 +429,8 @@ fn gen_enum_aggregatable(comps: &[Component]) -> TokenStream {
                                         #(#from_idx_arms,)*
                                         _ => unreachable!(),
                                     };
-                                    Some(result)
+                                    
+                                    Some(IglooValue::Enum(IglooEnumValue::#name(result)))
                                 }
                                 _ => None,
                             }
@@ -386,64 +444,36 @@ fn gen_enum_aggregatable(comps: &[Component]) -> TokenStream {
         .collect();
 
     quote! {
-        #(#impls)*
-    }
-}
-
-fn gen_component_aggregate(comps: &[Component]) -> TokenStream {
-    let aggregatable_comps: Vec<_> = comps
-        .iter()
-        .filter(|comp| is_aggregatable(comp))
-        .collect();
-
-    let arms: Vec<_> = aggregatable_comps
-        .iter()
-        .map(|comp| {
-            let name = ident(&comp.name);
-            let name_str = &comp.name;
-            
-            quote! {
-                Component::#name(_) => {
-                    let iter = items.into_iter().map(|item| {
-                        match item {
-                            Component::#name(v) => v,
-                            _ => panic!("Heterogeneous components in aggregate: expected {}", #name_str),
-                        }
-                    });
-                    #name::aggregate(iter, op).map(Component::#name)
-                }
-            }
-        })
-        .collect();
-
-    quote! {
-        impl Component {
-            pub fn aggregate(items: Vec<Component>, op: AggregationOp) -> Option<Component> {
-                if items.is_empty() {
-                    return None;
-                }
-
-                match &items[0] {
-                    #(#arms,)*
+        impl Aggregatable for IglooEnumValue {
+            fn aggregate(
+                iter: Vec<IglooValue>,
+                op: AggregationOp
+            ) -> Option<IglooValue> {
+                match iter.first()? {
+                    #(#enum_dispatch_arms,)*
                     _ => None,
                 }
             }
         }
+
+        #(#enum_impls)*
     }
 }
 
-fn is_aggregatable(comp: &Component) -> bool {
-    match &comp.kind {
-        ComponentKind::Single { kind, .. } => matches!(
-            kind,
-            IglooType::Integer
-                | IglooType::Real
-                | IglooType::Boolean
-                | IglooType::Color
-                | IglooType::Date
-                | IglooType::Time
-        ),
-        ComponentKind::Enum { .. } => true,
-        ComponentKind::Marker { .. } => false,
-    }
-}
+// fn gen_component_aggregate() -> TokenStream {
+//     quote! {
+//         impl Component {
+//             pub fn aggregate(
+//                 iter: impl Iterator<Item = Component>,
+//                 op: AggregationOp
+//             ) -> Option<IglooValue> {
+//                 let iter = iter
+//                     .filter_map(|c| c.to_igloo_value())
+//                     .peekable();
+                
+//                 IglooValue::aggregate(iter, op)
+//             }
+//         }
+//     }
+// }
+

@@ -1,6 +1,7 @@
-use std::{fs, path::PathBuf};
-
+use proc_macro2::TokenStream;
+use quote::quote;
 use serde::Deserialize;
+use std::{fs, path::PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct ComponentsConfig {
@@ -122,5 +123,26 @@ impl ComponentsConfig {
     pub fn read(pathbuf: PathBuf) -> Self {
         let contents = fs::read_to_string(pathbuf).expect("Failed to read components file");
         toml::from_str(&contents).expect("Failed to parse components file")
+    }
+}
+
+impl IglooType {
+    pub fn tokens(&self) -> TokenStream {
+        match self {
+            Self::Integer => quote! { Integer },
+            Self::Real => quote! { Real },
+            Self::Text => quote! { Text },
+            Self::Boolean => quote! { Boolean },
+            Self::Color => quote! { Color },
+            Self::Date => quote! { Date },
+            Self::Time => quote! { Time },
+            Self::IntegerList => quote! { IntegerList },
+            Self::RealList => quote! { RealList },
+            Self::TextList => quote! { TextList },
+            Self::BooleanList => quote! { BooleanList },
+            Self::ColorList => quote! { ColorList },
+            Self::DateList => quote! { DateList },
+            Self::TimeList => quote! { TimeList },
+        }
     }
 }

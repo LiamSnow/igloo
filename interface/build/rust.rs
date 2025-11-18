@@ -105,24 +105,9 @@ fn gen_comp_igloo_type(comps: &[Component]) -> TokenStream {
 
             match &comp.kind {
                 ComponentKind::Single { kind } => {
-                    let igloo_type = match kind {
-                        IglooType::Integer => quote! { IglooType::Integer },
-                        IglooType::Real => quote! { IglooType::Real },
-                        IglooType::Text => quote! { IglooType::Text },
-                        IglooType::Boolean => quote! { IglooType::Boolean },
-                        IglooType::Color => quote! { IglooType::Color },
-                        IglooType::Date => quote! { IglooType::Date },
-                        IglooType::Time => quote! { IglooType::Time },
-                        IglooType::IntegerList => quote! { IglooType::IntegerList },
-                        IglooType::RealList => quote! { IglooType::RealList },
-                        IglooType::TextList => quote! { IglooType::TextList },
-                        IglooType::BooleanList => quote! { IglooType::BooleanList },
-                        IglooType::ColorList => quote! { IglooType::ColorList },
-                        IglooType::DateList => quote! { IglooType::DateList },
-                        IglooType::TimeList => quote! { IglooType::TimeList },
-                    };
+                    let igloo_type = kind.tokens();
                     quote! {
-                        ComponentType::#name => Some(#igloo_type)
+                        ComponentType::#name => Some(IglooType::#igloo_type)
                     }
                 }
                 ComponentKind::Enum { .. } => {
