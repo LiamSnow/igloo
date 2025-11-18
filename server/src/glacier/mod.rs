@@ -74,7 +74,7 @@ async fn run(
             }
 
             Some((query, tx)) = query_rx.recv() => {
-                if let Err(e) = engine.execute(&mut tree, query, tx).await {
+                if let Err(e) = engine.evaluate(&mut tree, query, tx).await {
                     eprintln!("Error executing query: {e}");
                 }
             }
@@ -109,14 +109,14 @@ async fn handle_cmds(
             let new_id = tree
                 .create_device(engine, params.name.clone(), fref)
                 .await?;
-            let writer = tree.floe_writer_mut(fref);
-            writer
+            let floe = tree.floe_mut(&fref)?;
+            floe.writer
                 .device_created(&DeviceCreated {
                     name: params.name,
                     id: new_id.take(),
                 })
                 .await?;
-            writer.flush().await?;
+            floe.writer.flush().await?;
         }
         _ => {
             eprintln!("Floe #{fref:?} sent invalid command set (no start). Skipping..");
