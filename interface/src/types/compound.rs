@@ -1,10 +1,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::{Add, Display, Div, Mul, Sub};
-use std::str::FromStr;
+use derive_more::Display;
+use std::{
+    ops::{Add, Div, Mul, Sub},
+    str::FromStr,
+};
 
-#[derive(
-    Debug, Clone, Add, Sub, Mul, Div, PartialEq, Display, Default, BorshSerialize, BorshDeserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("#{:02x}{:02x}{:02x}", (self.r * 255.0) as u8, (self.g * 255.0) as u8, (self.b * 255.0) as u8)]
 pub struct IglooColor {
@@ -16,7 +17,7 @@ pub struct IglooColor {
     pub b: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{year:04}-{month:02}-{day:02}")]
 pub struct IglooDate {
@@ -25,7 +26,7 @@ pub struct IglooDate {
     pub day: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{hour:02}:{minute:02}:{second:02}")]
 pub struct IglooTime {
@@ -367,9 +368,9 @@ impl IglooColor {
         };
 
         Self {
-            r: r + m,
-            g: g + m,
-            b: b + m,
+            r: (r + m).clamp(0.0, 1.0),
+            g: (g + m).clamp(0.0, 1.0),
+            b: (b + m).clamp(0.0, 1.0),
         }
     }
 
@@ -392,9 +393,9 @@ impl IglooColor {
         };
 
         Self {
-            r: r + m,
-            g: g + m,
-            b: b + m,
+            r: (r + m).clamp(0.0, 1.0),
+            g: (g + m).clamp(0.0, 1.0),
+            b: (b + m).clamp(0.0, 1.0),
         }
     }
 
@@ -507,7 +508,107 @@ impl IglooColor {
     }
 
     pub fn luminance(&self) -> f64 {
-        0.2126 * self.r + 0.7152 * self.g + 0.0722 * self.b
+        const LUMA_R: f64 = 0.2126;
+        const LUMA_G: f64 = 0.7152;
+        const LUMA_B: f64 = 0.0722;
+        (LUMA_R * self.r + LUMA_G * self.g + LUMA_B * self.b).clamp(0.0, 1.0)
+    }
+
+    pub fn hue_shift(&self, degrees: f64) -> Self {
+        let (h, s, l) = self.to_hsl();
+        Self::from_hsl((h + degrees) % 360.0, s, l)
+    }
+}
+
+impl Add for IglooColor {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            r: (self.r + rhs.r).clamp(0.0, 1.0),
+            g: (self.g + rhs.g).clamp(0.0, 1.0),
+            b: (self.b + rhs.b).clamp(0.0, 1.0),
+        }
+    }
+}
+
+impl Sub for IglooColor {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            r: (self.r - rhs.r).clamp(0.0, 1.0),
+            g: (self.g - rhs.g).clamp(0.0, 1.0),
+            b: (self.b - rhs.b).clamp(0.0, 1.0),
+        }
+    }
+}
+
+impl Mul for IglooColor {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self {
+            r: (self.r * rhs.r).clamp(0.0, 1.0),
+            g: (self.g * rhs.g).clamp(0.0, 1.0),
+            b: (self.b * rhs.b).clamp(0.0, 1.0),
+        }
+    }
+}
+
+impl Mul<f64> for IglooColor {
+    type Output = Self;
+
+    fn mul(self, rhs: f64) -> Self::Output {
+        Self {
+            r: (self.r * rhs).clamp(0.0, 1.0),
+            g: (self.g * rhs).clamp(0.0, 1.0),
+            b: (self.b * rhs).clamp(0.0, 1.0),
+        }
+    }
+}
+
+impl Div for IglooColor {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        Self {
+            r: if rhs.r == 0.0 {
+                0.0
+            } else {
+                (self.r / rhs.r).clamp(0.0, 1.0)
+            },
+            g: if rhs.g == 0.0 {
+                0.0
+            } else {
+                (self.g / rhs.g).clamp(0.0, 1.0)
+            },
+            b: if rhs.b == 0.0 {
+                0.0
+            } else {
+                (self.b / rhs.b).clamp(0.0, 1.0)
+            },
+        }
+    }
+}
+
+impl Div<f64> for IglooColor {
+    type Output = Self;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        if rhs == 0.0 {
+            Self {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+            }
+        } else {
+            Self {
+                r: (self.r / rhs).clamp(0.0, 1.0),
+                g: (self.g / rhs).clamp(0.0, 1.0),
+                b: (self.b / rhs).clamp(0.0, 1.0),
+            }
+        }
     }
 }
 
@@ -746,6 +847,53 @@ impl IglooDate {
 
         Err(DateParseError::InvalidFormat)
     }
+
+    pub fn add_weeks(&self, weeks: i32) -> Self {
+        self.add_days(weeks * 7)
+    }
+
+    pub fn add_months(&self, months: i32) -> Self {
+        let mut year = self.year as i32;
+        let mut month = self.month as i32 + months as i32;
+
+        while month > 12 {
+            month -= 12;
+            year += 1;
+        }
+        while month < 1 {
+            month += 12;
+            year -= 1;
+        }
+
+        let max_day = if month == 2 && Self::is_leap_year_value(year as u16) {
+            29
+        } else {
+            Self::DAYS_IN_MONTH[(month - 1) as usize]
+        };
+        let day = self.day.min(max_day);
+
+        Self {
+            year: year as u16,
+            month: month as u8,
+            day,
+        }
+    }
+
+    pub fn add_years(&self, years: i16) -> Self {
+        let mut result = *self;
+
+        if years >= 0 {
+            result.year = self.year.saturating_add(years as u16);
+        } else {
+            result.year = self.year.saturating_sub(years.unsigned_abs() as u16);
+        }
+
+        if result.month == 2 && result.day == 29 && !result.is_leap_year() {
+            result.day = 28;
+        }
+
+        result
+    }
 }
 
 impl IglooTime {
@@ -844,5 +992,13 @@ impl IglooTime {
             minute,
             second,
         })
+    }
+
+    pub fn add_minutes(&self, minutes: i32) -> Self {
+        self.add_seconds(minutes * 60)
+    }
+
+    pub fn add_hours(&self, hours: i32) -> Self {
+        self.add_seconds(hours * 3600)
     }
 }
