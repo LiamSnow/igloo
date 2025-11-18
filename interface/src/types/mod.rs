@@ -11,6 +11,7 @@ pub mod cast;
 pub mod compare;
 pub mod compound;
 pub use compound::*;
+pub mod math;
 
 pub type IglooInteger = i64;
 pub type IglooReal = f64;
