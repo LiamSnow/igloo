@@ -1,8 +1,15 @@
+use crate::glacier::tree::Presense;
+
 use super::{Device, DeviceTree, Group};
 use igloo_interface::id::{DeviceID, FloeID, GroupID};
 use ini::Ini;
+use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
-use std::num::ParseIntError;
+use std::{
+    collections::{HashMap, HashSet},
+    num::ParseIntError,
+    time::Instant,
+};
 use tokio::fs;
 
 pub const GROUPS_FILE: &str = "groups.ini";
@@ -70,6 +77,19 @@ impl DeviceTree {
             .max()
             .unwrap_or(0);
 
+        // put groups on devices
+        let mut devices = devices;
+        for g in groups.iter().flatten() {
+            for did in &g.devices {
+                if let Some(device) = devices
+                    .get_mut(did.index() as usize)
+                    .and_then(|d| d.as_mut())
+                {
+                    device.groups.insert(g.id);
+                }
+            }
+        }
+
         Ok(Self {
             groups,
             devices,
@@ -121,8 +141,8 @@ impl DeviceTree {
 
             let devices_str = section_data.get("devices").unwrap_or("");
 
-            let devices: SmallVec<[DeviceID; 20]> = if devices_str.is_empty() {
-                SmallVec::new()
+            let devices: HashSet<DeviceID> = if devices_str.is_empty() {
+                HashSet::with_capacity(20)
             } else {
                 devices_str
                     .split(',')
@@ -233,7 +253,11 @@ impl DeviceTree {
                 name: device_name,
                 owner,
                 owner_ref: None,
-                ..Default::default()
+                groups: HashSet::with_capacity(10),
+                presense: Presense::default(),
+                entities: SmallVec::default(),
+                entity_index_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
+                last_updated: Instant::now(),
             });
         }
 
@@ -253,7 +277,7 @@ impl DeviceTree {
                     group
                         .devices
                         .iter()
-                        .map(|d| format!("{}:{}", d.idx(), d.generation()))
+                        .map(|d| format!("{}:{}", d.index(), d.generation()))
                         .collect::<Vec<_>>()
                         .join(","),
                 )

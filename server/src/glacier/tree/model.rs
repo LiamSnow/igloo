@@ -2,9 +2,11 @@ use igloo_interface::{
     Component, ComponentType, MAX_SUPPORTED_COMPONENT,
     floe::FloeWriterDefault,
     id::{DeviceID, FloeID, FloeRef, GroupID},
+    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
 };
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+use std::{collections::HashSet, time::Instant};
 
 /// Root
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
@@ -25,9 +27,11 @@ pub struct DeviceTree {
 #[derive(Debug)]
 pub struct Floe {
     pub(super) id: FloeID,
-    pub(super) writer: FloeWriterDefault,
+    pub(super) fref: FloeRef,
+    pub writer: FloeWriterDefault,
     #[allow(dead_code)]
     pub(super) max_supported_component: u16,
+    pub(super) devices: SmallVec<[DeviceID; 50]>,
 }
 
 /// Collection of devices (ex. "Living Room")
@@ -35,39 +39,43 @@ pub struct Floe {
 pub struct Group {
     pub(super) id: GroupID,
     pub(super) name: String,
-    pub(super) devices: SmallVec<[DeviceID; 20]>,
+    pub(super) devices: HashSet<DeviceID>,
 }
 
 /// Physical Device, owned (registered & attached) by Floe
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Device {
     pub(super) id: DeviceID,
     pub(super) name: String,
     pub(super) owner: FloeID,
     pub(super) owner_ref: Option<FloeRef>,
+    pub(super) groups: HashSet<GroupID>,
     /// Bitset of which component types exist on any of its entity
     pub(super) presense: Presense,
     /// Entity index -> Entity
     pub(super) entities: SmallVec<[Entity; 16]>,
     /// Entity name -> index
-    pub(super) entity_idx_lut: FxHashMap<String, usize>,
+    pub(super) entity_index_lut: FxHashMap<String, usize>,
+    pub(super) last_updated: Instant,
 }
 
-/// Bitset tracking component presence on a device
+/// Tracks presence of components on a device
+/// Union of all entity presenses
 /// Each bit corresponds to a `ComponentType` ID
-#[derive(Debug, Default, Clone)]
-pub(crate) struct Presense([u32; MAX_SUPPORTED_COMPONENT.div_ceil(32) as usize]);
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Presense(pub [u32; MAX_SUPPORTED_COMPONENT.div_ceil(32) as usize]);
 
 #[derive(Debug, Clone)]
 pub struct Entity {
     #[allow(dead_code)]
-    pub(crate) name: String,
+    pub(super) name: String,
     #[allow(dead_code)]
-    pub(crate) idx: usize,
-    pub(crate) components: SmallVec<[Component; 8]>,
+    pub(super) index: usize,
+    pub(super) components: SmallVec<[Component; 8]>,
     /// Maps `ComponentType` ID -> index in `components`
     /// `0xFF` = not present
-    pub(crate) indices: [u8; MAX_SUPPORTED_COMPONENT as usize],
+    pub(super) indices: [u8; MAX_SUPPORTED_COMPONENT as usize],
+    pub(super) last_updated: Instant,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -89,137 +97,24 @@ pub enum TreeIDError {
     FloeIDInvalid(FloeID),
 }
 
-impl Presense {
-    #[inline]
-    pub fn set(&mut self, typ: ComponentType) {
-        let type_id = typ as usize;
-        let index = type_id >> 5;
-        let bit = type_id & 31;
-        self.0[index] |= 1u32 << bit;
-    }
-
-    #[inline]
-    #[allow(dead_code)]
-    pub fn has(&self, typ: ComponentType) -> bool {
-        let type_id = typ as usize;
-        let index = type_id >> 5;
-        let bit = type_id & 31;
-        (self.0[index] & (1u32 << bit)) != 0
-    }
-}
-
-impl HasComponent for Presense {
-    #[inline]
-    fn has(&self, typ: ComponentType) -> bool {
-        self.has(typ)
-    }
-}
-
-impl Default for Entity {
-    fn default() -> Self {
-        Self {
-            components: SmallVec::new(),
-            indices: [0xFF; MAX_SUPPORTED_COMPONENT as usize],
-            name: String::with_capacity(20),
-            idx: usize::MAX,
-        }
-    }
-}
-
-impl Entity {
-    #[allow(dead_code)]
-    pub fn get_comps(&self) -> &SmallVec<[Component; 8]> {
-        &self.components
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub fn get(&self, typ: ComponentType) -> Option<&Component> {
-        let idx = self.indices[typ as usize];
-        if idx != 0xFF {
-            Some(&self.components[idx as usize])
-        } else {
-            None
-        }
-    }
-
-    /// Puts or sets (if already exists) a component onto this entity
-    /// Returns `Some(typ)` if it was put/new
-    #[inline]
-    pub fn put(&mut self, val: Component) -> Option<ComponentType> {
-        let typ = val.get_type();
-        let type_id = typ as usize;
-        let idx = self.indices[type_id];
-
-        if idx == 0xFF {
-            // put
-            let new_idx = self.components.len() as u8;
-            self.components.push(val);
-            self.indices[type_id] = new_idx;
-            Some(typ)
-        } else {
-            // set
-            self.components[idx as usize] = val;
-            None
-        }
-    }
-}
-
-impl HasComponent for Entity {
-    #[inline(always)]
-    fn has(&self, typ: ComponentType) -> bool {
-        self.indices[typ as usize] != 0xFF
-    }
-}
-
-#[allow(dead_code)]
-pub trait HasComponent {
-    fn has(&self, typ: ComponentType) -> bool;
-}
-
 impl DeviceTree {
-    #[allow(dead_code)]
-    pub fn iter_groups(&self) -> impl Iterator<Item = (GroupID, &Group)> {
-        self.groups.iter().enumerate().filter_map(|(idx, g)| {
-            g.as_ref().map(|group| {
-                (
-                    GroupID::from_parts(idx as u32, group.id.generation()),
-                    group,
-                )
-            })
-        })
+    pub fn iter_floes(&self) -> impl Iterator<Item = &Floe> {
+        self.floes.iter().filter_map(|f| f.as_ref())
     }
 
-    #[allow(dead_code)]
-    pub fn iter_devices(&self) -> impl Iterator<Item = (DeviceID, &Device)> {
-        self.devices.iter().enumerate().filter_map(|(idx, d)| {
-            d.as_ref().map(|device| {
-                (
-                    DeviceID::from_parts(idx as u32, device.id.generation()),
-                    device,
-                )
-            })
-        })
+    pub fn iter_groups(&self) -> impl Iterator<Item = &Group> {
+        self.groups.iter().filter_map(|g| g.as_ref())
     }
 
-    #[allow(dead_code)]
-    pub fn iter_devices_in_group(
-        &self,
-        gid: &GroupID,
-    ) -> Result<impl Iterator<Item = Result<(DeviceID, &Device), TreeIDError>> + '_, TreeIDError>
-    {
-        let group = self.group(gid)?;
-        Ok(group.devices.iter().map(move |did| {
-            let device = self.device(did)?;
-            Ok((*did, device))
-        }))
+    pub fn iter_devices(&self) -> impl Iterator<Item = &Device> {
+        self.devices.iter().filter_map(|d| d.as_ref())
     }
 
     /// Gets & Validates from DeviceID
     #[inline]
     pub fn device(&self, did: &DeviceID) -> Result<&Device, TreeIDError> {
-        let idx = did.idx() as usize;
-        match self.devices.get(idx).and_then(|o| o.as_ref()) {
+        let index = did.index() as usize;
+        match self.devices.get(index).and_then(|o| o.as_ref()) {
             Some(d) if d.id.generation() == did.generation() => Ok(d),
             Some(_) => Err(TreeIDError::DeviceStale(*did)),
             None => Err(TreeIDError::DeviceNotExistant(*did)),
@@ -229,8 +124,8 @@ impl DeviceTree {
     /// Gets & Validates from DeviceID
     #[inline]
     pub fn device_mut(&mut self, did: &DeviceID) -> Result<&mut Device, TreeIDError> {
-        let idx = did.idx() as usize;
-        match self.devices.get_mut(idx).and_then(|o| o.as_mut()) {
+        let index = did.index() as usize;
+        match self.devices.get_mut(index).and_then(|o| o.as_mut()) {
             Some(d) if d.id.generation() == did.generation() => Ok(d),
             Some(_) => Err(TreeIDError::DeviceStale(*did)),
             None => Err(TreeIDError::DeviceNotExistant(*did)),
@@ -240,7 +135,11 @@ impl DeviceTree {
     /// Gets & Validates from GroupID
     #[inline]
     pub fn group(&self, gid: &GroupID) -> Result<&Group, TreeIDError> {
-        match self.groups.get(gid.idx() as usize).and_then(|o| o.as_ref()) {
+        match self
+            .groups
+            .get(gid.index() as usize)
+            .and_then(|o| o.as_ref())
+        {
             Some(g) if g.id.generation() == gid.generation() => Ok(g),
             Some(_) => Err(TreeIDError::GroupStale(*gid)),
             None => Err(TreeIDError::GroupNotExistant(*gid)),
@@ -250,8 +149,8 @@ impl DeviceTree {
     /// Gets & Validates from GroupID
     #[inline]
     pub(super) fn group_mut(&mut self, gid: &GroupID) -> Result<&mut Group, TreeIDError> {
-        let idx = gid.idx() as usize;
-        match self.groups.get_mut(idx).and_then(|o| o.as_mut()) {
+        let index = gid.index() as usize;
+        match self.groups.get_mut(index).and_then(|o| o.as_mut()) {
             Some(g) if g.id.generation() == gid.generation() => Ok(g),
             Some(_) => Err(TreeIDError::GroupStale(*gid)),
             None => Err(TreeIDError::GroupNotExistant(*gid)),
@@ -271,7 +170,7 @@ impl DeviceTree {
 
     #[inline]
     #[allow(dead_code)]
-    pub(super) fn floe_mut(&mut self, fref: &FloeRef) -> Result<&mut Floe, TreeIDError> {
+    pub fn floe_mut(&mut self, fref: &FloeRef) -> Result<&mut Floe, TreeIDError> {
         match self.floes.get_mut(fref.0) {
             Some(o) => match o.as_mut() {
                 Some(f) => Ok(f),
@@ -287,16 +186,175 @@ impl DeviceTree {
             .get(fid)
             .ok_or(TreeIDError::FloeIDInvalid(fid.clone()))
     }
+}
+
+impl Presense {
+    #[inline]
+    pub fn set(&mut self, typ: ComponentType) {
+        let type_id = typ as usize;
+        let index = type_id >> 5;
+        let bit = type_id & 31;
+        self.0[index] |= 1u32 << bit;
+    }
 
     #[inline]
-    pub fn floe_writer_mut(&mut self, fref: FloeRef) -> &mut FloeWriterDefault {
-        &mut self.floes[fref.0].as_mut().unwrap().writer
+    pub fn has(&self, typ: ComponentType) -> bool {
+        let type_id = typ as usize;
+        let index = type_id >> 5;
+        let bit = type_id & 31;
+        (self.0[index] & (1u32 << bit)) != 0
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.iter().all(|&v| v == 0)
+    }
+
+    #[inline]
+    pub fn has_all(&self, types: &[ComponentType]) -> bool {
+        for r#type in types {
+            if !self.has(*r#type) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl HasComponent for Presense {
+    #[inline]
+    fn has(&self, r#type: ComponentType) -> bool {
+        self.has(r#type)
+    }
+}
+
+impl HasComponent for Device {
+    #[inline]
+    fn has(&self, r#type: ComponentType) -> bool {
+        self.presense.has(r#type)
+    }
+}
+
+impl Default for Entity {
+    fn default() -> Self {
+        Self {
+            components: SmallVec::new(),
+            indices: [0xFF; MAX_SUPPORTED_COMPONENT as usize],
+            name: String::with_capacity(20),
+            index: usize::MAX,
+            last_updated: Instant::now(),
+        }
+    }
+}
+
+impl Entity {
+    #[inline]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    pub fn index(&self) -> &usize {
+        &self.index
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn get_comps(&self) -> &SmallVec<[Component; 8]> {
+        &self.components
+    }
+
+    #[inline]
+    pub fn num_comps(&self) -> usize {
+        self.components.len()
+    }
+
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn get(&self, typ: ComponentType) -> Option<&Component> {
+        let index = self.indices[typ as usize];
+        if index != 0xFF {
+            Some(&self.components[index as usize])
+        } else {
+            None
+        }
+    }
+
+    /// Puts or sets (if already exists) a component onto this entity
+    /// Returns `Some(typ)` if it was put/new
+    #[inline]
+    pub fn put(&mut self, val: Component) -> Option<ComponentType> {
+        let typ = val.get_type();
+        let type_id = typ as usize;
+        let index = self.indices[type_id];
+
+        if index == 0xFF {
+            // put
+            let new_index = self.components.len() as u8;
+            self.components.push(val);
+            self.indices[type_id] = new_index;
+            Some(typ)
+        } else {
+            // set
+            self.components[index as usize] = val;
+            None
+        }
+    }
+
+    #[inline]
+    pub fn last_updated(&self) -> &Instant {
+        &self.last_updated
+    }
+
+    pub fn snapshot(&self, parent: DeviceID) -> EntitySnapshot {
+        EntitySnapshot {
+            name: self.name.clone(),
+            index: self.index,
+            components: self.components.to_vec(),
+            parent,
+        }
+    }
+
+    #[inline]
+    pub fn has_any(&self, types: &[ComponentType]) -> bool {
+        for &t in types {
+            if self.indices[t as usize] != 0xFF {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[inline]
+    pub fn has_all(&self, types: &[ComponentType]) -> bool {
+        for &t in types {
+            if self.indices[t as usize] == 0xFF {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl HasComponent for Entity {
+    #[inline(always)]
+    fn has(&self, r#type: ComponentType) -> bool {
+        self.indices[r#type as usize] != 0xFF
+    }
+}
+
+#[allow(dead_code)]
+pub trait HasComponent {
+    fn has(&self, r#type: ComponentType) -> bool;
 }
 
 impl Device {
     #[inline]
-    #[allow(dead_code)]
+    pub fn id(&self) -> &DeviceID {
+        &self.id
+    }
+
+    #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -315,18 +373,53 @@ impl Device {
 
     #[inline]
     #[allow(dead_code)]
-    pub fn entity_idx(&self, eid: &str) -> Option<&usize> {
-        self.entity_idx_lut.get(eid)
+    pub fn entity_index(&self, eid: &str) -> Option<&usize> {
+        self.entity_index_lut.get(eid)
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub fn num_entities(&self) -> usize {
         self.entities.len()
+    }
+
+    #[inline]
+    pub fn entities(&self) -> &SmallVec<[Entity; 16]> {
+        &self.entities
+    }
+
+    #[inline]
+    pub fn last_updated(&self) -> &Instant {
+        &self.last_updated
+    }
+
+    #[inline]
+    pub fn has_all(&self, types: &[ComponentType]) -> bool {
+        self.presense.has_all(types)
+    }
+
+    #[inline]
+    pub fn groups(&self) -> &HashSet<GroupID> {
+        &self.groups
+    }
+
+    pub fn snapshot(&self) -> DeviceSnapshot {
+        DeviceSnapshot {
+            id: self.id,
+            name: self.name.clone(),
+            entities: self.entities.iter().map(|e| e.snapshot(self.id)).collect(),
+            owner: self.owner.clone(),
+            owner_ref: self.owner_ref,
+            groups: self.groups.clone(),
+        }
     }
 }
 
 impl Group {
+    #[inline]
+    pub fn id(&self) -> &GroupID {
+        &self.id
+    }
+
     #[inline]
     #[allow(dead_code)]
     pub fn name(&self) -> &str {
@@ -335,7 +428,41 @@ impl Group {
 
     #[inline]
     #[allow(dead_code)]
-    pub fn devices(&self) -> &SmallVec<[DeviceID; 20]> {
+    pub fn devices(&self) -> &HashSet<DeviceID> {
         &self.devices
+    }
+
+    pub fn snapshot(&self) -> GroupSnapshot {
+        GroupSnapshot {
+            id: self.id,
+            name: self.name.clone(),
+            devices: self.devices.clone(),
+        }
+    }
+}
+
+impl Floe {
+    #[inline]
+    pub fn id(&self) -> &FloeID {
+        &self.id
+    }
+
+    #[inline]
+    pub fn num_device(&self) -> usize {
+        self.devices.len()
+    }
+
+    #[inline]
+    pub fn devices(&self) -> &SmallVec<[DeviceID; 50]> {
+        &self.devices
+    }
+
+    pub fn snapshot(&self) -> FloeSnapshot {
+        FloeSnapshot {
+            id: self.id.clone(),
+            fref: self.fref,
+            max_supported_component: self.max_supported_component,
+            devices: self.devices.to_vec(),
+        }
     }
 }

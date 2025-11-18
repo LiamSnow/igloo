@@ -7,17 +7,22 @@
 //!  3. Internal side-effects (ex. updating device presence)
 //!  4. External side-effects (persistence, query engine)
 
-use super::{Device, DeviceTree, Entity, Floe, Group, Presense};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
+
+use super::{Device, DeviceTree, Entity, Floe, Group};
 use crate::glacier::{
-    query::{QueryEngine, QueryError},
-    tree::{TreeIDError, persist::TreePersistError},
+    query::{EngineError, QueryEngine},
+    tree::{Presense, TreeIDError, persist::TreePersistError},
 };
 use igloo_interface::{
     Component,
     floe::FloeWriterDefault,
     id::{DeviceID, FloeID, FloeRef, GroupID},
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 
 #[derive(thiserror::Error, Debug)]
@@ -26,8 +31,8 @@ pub enum TreeMutationError {
     Persist(#[from] TreePersistError),
     #[error("Tree ID error: {0}")]
     ID(#[from] TreeIDError),
-    #[error("Query error: {0}")]
-    Query(#[from] QueryError),
+    #[error("Query engine error: {0}")]
+    QueryEngine(#[from] EngineError),
     #[error("Floe {0} already attached. Cannot attach again.")]
     FloeAlreadyAttached(FloeID),
     #[error(
@@ -67,11 +72,11 @@ pub enum TreeMutation {
     EntityRegistered {
         did: DeviceID,
         name: String,
-        eidx: usize,
+        index: usize,
     },
     ComponentWritten {
         did: DeviceID,
-        eidx: usize,
+        eindex: usize,
         comp: Component,
         was_new: bool,
     },
@@ -111,19 +116,35 @@ impl DeviceTree {
             return Err(TreeMutationError::FloeAlreadyAttached(fid));
         }
 
-        let floe = Floe {
-            id: fid.clone(),
-            writer,
-            max_supported_component,
-        };
+        let devices = self
+            .devices
+            .iter()
+            .filter_map(|d| d.as_ref())
+            .filter(|d| d.owner == fid)
+            .map(|d| d.id)
+            .collect();
 
         let fref = if let Some(slot) = self.floes.iter().position(|f| f.is_none()) {
-            self.floes[slot] = Some(floe);
-            FloeRef(slot)
+            let fref = FloeRef(slot);
+            self.floes[slot] = Some(Floe {
+                id: fid.clone(),
+                fref,
+                writer,
+                max_supported_component,
+                devices,
+            });
+            fref
         } else {
-            let idx = self.floes.len();
-            self.floes.push(Some(floe));
-            FloeRef(idx)
+            let index = self.floes.len();
+            let fref = FloeRef(index);
+            self.floes.push(Some(Floe {
+                id: fid.clone(),
+                fref,
+                writer,
+                max_supported_component,
+                devices,
+            }));
+            fref
         };
 
         // link devices owned by this Floe
@@ -193,9 +214,11 @@ impl DeviceTree {
             name: name.clone(),
             owner: owner_id.clone(),
             owner_ref: Some(owner),
+            groups: HashSet::with_capacity(10),
             presense: Presense::default(),
             entities: SmallVec::default(),
-            entity_idx_lut: FxHashMap::default(),
+            entity_index_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
+            last_updated: Instant::now(),
         };
 
         let did = match self.devices.iter().position(|o| o.is_none()) {
@@ -213,6 +236,10 @@ impl DeviceTree {
                 did
             }
         };
+
+        if let Some(floe) = self.floes[owner.0].as_mut() {
+            floe.devices.push(did);
+        }
 
         let mutation = TreeMutation::DeviceCreated {
             did,
@@ -234,7 +261,23 @@ impl DeviceTree {
         // make sure its valid first
         self.device(&did)?;
 
-        self.devices[did.idx() as usize] = None;
+        let device = self.devices[did.index() as usize].take().unwrap();
+
+        // remove from Floe
+        if let Some(owner_ref) = device.owner_ref
+            && let Some(floe) = self.floes[owner_ref.0].as_mut()
+            && let Some(pos) = floe.devices.iter().position(|d| d == &did)
+        {
+            floe.devices.remove(pos);
+        }
+
+        // remove from Groups
+        let group_ids: Vec<GroupID> = device.groups.iter().copied().collect();
+        for gid in group_ids {
+            if let Ok(group) = self.group_mut(&gid) {
+                group.devices.remove(&did);
+            }
+        }
 
         let mutation = TreeMutation::DeviceDeleted { did };
         self.save_devices().await?;
@@ -253,6 +296,7 @@ impl DeviceTree {
         let device = self.device_mut(&did)?;
         let old_name = device.name.clone();
         device.name = new_name.clone();
+        device.last_updated = Instant::now();
 
         let mutation = TreeMutation::DeviceRenamed {
             did,
@@ -273,23 +317,28 @@ impl DeviceTree {
         device: &mut Device,
         did: DeviceID,
         name: String,
-        expected_idx: usize,
+        expected_index: usize,
     ) -> Result<(), TreeMutationError> {
-        let eidx = device.entities.len();
+        let index = device.entities.len();
 
-        if eidx != expected_idx {
+        if index != expected_index {
             return Err(TreeMutationError::BadEntityRegistration(
                 did,
                 name,
-                expected_idx,
-                eidx,
+                expected_index,
+                index,
             ));
         }
 
-        device.entities.push(Entity::default());
-        device.entity_idx_lut.insert(name.clone(), eidx);
+        device.entities.push(Entity {
+            name: name.clone(),
+            index,
+            ..Default::default()
+        });
+        device.entity_index_lut.insert(name.clone(), index);
+        device.last_updated = Instant::now();
 
-        let mutation = TreeMutation::EntityRegistered { did, name, eidx };
+        let mutation = TreeMutation::EntityRegistered { did, name, index };
         engine.on_tree_mutation(mutation).await?;
 
         Ok(())
@@ -299,10 +348,10 @@ impl DeviceTree {
         engine: &mut QueryEngine,
         device: &mut Device,
         did: DeviceID,
-        eidx: usize,
+        eindex: usize,
         comp: Component,
     ) -> Result<(), TreeMutationError> {
-        let was_new = match device.entities[eidx].put(comp.clone()) {
+        let was_new = match device.entities[eindex].put(comp.clone()) {
             Some(comp_type) => {
                 device.presense.set(comp_type);
                 true
@@ -310,9 +359,12 @@ impl DeviceTree {
             None => false,
         };
 
+        device.entities[eindex].last_updated = Instant::now();
+        device.last_updated = Instant::now();
+
         let mutation = TreeMutation::ComponentWritten {
             did,
-            eidx,
+            eindex,
             comp,
             was_new,
         };
@@ -333,7 +385,7 @@ impl DeviceTree {
         let mut group = Group {
             id: GroupID::default(),
             name: name.clone(),
-            devices: SmallVec::default(),
+            devices: HashSet::with_capacity(10),
         };
 
         let gid = match self.groups.iter().position(|g| g.is_none()) {
@@ -368,7 +420,15 @@ impl DeviceTree {
         // make sure its valid first
         self.group(&gid)?;
 
-        self.groups[gid.idx() as usize] = None;
+        let group = self.groups[gid.index() as usize].take().unwrap();
+
+        // remove from all devices
+        let device_ids: Vec<DeviceID> = group.devices.iter().copied().collect();
+        for did in device_ids {
+            if let Ok(device) = self.device_mut(&did) {
+                device.groups.remove(&gid);
+            }
+        }
 
         let mutation = TreeMutation::GroupDeleted { gid };
         self.save_groups().await?;
@@ -406,13 +466,14 @@ impl DeviceTree {
         gid: GroupID,
         did: DeviceID,
     ) -> Result<(), TreeMutationError> {
-        // make sure device is valid first
-        self.device(&did)?;
-        let group = self.group_mut(&gid)?;
+        let device = self.device_mut(&did)?;
 
-        if !group.devices.contains(&did) {
-            group.devices.push(did);
-        }
+        // add group to device
+        device.groups.insert(gid);
+
+        // add device to group
+        let group = self.group_mut(&gid)?;
+        group.devices.remove(&did);
 
         let mutation = TreeMutation::DeviceAddedToGroup { gid, did };
         self.save_groups().await?;
@@ -428,11 +489,13 @@ impl DeviceTree {
         gid: GroupID,
         did: DeviceID,
     ) -> Result<(), TreeMutationError> {
-        let group = self.group_mut(&gid)?;
+        // remove group from device
+        let device = self.device_mut(&did)?;
+        device.groups.remove(&gid);
 
-        if let Some(pos) = group.devices.iter().position(|d| d == &did) {
-            group.devices.remove(pos);
-        }
+        // remove device from group
+        let group = self.group_mut(&gid)?;
+        group.devices.remove(&did);
 
         let mutation = TreeMutation::DeviceRemovedFromGroup { gid, did };
         self.save_groups().await?;
