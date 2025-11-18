@@ -4,39 +4,64 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 
 /// persistent
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, BorshSerialize, BorshDeserialize,
+)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(\"{_0}\")")]
 pub struct FloeID(pub String);
 
 /// ephemeral
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(#{_0})")]
 pub struct FloeRef(pub usize);
 
 /// persistent
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Display,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("Device({}:{})", self.idx(), self.generation())]
+#[display("Device({}:{})", self.index(), self.generation())]
 pub struct DeviceID(u64);
 
 /// persistent
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Display,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("Group({}:{})", self.idx(), self.generation())]
+#[display("Group({}:{})", self.index(), self.generation())]
 pub struct GroupID(u64);
 
 impl GroupID {
     #[inline]
-    pub fn from_parts(idx: u32, generation: u32) -> Self {
-        let packed = (idx as u64) | ((generation as u64) << 32);
+    pub fn from_parts(index: u32, generation: u32) -> Self {
+        let packed = (index as u64) | ((generation as u64) << 32);
         GroupID(packed)
     }
 
-    // TODO rename to index
     #[inline]
-    pub fn idx(&self) -> u32 {
+    pub fn index(&self) -> u32 {
         self.0 as u32
     }
 
@@ -48,8 +73,8 @@ impl GroupID {
 
 impl DeviceID {
     #[inline]
-    pub fn from_parts(idx: u32, generation: u32) -> Self {
-        let packed = (idx as u64) | ((generation as u64) << 32);
+    pub fn from_parts(index: u32, generation: u32) -> Self {
+        let packed = (index as u64) | ((generation as u64) << 32);
         DeviceID(packed)
     }
 
@@ -58,9 +83,8 @@ impl DeviceID {
         DeviceID(c)
     }
 
-    // TODO rename to index
     #[inline]
-    pub fn idx(&self) -> u32 {
+    pub fn index(&self) -> u32 {
         self.0 as u32
     }
 
@@ -105,19 +129,19 @@ impl FromStr for DeviceID {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 2 {
             return Err(format!(
-                "Expected DeviceID format 'idx:generation', got '{}'",
+                "Expected DeviceID format 'index:generation', got '{}'",
                 s
             ));
         }
 
-        let idx = parts[0]
+        let index = parts[0]
             .parse::<u32>()
-            .map_err(|e| format!("Invalid DeviceID idx: {}", e))?;
+            .map_err(|e| format!("Invalid DeviceID index: {}", e))?;
         let generation = parts[1]
             .parse::<u32>()
             .map_err(|e| format!("Invalid DeviceID generation: {}", e))?;
 
-        Ok(DeviceID::from_parts(idx, generation))
+        Ok(DeviceID::from_parts(index, generation))
     }
 }
 
@@ -128,18 +152,18 @@ impl FromStr for GroupID {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 2 {
             return Err(format!(
-                "Expected GroupID format 'idx:generation', got '{}'",
+                "Expected GroupID format 'index:generation', got '{}'",
                 s
             ));
         }
 
-        let idx = parts[0]
+        let index = parts[0]
             .parse::<u32>()
-            .map_err(|e| format!("Invalid GroupID idx: {}", e))?;
+            .map_err(|e| format!("Invalid GroupID index: {}", e))?;
         let generation = parts[1]
             .parse::<u32>()
             .map_err(|e| format!("Invalid GroupID generation: {}", e))?;
 
-        Ok(GroupID::from_parts(idx, generation))
+        Ok(GroupID::from_parts(index, generation))
     }
 }
