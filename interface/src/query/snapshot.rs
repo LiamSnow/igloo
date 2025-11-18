@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 
@@ -12,7 +14,7 @@ use crate::{
 pub struct GroupSnapshot {
     pub id: GroupID,
     pub name: String,
-    pub devices: Vec<DeviceID>,
+    pub devices: HashSet<DeviceID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
@@ -22,24 +24,27 @@ pub struct FloeSnapshot {
     pub id: FloeID,
     pub fref: FloeRef,
     pub max_supported_component: u16,
+    pub devices: Vec<DeviceID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("{id}{{name={name},owner={owner},entities=[..],groups=[..]}}")]
+#[display("{id}{{name={name},owner={owner},owner_ref={owner_ref:?},entities=[..],groups=[..]}}")]
 pub struct DeviceSnapshot {
     pub id: DeviceID,
     pub name: String,
     pub entities: Vec<EntitySnapshot>,
     pub owner: FloeID,
-    pub groups: Vec<GroupID>,
+    pub owner_ref: Option<FloeRef>,
+    pub groups: HashSet<GroupID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("Entity{{name={name},parent={parent},components=[..]}}")]
+#[display("Entity{{name={name},index={index},components=[..]}}")]
 pub struct EntitySnapshot {
     pub name: String,
+    pub index: usize,
     pub components: Vec<Component>,
     pub parent: DeviceID,
 }
