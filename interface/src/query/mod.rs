@@ -4,6 +4,6 @@ pub use model::*;
 pub mod snapshot;
 pub use snapshot::*;
 
-pub mod display;
+pub mod check;
 
-pub mod validator;
+pub mod optimize;

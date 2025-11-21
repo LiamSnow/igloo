@@ -1,7 +1,6 @@
-use std::collections::HashSet;
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
+use rustc_hash::FxHashSet;
 
 use crate::{
     Component,
@@ -14,7 +13,7 @@ use crate::{
 pub struct GroupSnapshot {
     pub id: GroupID,
     pub name: String,
-    pub devices: HashSet<DeviceID>,
+    pub devices: FxHashSet<DeviceID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
@@ -36,7 +35,7 @@ pub struct DeviceSnapshot {
     pub entities: Vec<EntitySnapshot>,
     pub owner: FloeID,
     pub owner_ref: Option<FloeRef>,
-    pub groups: HashSet<GroupID>,
+    pub groups: FxHashSet<GroupID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]

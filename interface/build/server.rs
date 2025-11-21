@@ -1,5 +1,5 @@
 use super::model::*;
-use crate::rust::{comp_name_to_cmd_name, ident, upper_camel_to_snake};
+use crate::{agg::gen_aggregator, rust::{comp_name_to_cmd_name, ident, upper_camel_to_snake}};
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::{env, fs, path::PathBuf};
@@ -10,15 +10,15 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
     let write_comp = gen_write_comp(comps);
     let comp_inner = gen_comp_inner(comps);
     let comp_from_string = gen_comp_from_string(comps);
-    let enum_aggregatable = gen_enum_aggregatable(comps);
-    // let component_aggregate = gen_component_aggregate();
     let to_igloo_value = gen_to_igloo_value(comps);
+    let aggregator = gen_aggregator(comps);
     let from_igloo_value = gen_from_igloo_value(comps);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
-
-        use crate::types::agg::{Aggregatable, AggregationOp};
+         
+        use crate::types::agg::AggregationOp;
+        use std::cmp::Ordering;
 
         #comp_enum
 
@@ -30,13 +30,11 @@ pub fn generate(_cmds: &[Command], comps: &[Component]) {
 
         #comp_from_string
 
-        #enum_aggregatable
-
-        // #component_aggregate
-
         #to_igloo_value
 
         #from_igloo_value
+
+        #aggregator
     };
 
     // reconstruct, format, and save
@@ -344,136 +342,4 @@ fn gen_comp_enum(comps: &[Component]) -> TokenStream {
     }
 }
 
-
-fn gen_enum_aggregatable(comps: &[Component]) -> TokenStream {
-    let enum_comps: Vec<_> = comps
-        .iter()
-        .filter(|comp| matches!(comp.kind, ComponentKind::Enum { .. }))
-        .collect();
-
-    let enum_dispatch_arms: Vec<_> = enum_comps
-        .iter()
-        .map(|comp| {
-            let name = ident(&comp.name);
-            quote! {
-                IglooValue::Enum(IglooEnumValue::#name(_)) => #name::aggregate(iter, op)
-            }
-        })
-        .collect();
-
-    let enum_impls: Vec<_> = enum_comps
-        .iter()
-        .map(|comp| {
-            let name = ident(&comp.name);
-            
-            if let ComponentKind::Enum { variants, .. } = &comp.kind {
-                let variant_count = variants.len();
-                let variant_arms: Vec<_> = variants
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, v)| {
-                        let variant_name = ident(&v.name);
-                        quote! {
-                            #name::#variant_name => #idx
-                        }
-                    })
-                    .collect();
-
-                let from_idx_arms: Vec<_> = variants
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, v)| {
-                        let variant_name = ident(&v.name);
-                        quote! {
-                            #idx => #name::#variant_name
-                        }
-                    })
-                    .collect();
-
-                quote! {
-                    impl Aggregatable for #name {
-                        fn aggregate(
-                            iter: Vec<IglooValue>,
-                            op: AggregationOp
-                        ) -> Option<IglooValue> {
-                            match op {
-                                AggregationOp::Mean => {
-                                    let mut counts = [0usize; #variant_count];
-                                    let mut total = 0;
-                                    
-                                    for igloo_val in iter {
-                                        let item = match igloo_val {
-                                            IglooValue::Enum(IglooEnumValue::#name(v)) => v,
-                                            _ => return None,
-                                        };
-                                        
-                                        let idx = match item {
-                                            #(#variant_arms,)*
-                                        };
-                                        counts[idx] += 1;
-                                        total += 1;
-                                    }
-                                    
-                                    if total == 0 {
-                                        return None;
-                                    }
-                                    
-                                    let mut max_idx = 0;
-                                    for idx in 1..#variant_count {
-                                        if counts[idx] > counts[max_idx] {
-                                            max_idx = idx;
-                                        }
-                                    }                                    
-
-                                    let result = match max_idx {
-                                        #(#from_idx_arms,)*
-                                        _ => unreachable!(),
-                                    };
-                                    
-                                    Some(IglooValue::Enum(IglooEnumValue::#name(result)))
-                                }
-                                _ => None,
-                            }
-                        }
-                    }
-                }
-            } else {
-                unreachable!()
-            }
-        })
-        .collect();
-
-    quote! {
-        impl Aggregatable for IglooEnumValue {
-            fn aggregate(
-                iter: Vec<IglooValue>,
-                op: AggregationOp
-            ) -> Option<IglooValue> {
-                match iter.first()? {
-                    #(#enum_dispatch_arms,)*
-                    _ => None,
-                }
-            }
-        }
-
-        #(#enum_impls)*
-    }
-}
-
-// fn gen_component_aggregate() -> TokenStream {
-//     quote! {
-//         impl Component {
-//             pub fn aggregate(
-//                 iter: impl Iterator<Item = Component>,
-//                 op: AggregationOp
-//             ) -> Option<IglooValue> {
-//                 let iter = iter
-//                     .filter_map(|c| c.to_igloo_value())
-//                     .peekable();
-                
-//                 IglooValue::aggregate(iter, op)
-//             }
-//         }
-//     }
-// }
 

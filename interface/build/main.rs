@@ -1,5 +1,6 @@
 use std::{collections::HashSet, env, path::Path};
 
+mod agg;
 mod model;
 mod rust;
 mod server;

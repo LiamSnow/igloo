@@ -1,252 +1,276 @@
 use crate::{
     Component, ComponentType, IglooType, IglooValue,
     id::{DeviceID, FloeID, GroupID},
-    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot, display::pluralize},
+    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
     types::{agg::AggregationOp, compare::ComparisonOp, math::MathOp},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::Display;
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
-#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
-pub struct Query {
-    pub action: QueryAction,
-    pub target: QueryTarget,
-    pub floe_filter: Option<FloeFilter>,
-    pub group_filter: Option<GroupFilter>,
-    pub device_filter: Option<DeviceFilter>,
-    pub entity_filter: Option<EntityFilter>,
+// TODO if we make a Pyo3 rust python library for Floes, we should
+// be able to drop Borsh and just use Bincode. This way we can easily
+// add more optimizations like SmallVecs
+//
+// By doing this we can potentially add huge optimizations. A complete
+// Floe Rust library allows us to do really cool things like a A::SetFunction
+// This would ship over the function to the Floe itself which spawns fake
+// messages.
+// For things like an RGB effect we can get serious performance benefits
+// Alternatively, we can implement SetFunctions into the query engine.
+// Regardless set functions have a huge benefit of:
+//  1. Have penguin nodes for effects
+//  2. Easily override/cancel effects - future Sets will stop the SetFunction
+
+// FUTURE IDEAS:
+//  4. temporal queries: values & agg (ex. mean of last month)
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum Query {
+    Floe(FloeQuery),
+    Group(GroupQuery),
+    Device(DeviceQuery),
+    Entity(EntityQuery),
+    Component(ComponentQuery),
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub struct FloeQuery {
+    pub id: IDFilter<FloeID>,
+    pub action: FloeAction,
     pub limit: Option<usize>,
-    pub tag: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default, Display, BorshSerialize, BorshDeserialize)]
-pub enum QueryTarget {
-    #[display("Floes")]
-    Floes,
-    #[display("Groups")]
-    Groups,
-    #[default]
-    #[display("Devices")]
-    Devices,
-    #[display("Entities")]
-    Entities,
-    #[display("{}", pluralize(format!("{_0:?}")))]
-    Components(ComponentType),
-}
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum FloeAction {
+    GetId,
+    Snapshot,
 
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
-pub enum FloeFilter {
-    #[display("id {_0}")]
-    Id(FloeID),
-    #[display("id in [{_0:?}]")]
-    Ids(HashSet<FloeID>),
-    /// glob
-    #[display("where id matches \"{_0}\"")]
-    IdMatches(String),
+    IsAttached,
+    ObserveAttached,
 
-    #[display("where device count {_0} {_1}")]
-    DeviceCount(ComparisonOp, usize),
-    #[display("with device ({_0})")]
-    HasDevice(DeviceFilter),
-    #[display("where all devices ({_0})")]
-    AllDevices(DeviceFilter),
-
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" and "))]
-    All(Vec<FloeFilter>),
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" or "))]
-    Any(Vec<FloeFilter>),
-    #[display("not ({_0})")]
-    Not(Box<FloeFilter>),
-}
-
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
-pub enum GroupFilter {
-    #[display("with id {_0}")]
-    Id(GroupID),
-    #[display("with id in [{_0:?}]")]
-    Ids(HashSet<GroupID>),
-    #[display("named {_0}")]
-    NameEquals(String),
-    /// glob
-    #[display("where name matches \"{_0}\"")]
-    NameMatches(String),
-
-    #[display("where device count {_0} {_1}")]
-    DeviceCount(ComparisonOp, usize),
-    #[display("with device ({_0})")]
-    HasDevice(DeviceFilter),
-    #[display("where all devices ({_0})")]
-    AllDevices(DeviceFilter),
-
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" and "))]
-    All(Vec<GroupFilter>),
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" or "))]
-    Any(Vec<GroupFilter>),
-    #[display("not ({_0})")]
-    Not(Box<GroupFilter>),
-}
-
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
-pub enum DeviceFilter {
-    #[display("with id {_0}")]
-    Id(DeviceID),
-    #[display("with id in [{_0:?}]")]
-    Ids(HashSet<DeviceID>),
-    #[display("named {_0}")]
-    NameEquals(String),
-    /// glob
-    #[display("where name matches \"{_0}\"")]
-    NameMatches(String),
-    #[display("updated within {_0}s")]
-    UpdatedWithinSeconds(u64),
-
-    #[display("where entity count {_0} {_1}")]
-    EntityCount(ComparisonOp, usize),
-    #[display("with entity ({_0})")]
-    HasEntity(EntityFilter),
-    #[display("where all entities ({_0})")]
-    AllEntities(EntityFilter),
-
-    #[display("with components in {_0:?}")]
-    HasAll(Vec<ComponentType>),
-
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" and "))]
-    All(Vec<DeviceFilter>),
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" or "))]
-    Any(Vec<DeviceFilter>),
-    #[display("not ({_0})")]
-    Not(Box<DeviceFilter>),
-}
-
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
-pub enum EntityFilter {
-    #[display("named {_0}")]
-    NameEquals(String),
-    /// glob
-    #[display("where name matches \"{_0}\"")]
-    NameMatches(String),
-    #[display("updated within {_0}s")]
-    UpdatedWithinSeconds(u64),
-
-    #[display("where component count {_0} {_1}")]
-    ComponentCount(ComparisonOp, usize),
-    #[display("{:?} {_0} {}", _1.get_type(), _1.inner_string().unwrap_or(format!("{_1:?}")))]
-    Condition(ComparisonOp, Component),
-    #[display("with {_0:?}")]
-    Has(ComponentType),
-    #[display("with all in {_0:?}")]
-    HasAll(Vec<ComponentType>),
-    #[display("with any in {_0:?}")]
-    HasAny(Vec<ComponentType>),
-
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" and "))]
-    All(Vec<EntityFilter>),
-    #[display("{}", _0.iter().map(|f| format!("({f})")).collect::<Vec<_>>().join(" or "))]
-    Any(Vec<EntityFilter>),
-    #[display("not ({_0})")]
-    Not(Box<EntityFilter>),
-}
-
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
-pub enum QueryAction {
-    /// Read the value of all matching QueryTargets
-    #[display("get")]
-    Get,
-    /// Compute the aggregate (ex. mean) value of all matching components
-    /// Must be QueryTarget::Components, Componenent must be aggregatable
-    #[display("get {_0} of")]
-    GetAggregate(AggregationOp),
-    /// Get the IDs of all matching targets
-    #[display("get ids of")]
-    #[default]
-    GetIds,
-
-    /// Receive update on every change of QueryTarget
-    #[display("watch")]
-    Watch,
-    /// Continously compute the aggregate (ex. mean) value of all matching components
-    /// On every change to those components
-    /// Must be QueryTarget::Components, Componenent must be aggregatable
-    #[display("watch {_0}")]
-    WatchAggregate(AggregationOp),
-
-    /// Set the value of a component
-    /// Must be QueryTarget::Components
-    #[display("set {_0}")]
-    Set(IglooValue),
-    /// Put a component on an Entity or set its value
-    /// Must be QueryTarget::Components
-    #[display("put {_0}")]
-    Put(IglooValue),
-    /// Apply operation on all components
-    /// Must be QueryTarget::Components
-    #[display("{_0}")]
-    Apply(MathOp),
-
-    /// Count the number of results
-    #[display("count")]
     Count,
-
-    /// Used in dashboard bindings inherits action from custom element definition
-    /// WARN: Cannot evaluate. Must merge first.
-    #[display("inherit")]
     Inherit,
 }
 
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
-pub struct QueryResult {
-    pub value: QueryResultValue,
-    pub tag: u32,
+pub struct GroupQuery {
+    pub id: IDFilter<GroupID>,
+    pub action: GroupAction,
+    pub limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
-pub enum QueryResultValue {
-    /// for queries (put, set, increment, watch entity/device)
-    /// that don't return anything
+pub enum GroupAction {
+    GetId,
+    Snapshot,
+
+    ObserveRename,
+    ObserveMembershipChanged,
+
+    Count,
+    Inherit,
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub struct DeviceQuery {
+    pub filter: DeviceFilter,
+    pub action: DeviceAction,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum DeviceAction {
+    GetId,
+    /// true=include entity snapshots
+    Snapshot(bool),
+
+    IsAttached,
+    ObserveAttached,
+    ObserveName,
+    ObserveEntityAdded,
+    /// component put on any of its children (entities)
+    ObserveComponentPut,
+
+    Count,
+    Inherit,
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub struct EntityQuery {
+    pub device_filter: DeviceFilter,
+    pub entity_filter: EntityFilter,
+    pub action: EntityAction,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum EntityAction {
+    Snapshot,
+    ObserveComponentPut,
+    Count,
+    Inherit,
+    // entities dont attach
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub struct ComponentQuery {
+    pub device_filter: DeviceFilter,
+    pub entity_filter: EntityFilter,
+    pub action: ComponentAction,
+    pub component: ComponentType,
+    pub post_op: Option<AggregationOp>,
+    /// includes (DeviceID, EntityName) for each response
+    /// R::ComponentValueWithParents instead of R::ComponentValue
+    pub include_parents: bool,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum ComponentAction {
+    GetValue,
+    ObserveValue,
+
+    Set(IglooValue),
+    Put(IglooValue),
+    Apply(MathOp),
+
+    Count,
+    Inherit,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+pub enum IDFilter<T: PartialEq + BorshSerialize + BorshDeserialize> {
+    #[default]
+    Any,
+    Id(T),
+    IdIn(Vec<T>),
+}
+
+#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+pub struct DeviceFilter {
+    pub id: IDFilter<DeviceID>,
+    pub owner: IDFilter<FloeID>,
+    pub group: DeviceGroupFilter,
+
+    pub entity_count: Option<(ComparisonOp, usize)>,
+
+    /// seconds
+    pub last_update: Option<(ComparisonOp, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+pub enum DeviceGroupFilter {
+    #[default]
+    Any,
+    InGroup(GroupID),
+    InAnyGroup(Vec<GroupID>),
+    InAllGroups(Vec<GroupID>),
+}
+
+#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+pub struct EntityFilter {
+    pub name: NameFilter,
+
+    /// Optimized by using device presense
+    /// to reduce scanning a device's entities
+    /// that dont have any of this component
+    pub type_filter: Option<TypeFilter>,
+    pub value_filter: Option<ValueFilter>,
+
+    /// seconds
+    pub last_update: Option<(ComparisonOp, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum TypeFilter {
+    With(ComponentType),
+    Without(ComponentType),
+    And(Vec<TypeFilter>),
+    Or(Vec<TypeFilter>),
+    Not(Box<TypeFilter>),
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum ValueFilter {
+    If(ComparisonOp, Component),
+    And(Vec<ValueFilter>),
+    Or(Vec<ValueFilter>),
+    Not(Box<ValueFilter>),
+}
+
+#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+pub enum NameFilter {
+    #[default]
+    Any,
+    Name(String),
+    NameIn(FxHashSet<String>),
+    NameMatches(String),
+}
+
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+pub enum QueryResult {
+    /// For Put, Set, Apply
     Ok,
 
-    Devices(Vec<DeviceSnapshot>),
-    Entities(Vec<EntitySnapshot>),
-    Groups(Vec<GroupSnapshot>),
-    Floes(Vec<FloeSnapshot>),
-    Components(Vec<ComponentResult>),
+    FloeId(Vec<FloeID>),
+    FloeSnapshot(Vec<FloeSnapshot>),
+    FloeAttached(Vec<(FloeID, bool)>),
 
-    Aggregate(Option<IglooValue>),
+    GroupId(Vec<GroupID>),
+    GroupSnapshot(Vec<GroupSnapshot>),
+
+    DeviceId(Vec<DeviceID>),
+    DeviceSnapshot(Vec<DeviceSnapshot>),
+    DeviceAttached(Vec<(DeviceID, bool)>),
+
+    EntitySnapshot(Vec<EntitySnapshot>),
+
+    ComponentValue(Vec<IglooValue>),
+    ComponentValueWithParents(Vec<(DeviceID, String, IglooValue)>),
 
     Count(usize),
-
-    FloeIds(Vec<FloeID>),
-    GroupIds(Vec<GroupID>),
-    DeviceIds(Vec<DeviceID>),
-    EntityIds(Vec<(String, usize)>),
 }
 
 #[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum QueryResultType {
-    /// for queries (put, set, increment, watch entity/device)
-    /// that don't return anything
     Ok,
 
-    Devices,
-    Entities,
-    Groups,
-    Floes,
-    Components(IglooType),
+    FloeId,
+    FloeSnapshot,
+    FloeAttached,
 
-    Aggregate(IglooType),
+    GroupId,
+    GroupSnapshot,
+
+    DeviceId,
+    DeviceSnapshot,
+    DeviceAttached,
+
+    EntitySnapshot,
+
+    ComponentValue(IglooType),
+    ComponentValueWithParents(IglooType),
 
     Count,
-
-    FloeIds,
-    GroupIds,
-    DeviceIds,
-    EntityIds,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
-pub struct ComponentResult {
-    pub device: DeviceID,
-    pub entity: usize,
-    pub value: IglooValue,
+impl Query {
+    pub fn is_observer(&self) -> bool {
+        match self {
+            Query::Floe(q) => matches!(q.action, FloeAction::ObserveAttached),
+            Query::Group(q) => matches!(
+                q.action,
+                GroupAction::ObserveRename | GroupAction::ObserveMembershipChanged
+            ),
+            Query::Device(q) => matches!(
+                q.action,
+                DeviceAction::ObserveAttached
+                    | DeviceAction::ObserveName
+                    | DeviceAction::ObserveEntityAdded
+                    | DeviceAction::ObserveComponentPut
+            ),
+            Query::Entity(q) => matches!(q.action, EntityAction::ObserveComponentPut),
+            Query::Component(q) => matches!(q.action, ComponentAction::ObserveValue),
+        }
+    }
 }

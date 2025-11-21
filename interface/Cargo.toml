@@ -13,9 +13,10 @@ floe = ["bytes", "tokio", "tokio-util"]
 [dependencies]
 borsh = { version = "1.5.7", features = ["derive"] }
 bytes = { version = "1.10.1", optional = true }
-derive_more = { version = "2.0.1", features = ["add", "display", "from", "mul"] }
+derive_more = { version = "2.0.1", features = ["display", "from"] }
 display-more = "0.2.1"
 indexmap = "2.12.0"
+rustc-hash = "2.1.1"
 serde = { version = "1.0.224", features = ["derive"], optional = true }
 thiserror = "2.0.17"
 tokio = { version = "1.47.1", features = ["io-util", "net"], optional = true }

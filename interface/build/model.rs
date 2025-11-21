@@ -2,6 +2,9 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
+use syn::Ident;
+
+use crate::rust::ident;
 
 #[derive(Debug, Deserialize)]
 pub struct ComponentsConfig {
@@ -144,5 +147,28 @@ impl IglooType {
             Self::DateList => quote! { DateList },
             Self::TimeList => quote! { TimeList },
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AggOp {
+    Sum,
+    Mean,
+    Max,
+    Min,
+    Any,
+    All,
+}
+
+impl AggOp {
+    pub fn ident(&self) -> Ident {
+        ident(match self {
+            AggOp::Sum => "Sum",
+            AggOp::Mean => "Mean",
+            AggOp::Max => "Max",
+            AggOp::Min => "Min",
+            AggOp::Any => "Any",
+            AggOp::All => "All",
+        })
     }
 }
