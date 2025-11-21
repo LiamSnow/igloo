@@ -194,6 +194,8 @@ impl Device {
             unreachable!();
         }
 
+        // TODO fixme drop unexpected messages instead of failing
+
         self.connection.connect().await?;
 
         let _: api::HelloResponse = self

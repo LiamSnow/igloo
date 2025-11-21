@@ -1,6 +1,6 @@
 use crate::glacier::{
     floe::FloeManager,
-    query::{QueryEngine, QueryEngineRx, QueryEngineTx},
+    query::{QueryEngine, QueryEngineRequest},
     tree::DeviceTree,
 };
 use igloo_interface::{
@@ -27,9 +27,9 @@ pub struct Command {
     pub payload: Vec<u8>,
 }
 
-pub async fn spawn() -> Result<QueryEngineTx, Box<dyn Error>> {
+pub async fn spawn() -> Result<mpsc::Sender<QueryEngineRequest>, Box<dyn Error>> {
     let mut tree = DeviceTree::load().await?;
-    let mut engine = QueryEngine::new();
+    let mut engine = QueryEngine::default();
 
     let (cmds_tx, cmds_rx) = mpsc::channel(100);
     let (query_tx, query_rx) = mpsc::channel(20);
@@ -63,7 +63,7 @@ async fn run(
     mut tree: DeviceTree,
     mut engine: QueryEngine,
     mut cmds_rx: mpsc::Receiver<(FloeRef, Commands)>,
-    mut query_rx: QueryEngineRx,
+    mut query_rx: mpsc::Receiver<QueryEngineRequest>,
 ) {
     loop {
         tokio::select! {
@@ -73,8 +73,8 @@ async fn run(
                 }
             }
 
-            Some((query, tx)) = query_rx.recv() => {
-                if let Err(e) = engine.evaluate(&mut tree, query, tx).await {
+            Some(req) = query_rx.recv() => {
+                if let Err(e) = engine.on_request(&mut tree, req).await {
                     eprintln!("Error executing query: {e}");
                 }
             }
@@ -133,8 +133,6 @@ async fn handle_trans(
     trans: smallvec::IntoIter<[Command; 6]>,
     did: DeviceID,
 ) -> Result<(), Box<dyn Error>> {
-    let device = tree.device_mut(&did).unwrap(); // FIXME unwrap
-
     let mut selected_entity: Option<usize> = None;
 
     for line in trans {
@@ -143,7 +141,7 @@ async fn handle_trans(
                 Some(eidx) => {
                     let val = read_component(line.cmd_id, line.payload).unwrap();
 
-                    DeviceTree::write_component(engine, device, did, eidx, val).await?;
+                    tree.write_component(engine, &did, eidx, val).await?;
 
                     continue;
                 }
@@ -161,14 +159,8 @@ async fn handle_trans(
 
                 let params: RegisterEntity = borsh::from_slice(&line.payload).unwrap();
 
-                DeviceTree::register_entity(
-                    engine,
-                    device,
-                    did,
-                    params.entity_name,
-                    params.entity_idx as usize,
-                )
-                .await?;
+                tree.register_entity(engine, &did, params.entity_name, params.entity_idx as usize)
+                    .await?;
 
                 // TODO should this select entity?
             }
@@ -176,6 +168,7 @@ async fn handle_trans(
             SELECT_ENTITY => {
                 let params: SelectEntity = borsh::from_slice(&line.payload).unwrap();
                 let eidx = params.entity_idx as usize;
+                let device = tree.device(&did)?;
                 if eidx > device.num_entities() - 1 {
                     panic!(
                         "Floe #{fref:?} malformed during a transaction with device ID={did}. Tried to select entity idx={eidx} which is not registered.",

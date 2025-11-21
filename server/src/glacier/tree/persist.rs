@@ -1,9 +1,8 @@
-use crate::glacier::tree::Presense;
-
 use super::{Device, DeviceTree, Group};
+use crate::glacier::tree::{COMP_TYPE_ARR_LEN, Presense};
 use igloo_interface::id::{DeviceID, FloeID, GroupID};
 use ini::Ini;
-use rustc_hash::FxBuildHasher;
+use rustc_hash::{FxBuildHasher, FxHashSet};
 use smallvec::SmallVec;
 use std::{
     collections::{HashMap, HashSet},
@@ -113,7 +112,7 @@ impl DeviceTree {
             .max()
             .unwrap_or(0);
 
-        let mut groups = vec![None; max_idx + 1];
+        let mut groups = vec![None; (max_idx + 1).max(50)];
 
         for section in ini.sections() {
             let Some(idx_str) = section else { continue };
@@ -141,8 +140,8 @@ impl DeviceTree {
 
             let devices_str = section_data.get("devices").unwrap_or("");
 
-            let devices: HashSet<DeviceID> = if devices_str.is_empty() {
-                HashSet::with_capacity(20)
+            let devices: FxHashSet<DeviceID> = if devices_str.is_empty() {
+                HashSet::with_capacity_and_hasher(20, FxBuildHasher)
             } else {
                 devices_str
                     .split(',')
@@ -205,7 +204,7 @@ impl DeviceTree {
 
     async fn load_devices() -> Result<Vec<Option<Device>>, TreePersistError> {
         if !fs::try_exists(DEVICES_FILE).await? {
-            return Ok(Vec::with_capacity(50));
+            return Ok(Vec::with_capacity(200));
         }
 
         let content = fs::read_to_string(DEVICES_FILE).await?;
@@ -217,7 +216,7 @@ impl DeviceTree {
             .max()
             .unwrap_or(0);
 
-        let mut devices = vec![None; max_idx + 1];
+        let mut devices = vec![None; (max_idx + 1).max(200)];
 
         for section in ini.sections() {
             let Some(idx_str) = section else { continue };
@@ -248,16 +247,18 @@ impl DeviceTree {
             );
 
             let id = DeviceID::from_parts(device_idx as u32, device_gen);
+            // FIXME add device new function plz
             devices[device_idx] = Some(Device {
                 id,
                 name: device_name,
                 owner,
                 owner_ref: None,
-                groups: HashSet::with_capacity(10),
+                groups: FxHashSet::with_capacity_and_hasher(10, FxBuildHasher),
                 presense: Presense::default(),
                 entities: SmallVec::default(),
                 entity_index_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
                 last_updated: Instant::now(),
+                comp_to_entity: [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN],
             });
         }
 

@@ -6,12 +6,7 @@
 // What should dummies be?
 
 use std::time::Duration;
-
-use igloo_interface::{
-    ComponentType,
-    query::{EntityFilter, Query, QueryAction, QueryTarget},
-};
-use tokio::{sync::mpsc, time::sleep};
+use tokio::time::sleep;
 
 // mod auth;
 mod glacier;
@@ -43,21 +38,33 @@ async fn main() {
     // wait for devices to connect
     sleep(Duration::from_secs(5)).await;
 
-    let (tx, mut rx) = mpsc::channel(10);
+    // let (tx, mut rx) = mpsc::channel(10);
 
-    let query = Query {
-        action: QueryAction::Get,
-        target: QueryTarget::Components(ComponentType::Dimmer),
-        entity_filter: Some(EntityFilter::Has(ComponentType::Light)),
-        ..Default::default()
-    };
+    // query_tx
+    //     .send(QueryEngineRequest::Register(tx))
+    //     .await
+    //     .unwrap();
 
-    query_tx.send((query.clone(), tx.clone())).await.unwrap();
-    // let _ = rx.recv().await.unwrap();
-    // println!("warmed up, running prof");
+    // let QueryEngineResponse::Registered { producer_id } = rx.recv().await.unwrap() else {
+    //     panic!()
+    // };
+    // println!("registered!");
+
+    // let mut query = Query::Component(ComponentQuery {
+    //     device_filter: DeviceFilter::default(),
+    //     entity_filter: EntityFilter::default(),
+    //     action: ComponentAction::GetValue,
+    //     component: ComponentType::Dimmer,
+    //     post_op: Some(AggregationOp::Mean),
+    //     include_parents: true,
+    //     limit: None,
+    // });
+
+    // let start = Instant::now();
+    // let res = rx.recv().await.unwrap();
+    // println!("got {res:?} in {:?}", start.elapsed());
 
     // let iterations = 10_000;
-    // let start = std::time::Instant::now();
 
     // for _ in 0..iterations {
     //     query_tx.send((query.clone(), tx.clone())).await.unwrap();
@@ -129,9 +136,9 @@ async fn main() {
     //     web::run(gsc).await.unwrap();
     // });
 
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            println!("Shutting down Igloo");
-        }
-    }
+    // tokio::select! {
+    //     _ = tokio::signal::ctrl_c() => {
+    //         println!("Shutting down Igloo");
+    //     }
+    // }
 }

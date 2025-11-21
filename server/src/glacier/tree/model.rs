@@ -2,11 +2,13 @@ use igloo_interface::{
     Component, ComponentType, MAX_SUPPORTED_COMPONENT,
     floe::FloeWriterDefault,
     id::{DeviceID, FloeID, FloeRef, GroupID},
-    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
+    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot, TypeFilter},
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use std::{collections::HashSet, time::Instant};
+use std::time::Instant;
+
+pub const COMP_TYPE_ARR_LEN: usize = MAX_SUPPORTED_COMPONENT as usize + 1;
 
 /// Root
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
@@ -31,6 +33,7 @@ pub struct Floe {
     pub writer: FloeWriterDefault,
     #[allow(dead_code)]
     pub(super) max_supported_component: u16,
+    // TODO change to HashSet
     pub(super) devices: SmallVec<[DeviceID; 50]>,
 }
 
@@ -39,7 +42,7 @@ pub struct Floe {
 pub struct Group {
     pub(super) id: GroupID,
     pub(super) name: String,
-    pub(super) devices: HashSet<DeviceID>,
+    pub(super) devices: FxHashSet<DeviceID>,
 }
 
 /// Physical Device, owned (registered & attached) by Floe
@@ -49,9 +52,11 @@ pub struct Device {
     pub(super) name: String,
     pub(super) owner: FloeID,
     pub(super) owner_ref: Option<FloeRef>,
-    pub(super) groups: HashSet<GroupID>,
+    pub(super) groups: FxHashSet<GroupID>,
     /// Bitset of which component types exist on any of its entity
     pub(super) presense: Presense,
+    /// ComponentType -> Entity Indexes
+    pub(super) comp_to_entity: [SmallVec<[usize; 4]>; COMP_TYPE_ARR_LEN],
     /// Entity index -> Entity
     pub(super) entities: SmallVec<[Entity; 16]>,
     /// Entity name -> index
@@ -74,7 +79,7 @@ pub struct Entity {
     pub(super) components: SmallVec<[Component; 8]>,
     /// Maps `ComponentType` ID -> index in `components`
     /// `0xFF` = not present
-    pub(super) indices: [u8; MAX_SUPPORTED_COMPONENT as usize],
+    pub(super) indices: [u8; COMP_TYPE_ARR_LEN],
     pub(super) last_updated: Instant,
 }
 
@@ -98,16 +103,21 @@ pub enum TreeIDError {
 }
 
 impl DeviceTree {
-    pub fn iter_floes(&self) -> impl Iterator<Item = &Floe> {
-        self.floes.iter().filter_map(|f| f.as_ref())
+    pub fn floes(&self) -> &Vec<Option<Floe>> {
+        &self.floes
     }
 
-    pub fn iter_groups(&self) -> impl Iterator<Item = &Group> {
-        self.groups.iter().filter_map(|g| g.as_ref())
+    pub fn groups(&self) -> &Vec<Option<Group>> {
+        &self.groups
     }
 
-    pub fn iter_devices(&self) -> impl Iterator<Item = &Device> {
-        self.devices.iter().filter_map(|d| d.as_ref())
+    pub fn devices(&self) -> &Vec<Option<Device>> {
+        &self.devices
+    }
+
+    /// WARN use .device() instead for most cases
+    pub fn device_index(&self, index: usize) -> Option<&Device> {
+        self.devices[index].as_ref()
     }
 
     /// Gets & Validates from DeviceID
@@ -197,7 +207,7 @@ impl Presense {
         self.0[index] |= 1u32 << bit;
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn has(&self, typ: ComponentType) -> bool {
         let type_id = typ as usize;
         let index = type_id >> 5;
@@ -221,25 +231,11 @@ impl Presense {
     }
 }
 
-impl HasComponent for Presense {
-    #[inline]
-    fn has(&self, r#type: ComponentType) -> bool {
-        self.has(r#type)
-    }
-}
-
-impl HasComponent for Device {
-    #[inline]
-    fn has(&self, r#type: ComponentType) -> bool {
-        self.presense.has(r#type)
-    }
-}
-
 impl Default for Entity {
     fn default() -> Self {
         Self {
             components: SmallVec::new(),
-            indices: [0xFF; MAX_SUPPORTED_COMPONENT as usize],
+            indices: [0xFF; COMP_TYPE_ARR_LEN],
             name: String::with_capacity(20),
             index: usize::MAX,
             last_updated: Instant::now(),
@@ -315,37 +311,21 @@ impl Entity {
         }
     }
 
-    #[inline]
-    pub fn has_any(&self, types: &[ComponentType]) -> bool {
-        for &t in types {
-            if self.indices[t as usize] != 0xFF {
-                return true;
-            }
-        }
-        false
-    }
-
-    #[inline]
-    pub fn has_all(&self, types: &[ComponentType]) -> bool {
-        for &t in types {
-            if self.indices[t as usize] == 0xFF {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-impl HasComponent for Entity {
     #[inline(always)]
-    fn has(&self, r#type: ComponentType) -> bool {
+    pub fn has(&self, r#type: ComponentType) -> bool {
         self.indices[r#type as usize] != 0xFF
     }
-}
 
-#[allow(dead_code)]
-pub trait HasComponent {
-    fn has(&self, r#type: ComponentType) -> bool;
+    #[inline(always)]
+    pub fn matches(&self, filter: &TypeFilter) -> bool {
+        match filter {
+            TypeFilter::With(t) => self.has(*t),
+            TypeFilter::Without(t) => !self.has(*t),
+            TypeFilter::And(filters) => filters.iter().all(|f| self.matches(f)),
+            TypeFilter::Or(filters) => filters.iter().any(|f| self.matches(f)),
+            TypeFilter::Not(f) => !self.matches(f),
+        }
+    }
 }
 
 impl Device {
@@ -398,19 +378,42 @@ impl Device {
     }
 
     #[inline]
-    pub fn groups(&self) -> &HashSet<GroupID> {
+    pub fn groups(&self) -> &FxHashSet<GroupID> {
         &self.groups
     }
 
-    pub fn snapshot(&self) -> DeviceSnapshot {
+    pub fn snapshot(&self, include_components: bool) -> DeviceSnapshot {
         DeviceSnapshot {
             id: self.id,
             name: self.name.clone(),
-            entities: self.entities.iter().map(|e| e.snapshot(self.id)).collect(),
+            entities: match include_components {
+                true => self.entities.iter().map(|e| e.snapshot(self.id)).collect(),
+                false => vec![],
+            },
             owner: self.owner.clone(),
             owner_ref: self.owner_ref,
             groups: self.groups.clone(),
         }
+    }
+
+    #[inline(always)]
+    pub fn has(&self, r#type: ComponentType) -> bool {
+        self.presense.has(r#type)
+    }
+
+    #[inline(always)]
+    pub fn matches(&self, filter: &TypeFilter) -> bool {
+        match filter {
+            TypeFilter::With(t) => self.has(*t),
+            TypeFilter::Without(t) => !self.has(*t),
+            TypeFilter::And(filters) => filters.iter().all(|f| self.matches(f)),
+            TypeFilter::Or(filters) => filters.iter().any(|f| self.matches(f)),
+            TypeFilter::Not(f) => !self.matches(f),
+        }
+    }
+
+    pub fn comp_to_entity(&self) -> &[SmallVec<[usize; 4]>; COMP_TYPE_ARR_LEN] {
+        &self.comp_to_entity
     }
 }
 
@@ -428,7 +431,7 @@ impl Group {
 
     #[inline]
     #[allow(dead_code)]
-    pub fn devices(&self) -> &HashSet<DeviceID> {
+    pub fn devices(&self) -> &FxHashSet<DeviceID> {
         &self.devices
     }
 
@@ -445,6 +448,11 @@ impl Floe {
     #[inline]
     pub fn id(&self) -> &FloeID {
         &self.id
+    }
+
+    #[inline]
+    pub fn fref(&self) -> &FloeRef {
+        &self.fref
     }
 
     #[inline]

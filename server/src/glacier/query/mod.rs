@@ -1,144 +1,208 @@
 use crate::glacier::{
-    query::optimizer::QueryOptimizer,
-    tree::{DeviceTree, mutation::TreeMutation},
+    query::{
+        ctx::QueryContext,
+        watch::{Producer, Watch, observer::ObserverSet},
+    },
+    tree::DeviceTree,
 };
-use globset::{GlobBuilder, GlobMatcher};
-use igloo_interface::query::{Query, QueryResult, QueryTarget as QT};
-use rustc_hash::FxHashMap;
-use std::time::Instant;
-use tokio::sync::mpsc::{self, error::SendError};
+use igloo_interface::query::{Query, QueryResult, check::QueryError};
+use rustc_hash::FxBuildHasher;
+use std::collections::HashSet;
+use tokio::sync::mpsc::{self, error::TrySendError};
 
-mod collector;
-mod filter;
-mod optimizer;
-mod targets;
+mod ctx;
+mod iter;
+mod oneshot;
+mod watch;
 
 pub struct QueryEngine {
-    // TODO FIXME need a garbage collection system
-    globs: FxHashMap<String, GlobMatcher>,
-    query_time: Instant,
+    pub(self) ctx: QueryContext,
+    // TODO rename to clients
+    pub(self) producers: Vec<Option<Producer>>,
+    // TODO better name, maybe side-effects?
+    pub(self) observer_set: ObserverSet,
+    // TODO rename this to observer?
+    pub(self) watches: Vec<Option<Watch>>,
 }
 
-// TODO eventually fix this. We need to tag errors
-pub type QueryResponse = Result<QueryResult, QueryError>;
+#[derive(Debug)]
+pub enum QueryEngineRequest {
+    Register(mpsc::Sender<QueryEngineResponse>),
+    Unregister {
+        producer_id: usize,
+    },
+    // TODO unregister watcher
+    Evaluate {
+        producer_id: usize,
+        query_id: usize,
+        query: Box<Query>,
+    },
+}
 
-pub type QueryEngineTx = mpsc::Sender<(Query, mpsc::Sender<QueryResponse>)>;
-pub type QueryEngineRx = mpsc::Receiver<(Query, mpsc::Sender<QueryResponse>)>;
-
-/// issue with query itself
-#[derive(thiserror::Error, Debug)]
-pub enum QueryError {}
+#[derive(Debug, Clone)]
+pub enum QueryEngineResponse {
+    /// sent on registration
+    /// use this for all future requests
+    Registered { producer_id: usize },
+    Result {
+        query_id: usize,
+        result: Result<QueryResult, QueryError>,
+    },
+}
 
 /// internal error
 #[derive(thiserror::Error, Debug)]
 pub enum EngineError {
-    #[error("Send error: {0}")]
-    Send(#[from] SendError<QueryResponse>),
+    #[error("Producer {0}'s response channel is full")]
+    ProducerChannelFull(usize),
+    #[error("Invalid producer {0}")]
+    InvalidProducer(usize),
+}
+
+impl Default for QueryEngine {
+    fn default() -> Self {
+        Self {
+            ctx: QueryContext::default(),
+            observer_set: ObserverSet::new(),
+            producers: Vec::with_capacity(50),
+            watches: Vec::with_capacity(50),
+        }
+    }
 }
 
 impl QueryEngine {
-    pub fn new() -> Self {
-        Self {
-            globs: FxHashMap::default(),
-            query_time: Instant::now(),
+    pub async fn on_request(
+        &mut self,
+        tree: &mut DeviceTree,
+        request: QueryEngineRequest,
+    ) -> Result<(), EngineError> {
+        self.ctx.check_gc();
+
+        use QueryEngineRequest::*;
+        match request {
+            Register(channel) => {
+                let producer_id =
+                    if let Some(free_slot) = self.producers.iter_mut().position(|o| o.is_none()) {
+                        free_slot
+                    } else {
+                        self.producers.push(None);
+                        self.producers.len() - 1
+                    };
+
+                match channel.try_send(QueryEngineResponse::Registered { producer_id }) {
+                    Ok(_) => {
+                        self.producers[producer_id] = Some(Producer {
+                            channel,
+                            watches: HashSet::with_capacity_and_hasher(10, FxBuildHasher),
+                        });
+                        Ok(())
+                    }
+                    Err(TrySendError::Full(_)) => {
+                        Err(EngineError::ProducerChannelFull(producer_id))
+                    }
+                    Err(TrySendError::Closed(_)) => {
+                        self.unregister(producer_id);
+                        Ok(())
+                    }
+                }
+            }
+            Unregister { producer_id } => {
+                self.unregister(producer_id);
+                Ok(())
+            }
+            Evaluate {
+                producer_id,
+                query_id,
+                query,
+            } => self.eval(tree, producer_id, query_id, *query).await,
         }
     }
 
-    pub async fn on_tree_mutation(&mut self, _mutation: TreeMutation) -> Result<(), EngineError> {
-        // TODO
-        Ok(())
+    // TODO need a way to unregister 1 watch
+
+    fn unregister(&mut self, producer_id: usize) {
+        if let Some(Some(producer)) = self.producers.get_mut(producer_id) {
+            let watch_ids: Vec<_> = producer.watches.drain().collect();
+
+            for watch_id in watch_ids {
+                // Clean up from ALL observer sets
+                self.observer_set.remove_watch_from_all(watch_id);
+                self.watches[watch_id] = None;
+            }
+        }
+
+        // FIXME unsafe
+        self.producers[producer_id] = None;
     }
 
-    pub async fn evaluate(
+    async fn eval(
         &mut self,
         tree: &mut DeviceTree,
+        producer_id: usize,
+        query_id: usize,
         mut query: Query,
-        tx: mpsc::Sender<QueryResponse>,
     ) -> Result<(), EngineError> {
-        self.query_time = Instant::now();
+        self.ctx.on_eval_start();
 
         query.optimize();
 
-        let res = match query.target {
-            // These return Result<QueryResponse, EngineError>
-            // which is equal to Result<Result<QueryResult, QueryError>, EngineError>
-            // This is very intentional, QueryErrors get sent to user whereas EngineErrors
-            // are internal errors that will be logged from higher up
-            QT::Floes => self.evaluate_floes(tree, query).await?,
-            QT::Groups => self.evaluate_groups(tree, query).await?,
-            QT::Devices => self.evaluate_devices(tree, query).await?,
-            QT::Entities => self.evaluate_entities(tree, query).await?,
-            QT::Components(t) => self.evaluate_comps(tree, query, t).await?,
+        if query.is_observer() {
+            return self
+                .register_watch(tree, producer_id, query_id, query)
+                .await;
+        }
+
+        let result = match query {
+            Query::Floe(q) => self.eval_floe(tree, q)?,
+            Query::Group(q) => self.eval_group(tree, q)?,
+            Query::Device(q) => self.eval_device(tree, q)?,
+            Query::Entity(q) => self.eval_entity(tree, q)?,
+            Query::Component(q) => self.eval_component(tree, q)?,
         };
 
-        tx.send(res).await?;
+        self.send_result(producer_id, query_id, result).await
+    }
+
+    /// used for benchmarking
+    #[allow(dead_code)]
+    pub fn test(&mut self, tree: &mut DeviceTree, mut query: Query) -> Result<(), EngineError> {
+        query.optimize();
+
+        if query.is_observer() {
+            panic!()
+        }
+
+        let _ = match query {
+            Query::Floe(q) => self.eval_floe(tree, q)?,
+            Query::Group(q) => self.eval_group(tree, q)?,
+            Query::Device(q) => self.eval_device(tree, q)?,
+            Query::Entity(q) => self.eval_entity(tree, q)?,
+            Query::Component(q) => self.eval_component(tree, q)?,
+        };
 
         Ok(())
     }
 
-    // pub async fn evaluate(
-    //     &mut self,
-    //     tree: &mut DeviceTree,
-    //     mut query: Query,
-    //     tx: mpsc::Sender<QueryResponse>,
-    // ) -> Result<(), EngineError> {
-    //     self.query_time = Instant::now();
+    async fn send_result(
+        &mut self,
+        producer_id: usize,
+        query_id: usize,
+        result: Result<QueryResult, QueryError>,
+    ) -> Result<(), EngineError> {
+        let Some(Some(producer)) = self.producers.get(producer_id) else {
+            return Err(EngineError::InvalidProducer(producer_id));
+        };
 
-    //     query.optimize();
-
-    //     const ITERATIONS: usize = 2_000_000;
-
-    //     let mut res = None;
-
-    //     let start = Instant::now();
-    //     self.benchmark_queries(tree, &query, ITERATIONS, &mut res)
-    //         .await?;
-    //     let elapsed = start.elapsed();
-    //     println!(
-    //         "DONE. Total time = {:?}. Iteration Time = {:?}",
-    //         elapsed,
-    //         elapsed / (ITERATIONS as u32)
-    //     );
-
-    //     let start = Instant::now();
-    //     self.benchmark_queries(tree, &query, ITERATIONS, &mut res)
-    //         .await?;
-    //     let elapsed = start.elapsed();
-    //     println!(
-    //         "DONE. Total time = {:?}. Iteration Time = {:?}",
-    //         elapsed,
-    //         elapsed / (ITERATIONS as u32)
-    //     );
-
-    //     tx.send(res.unwrap()).await?;
-
-    //     Ok(())
-    // }
-
-    // async fn benchmark_queries(
-    //     &mut self,
-    //     tree: &mut DeviceTree,
-    //     query: &Query,
-    //     iterations: usize,
-    //     res: &mut Option<QueryResponse>,
-    // ) -> Result<(), EngineError> {
-    //     for _ in 0..iterations {
-    //         *res = Some(match query.target {
-    //             QT::Floes => self.evaluate_floes(tree, query.clone()).await?,
-    //             QT::Groups => self.evaluate_groups(tree, query.clone()).await?,
-    //             QT::Devices => self.evaluate_devices(tree, query.clone()).await?,
-    //             QT::Entities => self.evaluate_entities(tree, query.clone()).await?,
-    //             QT::Components(t) => self.evaluate_comps(tree, query.clone(), t).await?,
-    //         });
-    //     }
-    //     Ok(())
-    // }
-
-    fn glob(&mut self, pattern: &str) -> &GlobMatcher {
-        if !self.globs.contains_key(pattern) {
-            let glob = GlobBuilder::new(pattern).build().unwrap().compile_matcher(); // FIXME unwrap
-            self.globs.insert(pattern.to_string(), glob);
+        match producer
+            .channel
+            .try_send(QueryEngineResponse::Result { query_id, result })
+        {
+            Ok(_) => Ok(()),
+            Err(TrySendError::Full(_)) => Err(EngineError::ProducerChannelFull(producer_id)),
+            Err(TrySendError::Closed(_)) => {
+                self.unregister(producer_id);
+                Ok(())
+            }
         }
-        self.globs.get(pattern).unwrap()
     }
 }
