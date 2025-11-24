@@ -1,5 +1,6 @@
+use crate::types::ident;
+
 use super::model::*;
-use crate::rust::ident;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;

@@ -1,10 +1,9 @@
+use crate::types::ident;
 use proc_macro2::TokenStream;
 use quote::quote;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
 use syn::Ident;
-
-use crate::rust::ident;
 
 #[derive(Debug, Deserialize)]
 pub struct ComponentsConfig {
@@ -91,37 +90,6 @@ pub struct Related {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ProtocolConfig {
-    pub commands: Vec<Command>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Command {
-    pub name: String,
-    pub id: u16,
-    #[serde(default)]
-    pub desc: String,
-    #[serde(default)]
-    pub fields: Vec<CommandField>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct CommandField {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub r#type: String,
-    #[serde(default)]
-    pub desc: String,
-}
-
-impl ProtocolConfig {
-    pub fn read(pathbuf: PathBuf) -> Self {
-        let contents = fs::read_to_string(pathbuf).expect("Failed to read protocol file");
-        toml::from_str(&contents).expect("Failed to parse protocol file")
-    }
-}
-
 impl ComponentsConfig {
     pub fn read(pathbuf: PathBuf) -> Self {
         let contents = fs::read_to_string(pathbuf).expect("Failed to read components file");
@@ -146,6 +114,25 @@ impl IglooType {
             Self::ColorList => quote! { ColorList },
             Self::DateList => quote! { DateList },
             Self::TimeList => quote! { TimeList },
+        }
+    }
+
+    pub fn direct_type_tokens(&self) -> TokenStream {
+        match self {
+            Self::Integer => quote! { IglooInteger },
+            Self::Real => quote! { IglooReal },
+            Self::Text => quote! { IglooText },
+            Self::Boolean => quote! { IglooBoolean },
+            Self::Color => quote! { IglooColor },
+            Self::Date => quote! { IglooDate },
+            Self::Time => quote! { IglooTime },
+            Self::IntegerList => quote! { IglooIntegerList },
+            Self::RealList => quote! { IglooRealList },
+            Self::TextList => quote! { IglooTextList },
+            Self::BooleanList => quote! { IglooBooleanList },
+            Self::ColorList => quote! { IglooColorList },
+            Self::DateList => quote! { IglooDateList },
+            Self::TimeList => quote! { IglooTimeList },
         }
     }
 }
