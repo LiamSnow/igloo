@@ -5,37 +5,21 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Real, WRITE_REAL, floe::FloeWriterDefault,
-};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesNumberResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Number,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        // add_number_mode(writer, self.mode()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        // add_f32_bounds(writer, self.min_value, self.max_value, Some(self.step)).await?;
-        add_unit(writer, self.unit_of_measurement).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesNumberResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(4);
+        add_entity_category(&mut comps, self.entity_category());
+        // add_number_mode(&mut comps, self.mode());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        // add_f32_bounds(&mut comps, self.min_value, self.max_value, Some(self.step));
+        add_unit(&mut comps, self.unit_of_measurement);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::NumberStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -45,8 +29,8 @@ impl EntityUpdate for api::NumberStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.real(&(self.state as f64)).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Real(self.state as f64)]
     }
 }
 
@@ -60,26 +44,23 @@ impl EntityUpdate for api::NumberStateResponse {
 //     }
 // }
 
+#[inline]
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::NumberCommandRequest { key, state: 0.0 };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_REAL => {
-                let state: Real = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Real(state) => {
                 req.state = state as f32;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Number got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Number got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

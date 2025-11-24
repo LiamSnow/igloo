@@ -5,32 +5,16 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Position, ValveState, WRITE_POSITION, WRITE_VALVE_STATE,
-    floe::FloeWriterDefault,
-};
+use igloo_interface::{Component, ValveState};
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesValveResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Valve,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        writer.valve().await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesValveResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(4);
+        comps.push(Component::Valve);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        comps
     }
 }
 
@@ -44,52 +28,49 @@ impl api::ValveOperation {
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::ValveStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.position(&(self.position as f64)).await?;
-        writer
-            .valve_state(&self.current_operation().as_igloo())
-            .await
+    fn comps(&self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        comps.push(Component::Position(self.position as f64));
+        comps.push(Component::ValveState(self.current_operation().as_igloo()));
+        comps
     }
 }
 
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::ValveCommandRequest {
         key,
         ..Default::default()
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_POSITION => {
-                let position: Position = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Position(position) => {
                 req.has_position = true;
                 req.position = position as f32;
             }
 
-            WRITE_VALVE_STATE => {
-                let state: ValveState = borsh::from_slice(&payload)?;
+            ValveState(state) => {
+                use igloo_interface::ValveState::*;
                 match state {
-                    ValveState::Idle => req.stop = true,
-                    ValveState::Opening | ValveState::Closing => {}
+                    Idle => req.stop = true,
+                    Opening | Closing => {}
                 }
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Valve got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!(
+                    "Valve got unexpected component '{comp:?}' during transaction. Skipping.."
+                );
             }
         }
     }

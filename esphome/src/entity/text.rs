@@ -5,28 +5,18 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Text, WRITE_TEXT, floe::FloeWriterDefault,
-};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesTextResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Text)
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        // writer.text_mode(&self.mode().as_igloo()).await?;
-        // writer.text_min_length(&self.min_length).await?;
-        // writer.text_max_length(&self.max_length).await?;
-        // writer.text_pattern(&self.pattern).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesTextResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        // add_text_mode(&mut comps, self.mode().as_igloo());
+        // add_text_min_length(&mut comps, self.min_length);
+        // add_text_max_length(&mut comps, self.max_length);
+        // add_text_pattern(&mut comps, self.pattern);
+        comps
     }
 }
 
@@ -39,7 +29,6 @@ impl EntityRegister for crate::api::ListEntitiesTextResponse {
 //     }
 // }
 
-#[async_trait]
 impl EntityUpdate for api::TextStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -49,34 +38,31 @@ impl EntityUpdate for api::TextStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.text(&self.state).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Text(self.state.clone())]
     }
 }
 
+#[inline]
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::TextCommandRequest {
         key,
         state: String::new(),
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_TEXT => {
-                let state: Text = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Text(state) => {
                 req.state = state;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Text got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Text got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

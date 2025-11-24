@@ -1,9 +1,4 @@
-use async_trait::async_trait;
-use igloo_interface::{
-    AlarmState, DESELECT_ENTITY, END_TRANSACTION, Text, WRITE_ALARM_STATE, WRITE_TEXT,
-    floe::FloeWriterDefault,
-};
-
+use igloo_interface::{Component, AlarmState};
 use super::{EntityRegister, add_entity_category, add_icon};
 use crate::{
     api,
@@ -12,24 +7,12 @@ use crate::{
     model::MessageType,
 };
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesAlarmControlPanelResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::AlarmControlPanel,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesAlarmControlPanelResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps
     }
 }
 
@@ -50,14 +33,13 @@ impl api::AlarmControlPanelState {
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::AlarmControlPanelStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.alarm_state(&self.state().as_igloo()).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::AlarmState(self.state().as_igloo())]
     }
 }
 
@@ -83,7 +65,7 @@ fn alarm_state_to_command(state: &AlarmState) -> api::AlarmControlPanelStateComm
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::AlarmControlPanelCommandRequest {
         key,
@@ -91,25 +73,20 @@ pub async fn process(
         code: String::new(),
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_TEXT => {
-                let code: Text = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Text(code) => {
                 req.code = code;
             }
 
-            WRITE_ALARM_STATE => {
-                let state: AlarmState = borsh::from_slice(&payload)?;
+            AlarmState(state) => {
                 req.command = alarm_state_to_command(&state).into();
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
+            comp => {
                 println!(
-                    "AlarmControlPanel got unexpected command {cmd_id} during transaction. Skipping.."
+                    "AlarmControlPanel got unexpected component '{comp:?}' during transaction. Skipping.."
                 );
             }
         }

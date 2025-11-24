@@ -5,28 +5,17 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, Date, END_TRANSACTION, WRITE_DATE, floe::FloeWriterDefault,
-};
+use igloo_interface::{Component, types::IglooDate};
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesDateResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Date)
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesDateResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::DateStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -36,21 +25,19 @@ impl EntityUpdate for api::DateStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer
-            .date(&Date {
-                year: self.year as u16,
-                month: self.month as u8,
-                day: self.day as u8,
-            })
-            .await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Date(IglooDate {
+            year: self.year as u16,
+            month: self.month as u8,
+            day: self.day as u8,
+        })]
     }
 }
 
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::DateCommandRequest {
         key,
@@ -59,21 +46,17 @@ pub async fn process(
         day: 0,
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_DATE => {
-                let date: Date = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Date(date) => {
                 req.year = date.year as u32;
                 req.month = date.month as u32;
                 req.day = date.day as u32;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Date got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Date got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

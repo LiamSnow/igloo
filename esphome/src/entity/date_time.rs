@@ -5,33 +5,17 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Timestamp, WRITE_TIMESTAMP, floe::FloeWriterDefault,
-};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesDateTimeResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::DateTime,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesDateTimeResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::DateTimeStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -41,34 +25,30 @@ impl EntityUpdate for api::DateTimeStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.timestamp(&(self.epoch_seconds as i64)).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Timestamp(self.epoch_seconds as i64)]
     }
 }
 
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::DateTimeCommandRequest {
         key,
         epoch_seconds: 0,
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_TIMESTAMP => {
-                let epoch_seconds: Timestamp = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Timestamp(epoch_seconds) => {
                 req.epoch_seconds = epoch_seconds as u32;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("DateTime got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("DateTime got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

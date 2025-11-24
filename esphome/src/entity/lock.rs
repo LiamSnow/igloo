@@ -1,9 +1,3 @@
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, LockState, Text, WRITE_LOCK_STATE, WRITE_TEXT,
-    floe::FloeWriterDefault,
-};
-
 use super::{EntityRegister, add_entity_category, add_icon};
 use crate::{
     api,
@@ -11,21 +5,15 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
+use igloo_interface::{Component, LockState};
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesLockResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Lock)
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        writer.text(&self.code_format).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesLockResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(3);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps.push(Component::Text(self.code_format));
+        comps
     }
 }
 
@@ -42,14 +30,13 @@ impl api::LockState {
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::LockStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.lock_state(&self.state().as_igloo()).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::LockState(self.state().as_igloo())]
     }
 }
 
@@ -67,7 +54,7 @@ fn lock_state_to_command(state: &LockState) -> api::LockCommand {
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::LockCommandRequest {
         key,
@@ -76,25 +63,20 @@ pub async fn process(
         code: String::new(),
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_TEXT => {
-                let code: Text = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Text(code) => {
                 req.has_code = true;
                 req.code = code;
             }
 
-            WRITE_LOCK_STATE => {
-                let state: LockState = borsh::from_slice(&payload)?;
+            LockState(state) => {
                 req.command = lock_state_to_command(&state).into();
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Lock got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Lock got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

@@ -5,64 +5,47 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Switch, WRITE_SWITCH, floe::FloeWriterDefault,
-};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesSwitchResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Switch,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesSwitchResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(3);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::SwitchStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.switch(&self.state).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Switch(self.state)]
     }
 }
 
+#[inline]
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::SwitchCommandRequest { key, state: false };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_SWITCH => {
-                let state: Switch = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Switch(state) => {
                 req.state = state;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Switch got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!(
+                    "Switch got unexpected component '{comp:?}' during transaction. Skipping.."
+                );
             }
         }
     }

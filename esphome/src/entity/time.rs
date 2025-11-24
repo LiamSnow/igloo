@@ -5,28 +5,17 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Time, WRITE_TIME, floe::FloeWriterDefault,
-};
+use igloo_interface::{Component, types::IglooTime};
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesTimeResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Time)
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesTimeResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::TimeStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -36,21 +25,19 @@ impl EntityUpdate for api::TimeStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer
-            .time(&Time {
-                hour: self.hour as u8,
-                minute: self.minute as u8,
-                second: self.second as u8,
-            })
-            .await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Time(IglooTime {
+            hour: self.hour as u8,
+            minute: self.minute as u8,
+            second: self.second as u8,
+        })]
     }
 }
 
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::TimeCommandRequest {
         key,
@@ -59,21 +46,17 @@ pub async fn process(
         second: 0,
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_TIME => {
-                let time: Time = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Time(time) => {
                 req.hour = time.hour as u32;
                 req.minute = time.minute as u32;
                 req.second = time.second as u32;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Time got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Time got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

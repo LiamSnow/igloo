@@ -11,14 +11,16 @@ prost = "0.13.4"
 snow = "0.9.6"
 thiserror = "2.0.11"
 tokio = { version = "1.47.1", features = ["bytes", "full"] }
-igloo-interface = { path = "../interface/", features = ["floe"] }
+igloo-interface = { path = "../interface/", features = ["ipc"] }
 strum = "0.27.2"
 strum_macros = "0.27.2"
-borsh = "1.5.7"
 async-trait = "0.1.89"
 tokio-util = { version = "0.7.16", features = ["codec"] }
 futures-util = "0.3.31"
 rust-ini = "0.21.3"
+bincode = "2.0.1"
+kanal = "0.1.1"
+rustc-hash = "2.1.1"
 
 [build-dependencies]
 prost-build = "0.13.4"

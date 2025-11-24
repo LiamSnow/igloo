@@ -4,48 +4,28 @@ use crate::{
     device::{Device, DeviceError},
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{DESELECT_ENTITY, END_TRANSACTION, floe::FloeWriterDefault};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesButtonResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Button,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesButtonResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(3);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        comps
     }
 }
 
+#[inline]
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let req = api::ButtonCommandRequest { key };
 
-    for (cmd_id, _payload) in commands {
-        match cmd_id {
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Button got unexpected command {cmd_id} during transaction. Skipping..");
-            }
-        }
+    for comp in comps {
+        println!("Button got unexpected component '{comp:?}' during transaction. Skipping..");
     }
 
     device

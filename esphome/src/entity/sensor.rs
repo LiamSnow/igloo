@@ -3,38 +3,22 @@ use super::{
     add_unit,
 };
 use crate::{api, entity::EntityUpdate};
-use async_trait::async_trait;
-use igloo_interface::floe::FloeWriterDefault;
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesSensorResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Sensor,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_sensor_state_class(writer, self.state_class()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        add_unit(writer, self.unit_of_measurement).await?;
-        writer.sensor().await?;
-        writer
-            .accuracy_decimals(&(self.accuracy_decimals as i64))
-            .await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesSensorResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(7);
+        comps.push(Component::Sensor);
+        add_entity_category(&mut comps, self.entity_category());
+        add_sensor_state_class(&mut comps, self.state_class());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        add_unit(&mut comps, self.unit_of_measurement);
+        comps.push(Component::AccuracyDecimals(self.accuracy_decimals as i64));
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::SensorStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -44,7 +28,7 @@ impl EntityUpdate for api::SensorStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.real(&(self.state as f64)).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Real(self.state as f64)]
     }
 }

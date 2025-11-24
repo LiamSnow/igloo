@@ -36,6 +36,7 @@ impl From<PlainConnection> for Connection {
 }
 
 impl Connectionable for Connection {
+    #[inline]
     async fn send_msg(
         &mut self,
         msg_type: MessageType,
@@ -47,6 +48,7 @@ impl Connectionable for Connection {
         }
     }
 
+    #[inline]
     async fn recv_msg(&mut self) -> Result<(MessageType, BytesMut), ConnectionError> {
         match self {
             Connection::Noise(con) => con.recv_msg().await,
@@ -54,6 +56,7 @@ impl Connectionable for Connection {
         }
     }
 
+    #[inline]
     async fn connect(&mut self) -> Result<(), ConnectionError> {
         match self {
             Connection::Noise(con) => con.connect().await,
@@ -61,6 +64,7 @@ impl Connectionable for Connection {
         }
     }
 
+    #[inline]
     async fn disconnect(&mut self) -> Result<(), ConnectionError> {
         match self {
             Connection::Noise(con) => con.disconnect().await,
@@ -68,6 +72,7 @@ impl Connectionable for Connection {
         }
     }
 
+    #[inline]
     fn get_name(&self) -> Option<String> {
         match self {
             Connection::Noise(con) => con.get_name(),
@@ -75,6 +80,7 @@ impl Connectionable for Connection {
         }
     }
 
+    #[inline]
     async fn readable(&mut self) -> Result<(), ConnectionError> {
         match self {
             Connection::Noise(con) => con.readable().await,

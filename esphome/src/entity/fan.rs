@@ -5,26 +5,14 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, FanDirection, FanOscillation, FanSpeed, Integer, Switch,
-    Text, WRITE_FAN_DIRECTION, WRITE_FAN_OSCILLATION, WRITE_INTEGER, WRITE_SWITCH, WRITE_TEXT,
-    floe::FloeWriterDefault,
-};
+use igloo_interface::{Component, FanDirection, FanOscillation, FanSpeed};
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesFanResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(writer, &self.name, self.key, crate::model::EntityType::Fan)
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesFanResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(2);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps
     }
 }
 
@@ -47,23 +35,22 @@ impl api::FanSpeed {
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::FanStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.fan_speed(&self.speed().as_igloo()).await?;
-        writer.integer(&(self.speed_level as i64)).await?;
-        writer.fan_direction(&self.direction().as_igloo()).await?;
-        writer.text(&self.preset_mode.clone()).await?;
-        writer
-            .fan_oscillation(&match self.oscillating {
+    fn comps(&self) -> Vec<Component> {
+        vec![
+            Component::FanSpeed(self.speed().as_igloo()),
+            Component::Integer(self.speed_level as i64),
+            Component::FanDirection(self.direction().as_igloo()),
+            Component::Text(self.preset_mode.clone()),
+            Component::FanOscillation(match self.oscillating {
                 true => FanOscillation::On,
                 false => FanOscillation::Off,
-            })
-            .await
+            }),
+        ]
     }
 }
 
@@ -74,54 +61,47 @@ fn fan_direction_to_api(direction: &FanDirection) -> api::FanDirection {
     }
 }
 
+#[inline]
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::FanCommandRequest {
         key,
         ..Default::default()
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_SWITCH => {
-                let state: Switch = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Switch(state) => {
                 req.has_state = true;
                 req.state = state;
             }
 
-            WRITE_INTEGER => {
-                let speed_level: Integer = borsh::from_slice(&payload)?;
+            Integer(speed_level) => {
                 req.has_speed_level = true;
                 req.speed_level = speed_level as i32;
             }
 
-            WRITE_FAN_OSCILLATION => {
-                let oscillation: FanOscillation = borsh::from_slice(&payload)?;
+            FanOscillation(oscillation) => {
                 req.has_oscillating = true;
-                req.oscillating = !matches!(oscillation, FanOscillation::Off);
+                req.oscillating = !matches!(oscillation, igloo_interface::FanOscillation::Off);
             }
 
-            WRITE_FAN_DIRECTION => {
-                let direction: FanDirection = borsh::from_slice(&payload)?;
+            FanDirection(direction) => {
                 req.has_direction = true;
                 req.direction = fan_direction_to_api(&direction).into();
             }
 
-            WRITE_TEXT => {
-                let preset: Text = borsh::from_slice(&payload)?;
+            Text(preset) => {
                 req.has_preset_mode = true;
                 req.preset_mode = preset;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Fan got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Fan got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

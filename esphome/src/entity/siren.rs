@@ -5,89 +5,65 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Integer, Switch, Text, Volume, WRITE_INTEGER, WRITE_SWITCH,
-    WRITE_TEXT, WRITE_VOLUME, floe::FloeWriterDefault,
-};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesSirenResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Siren,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        writer.text_select().await?;
-        writer.text_list(&self.tones).await?;
-        writer.siren().await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesSirenResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(5);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps.push(Component::TextSelect);
+        comps.push(Component::TextList(self.tones));
+        comps.push(Component::Siren);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::SirenStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.boolean(&self.state).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Boolean(self.state)]
     }
 }
 
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::SirenCommandRequest {
         key,
         ..Default::default()
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_SWITCH => {
-                let state: Switch = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Switch(state) => {
                 req.has_state = true;
                 req.state = state;
             }
 
-            WRITE_TEXT => {
-                let tone: Text = borsh::from_slice(&payload)?;
+            Text(tone) => {
                 req.has_tone = true;
                 req.tone = tone;
             }
 
-            WRITE_VOLUME => {
-                let volume: Volume = borsh::from_slice(&payload)?;
+            Volume(volume) => {
                 req.has_volume = true;
                 req.volume = volume as f32;
             }
 
-            WRITE_INTEGER => {
-                let duration: Integer = borsh::from_slice(&payload)?;
+            Integer(duration) => {
                 req.has_duration = true;
                 req.duration = duration as u32;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Siren got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Siren got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

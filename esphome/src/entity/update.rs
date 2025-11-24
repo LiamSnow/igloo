@@ -1,35 +1,22 @@
+use igloo_interface::Component;
+
 use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
 use crate::{
     api,
     device::{Device, DeviceError},
     entity::EntityUpdate,
 };
-use async_trait::async_trait;
-use igloo_interface::floe::FloeWriterDefault;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesUpdateResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Update,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesUpdateResponse {
+    fn comps(self) -> Vec<igloo_interface::Component> {
+        let mut comps = Vec::with_capacity(3);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::UpdateStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -39,7 +26,7 @@ impl EntityUpdate for api::UpdateStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
+    fn comps(&self) -> Vec<Component> {
         // FIXME I think the best way to handle update is by making
         // more entities for a clearer representation
         // But maybe this is good for reducing less used entities IDK
@@ -53,21 +40,22 @@ impl EntityUpdate for api::UpdateStateResponse {
             self.release_url
         );
 
-        writer.boolean(&self.in_progress).await?;
-        writer.text(&content.to_string()).await?;
+        let mut comps = Vec::with_capacity(3);
+        comps.push(Component::Boolean(self.in_progress));
+        comps.push(Component::Text(content));
 
         if self.has_progress {
-            writer.real(&(self.progress as f64)).await?;
+            comps.push(Component::Real(self.progress as f64));
         }
 
-        Ok(())
+        comps
     }
 }
 
 pub async fn process(
     _device: &mut Device,
     _key: u32,
-    _commands: Vec<(u16, Vec<u8>)>,
+    _comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     eprintln!("ESPHOME UPDATE ENTITY IS NOT IMPLEMENTED");
     Ok(())

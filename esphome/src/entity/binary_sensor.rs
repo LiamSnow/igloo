@@ -1,29 +1,18 @@
-use async_trait::async_trait;
-use igloo_interface::floe::FloeWriterDefault;
-
-use crate::{api, entity::EntityUpdate, model::EntityType};
-
+use crate::{api, entity::EntityUpdate};
+use igloo_interface::Component;
 use super::{EntityRegister, add_device_class, add_entity_category, add_icon};
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesBinarySensorResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(writer, &self.name, self.key, EntityType::BinarySensor)
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        add_device_class(writer, self.device_class).await?;
-        writer.sensor().await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesBinarySensorResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(4);
+        comps.push(Component::Sensor);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        add_device_class(&mut comps, self.device_class);
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::BinarySensorStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -33,7 +22,7 @@ impl EntityUpdate for api::BinarySensorStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.boolean(&self.state).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Boolean(self.state)]
     }
 }

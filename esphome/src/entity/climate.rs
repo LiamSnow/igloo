@@ -1,10 +1,4 @@
-use async_trait::async_trait;
-use igloo_interface::{
-    ClimateMode, DESELECT_ENTITY, END_TRANSACTION, FanOscillation, FanSpeed, Real, Text,
-    WRITE_CLIMATE_MODE, WRITE_FAN_OSCILLATION, WRITE_FAN_SPEED, WRITE_REAL, WRITE_TEXT,
-    floe::FloeWriterDefault,
-};
-
+use igloo_interface::{Component, ClimateMode, FanOscillation, FanSpeed};
 use super::{EntityRegister, add_entity_category, add_icon};
 use crate::{
     api,
@@ -19,72 +13,50 @@ use crate::{
 // but I didn't really setup device.rs to handle that properly bc
 // its annoying.
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesClimateResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Climate,
-            )
-            .await?;
-
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
+impl EntityRegister for api::ListEntitiesClimateResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(5);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
         // add_f32_bounds(
-        //     writer,
+        //     &mut comps,
         //     self.visual_min_temperature,
         //     self.visual_max_temperature,
         //     Some(self.visual_target_temperature_step),
-        // )
-        // .await?;
+        // );
 
-        // add_climate_modes(writer, self.supported_modes()).await?;
+        // add_climate_modes(&mut comps, self.supported_modes());
 
-        // add_fan_speeds(writer, self.supported_fan_modes()).await?;
-        // add_fan_oscillations(writer, self.supported_swing_modes()).await?;
+        // add_fan_speeds(&mut comps, self.supported_fan_modes());
+        // add_fan_oscillations(&mut comps, self.supported_swing_modes());
 
-        writer.text_select().await?;
-        writer
-            .text_list(
-                &self
-                    .supported_presets()
-                    .map(|preset| format!("{preset:#?}"))
-                    .chain(self.supported_custom_presets.iter().cloned())
-                    .collect(),
-            )
-            .await?;
+        comps.push(Component::TextSelect);
+        comps.push(Component::TextList(
+            self
+                .supported_presets()
+                .map(|preset| format!("{preset:#?}"))
+                .chain(self.supported_custom_presets.iter().cloned())
+                .collect(),
+        ));
 
-        Ok(())
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::ClimateStateResponse {
     fn key(&self) -> u32 {
         self.key
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.real(&(self.target_temperature as f64)).await?;
-
-        writer.climate_mode(&self.mode().as_igloo()).await?;
-
-        writer.fan_speed(&self.fan_mode().as_igloo()).await?;
-        writer
-            .fan_oscillation(&self.swing_mode().as_igloo())
-            .await?;
-
-        writer.text(&format!("{:#?}", self.preset())).await?;
-        writer.text(&self.custom_preset).await?;
-
-        Ok(())
+    fn comps(&self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(6);
+        comps.push(Component::Real(self.target_temperature as f64));
+        comps.push(Component::ClimateMode(self.mode().as_igloo()));
+        comps.push(Component::FanSpeed(self.fan_mode().as_igloo()));
+        comps.push(Component::FanOscillation(self.swing_mode().as_igloo()));
+        comps.push(Component::Text(format!("{:#?}", self.preset())));
+        comps.push(Component::Text(self.custom_preset.clone()));
+        comps
     }
 }
 
@@ -170,51 +142,43 @@ fn fan_oscillation_to_swing(oscillation: &FanOscillation) -> api::ClimateSwingMo
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::ClimateCommandRequest {
         key,
         ..Default::default()
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_CLIMATE_MODE => {
-                let mode: ClimateMode = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            ClimateMode(mode) => {
                 req.has_mode = true;
                 req.mode = climate_mode_to_api(&mode).into();
             }
 
-            WRITE_FAN_SPEED => {
-                let speed: FanSpeed = borsh::from_slice(&payload)?;
+            FanSpeed(speed) => {
                 req.has_fan_mode = true;
                 req.fan_mode = fan_speed_to_climate_fan(&speed).into();
             }
 
-            WRITE_FAN_OSCILLATION => {
-                let oscillation: FanOscillation = borsh::from_slice(&payload)?;
+            FanOscillation(oscillation) => {
                 req.has_swing_mode = true;
                 req.swing_mode = fan_oscillation_to_swing(&oscillation).into();
             }
 
-            WRITE_REAL => {
-                let temperature: Real = borsh::from_slice(&payload)?;
+            Real(temperature) => {
                 req.has_target_temperature = true;
                 req.target_temperature = temperature as f32;
             }
 
-            WRITE_TEXT => {
-                let text: Text = borsh::from_slice(&payload)?;
+            Text(text) => {
                 req.has_custom_preset = true;
                 req.custom_preset = text;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Climate got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Climate got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }

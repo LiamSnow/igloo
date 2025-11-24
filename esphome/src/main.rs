@@ -1,15 +1,10 @@
 use crate::device::{ConnectionParams, Device};
 use futures_util::StreamExt;
-use igloo_interface::{
-    CreateDevice, DEVICE_CREATED, DeviceCreated, END_TRANSACTION, START_TRANSACTION,
-    StartTransaction, floe::floe_init,
-};
+use igloo_interface::ipc::{self, IglooMessage};
 use ini::Ini;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{collections::HashMap, error::Error, sync::Arc};
-use tokio::{
-    fs,
-    sync::{Mutex, mpsc},
-};
+use tokio::{fs, sync::Mutex};
 
 pub mod connection;
 pub mod device;
@@ -38,17 +33,37 @@ pub type CommandAndPayload = (u16, Vec<u8>);
 async fn main() {
     let mut config = Config::load().await.unwrap();
 
-    let (writer, mut reader) = floe_init().await.expect("Failed to initialize Floe");
-    let shared_writer = Arc::new(Mutex::new(writer));
+    let (mut writer, mut reader) = ipc::connect().await.expect("Failed to initialize Floe");
 
-    let mut devices_tx = HashMap::new();
+    // writer task
+    let (write_tx, write_rx) = kanal::bounded_async(100);
+    tokio::spawn(async move {
+        loop {
+            let msg = match write_rx.recv().await {
+                Ok(msg) => msg,
+                Err(e) => {
+                    eprintln!("Error reading from write_rx: {e}");
+                    break;
+                }
+            };
+
+            if let Err(e) = writer.write(&msg).await {
+                eprintln!("Error writing message to Igloo: {e}");
+            }
+        }
+
+        println!("Write task shutdown");
+    });
+
+    // Device ID -> Device Channel
+    let mut device_txs = HashMap::with_capacity_and_hasher(20, FxBuildHasher);
 
     // connect to devices in config
     for (device_id, params) in config.devices.clone() {
-        let (stream_tx, stream_rx) = mpsc::channel(100);
-        devices_tx.insert(device_id, stream_tx);
+        let (device_tx, deivce_rx) = kanal::bounded_async(50);
+        device_txs.insert(device_id, device_tx);
         let mut device = Device::new(device_id, params);
-        let shared_writer_copy = shared_writer.clone();
+        let write_tx_1 = write_tx.clone();
         tokio::spawn(async move {
             let did = device.id;
             if let Err(e) = device.connect().await {
@@ -56,110 +71,107 @@ async fn main() {
                 return;
             }
             println!("Device ID={did} connected.");
-            if let Err(e) = device.run(shared_writer_copy, stream_rx).await {
+            if let Err(e) = device.run(write_tx_1, deivce_rx).await {
                 eprintln!("Error running device ID={did}: {e}");
             }
         });
     }
 
-    let pending_creation: Arc<Mutex<HashMap<String, Device>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let mut cur_device_tx = None;
+    let pending_creation: Arc<Mutex<FxHashMap<String, Device>>> = Arc::new(Mutex::new(
+        HashMap::with_capacity_and_hasher(5, FxBuildHasher),
+    ));
 
     while let Some(res) = reader.next().await {
-        let (cmd_id, payload) = match res {
+        let msg = match res {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Frame read error: {e}");
+                eprintln!("Error reading message, skipping: {e}");
                 continue;
             }
         };
 
-        match cmd_id {
-            START_TRANSACTION => {
-                let res: StartTransaction = borsh::from_slice(&payload)
-                    .expect("Failed to parse StartTransaction. Crashing..");
-                let Some(stream_tx) = devices_tx.get(&res.device_id) else {
-                    eprintln!(
-                        "Igloo requested to start a transaction for unknown device {}",
-                        res.device_id
-                    );
-                    continue;
-                };
-                cur_device_tx = Some(stream_tx.clone());
-            }
-            END_TRANSACTION => {
-                cur_device_tx = None;
-            }
-            DEVICE_CREATED => {
-                let Ok(params) = borsh::from_slice::<DeviceCreated>(&payload) else {
-                    eprintln!("Failed to parse DeviceCreated. Skipping..");
-                    continue;
-                };
-
+        use IglooMessage::*;
+        match msg {
+            DeviceCreated(name, did) => {
                 // pull out pending device
                 let mut pc = pending_creation.lock().await;
-                let Some(mut device) = pc.remove(&params.name) else {
+                let Some(mut device) = pc.remove(&name) else {
                     eprintln!("Igloo sent DeviceCreated for unknown device. Skipping..");
                     continue;
                 };
                 drop(pc);
 
                 // save to disk
-                config.devices.insert(params.id, device.params.clone());
+                config.devices.insert(did, device.params.clone());
                 config.save().await.unwrap();
 
                 // give actual ID now
-                device.id = params.id;
+                device.id = did;
 
                 // run
-                let (stream_tx, stream_rx) = mpsc::channel(100);
-                devices_tx.insert(params.id, stream_tx);
-                let shared_writer_copy = shared_writer.clone();
+                let (device_tx, device_rx) = kanal::bounded_async(50);
+                device_txs.insert(did, device_tx);
+                let write_tx_1 = write_tx.clone();
                 tokio::spawn(async move {
-                    device.run(shared_writer_copy, stream_rx).await.unwrap(); // TODO log?
+                    let res = device.run(write_tx_1, device_rx).await;
+                    if let Err(e) = res {
+                        eprintln!("Device {did} crashed: {e}");
+                    }
                 });
             }
-            ADD_DEVICE => {
-                let Ok(params) = borsh::from_slice::<ConnectionParams>(&payload) else {
-                    eprintln!("Failed to parse ConnectionParams for AddDevice command. Skipping..");
+
+            WriteComponents {
+                device: did,
+                entity,
+                comps,
+            } => {
+                let Some(device) = device_txs.get(&did) else {
+                    eprintln!("Igloo sent write for unknown device '{did}'. Skipping..");
                     continue;
                 };
 
+                if let Err(e) = device.send((entity, comps)).await {
+                    eprintln!("Error sending message to device '{did}': {e}");
+                }
+            }
+
+            Custom { name, params } => {
+                if name != "Add Device" {
+                    eprintln!("Unknown custom command '{name}'. Skipping..");
+                    continue;
+                }
+
+                let Some(ip) = params.get("ip") else {
+                    eprintln!(
+                        "Parameter 'ip' must be specified for custom command 'Add Device'. Skipping.."
+                    );
+                    continue;
+                };
+
+                let params = ConnectionParams {
+                    ip: ip.clone(),
+                    noise_psk: params.get("noise_psk").cloned(),
+                    password: params.get("password").cloned(),
+                    name: params.get("name").cloned(),
+                };
+
                 let mut device = Device::new(0, params);
-                let shared_writer_copy = shared_writer.clone();
-                let pending_creation_copy = pending_creation.clone();
+                let write_tx_1 = write_tx.clone();
+                let pending_creation_1 = pending_creation.clone();
                 tokio::spawn(async move {
                     let info = device.connect().await.unwrap();
-                    let mut writer = shared_writer_copy.lock().await;
-                    writer
-                        .create_device(&CreateDevice {
-                            name: info.name.clone(),
-                        })
+                    write_tx_1
+                        .send(IglooMessage::CreateDevice(info.name.clone()))
                         .await
                         .unwrap();
-                    drop(writer);
-                    let mut pc = pending_creation_copy.lock().await;
+                    let mut pc = pending_creation_1.lock().await;
                     pc.insert(info.name, device);
                     drop(pc);
                 });
             }
-            _ => {
-                if let Some(stream_tx) = &mut cur_device_tx {
-                    match stream_tx.try_send((cmd_id, payload)) {
-                        Ok(_) => {}
-                        Err(mpsc::error::TrySendError::Full(_)) => {
-                            eprintln!("Device is slow during transaction. Cancelling!");
-                            cur_device_tx = None;
-                        }
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
-                            eprintln!("Device disconnected during transaction");
-                            cur_device_tx = None;
-                        }
-                    }
-                } else {
-                    eprintln!("Got unexpected command {cmd_id} while not in transaction!");
-                }
+
+            WhatsUpIgloo { .. } | CreateDevice(..) | RegisterEntity { .. } => {
+                eprintln!("Igloo unexpectedly sent client message. Skipping..");
             }
         }
     }

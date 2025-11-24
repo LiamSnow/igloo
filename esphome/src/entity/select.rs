@@ -5,35 +5,19 @@ use crate::{
     entity::EntityUpdate,
     model::MessageType,
 };
-use async_trait::async_trait;
-use igloo_interface::{
-    DESELECT_ENTITY, END_TRANSACTION, Text, WRITE_TEXT, floe::FloeWriterDefault,
-};
+use igloo_interface::Component;
 
-#[async_trait]
-impl EntityRegister for crate::api::ListEntitiesSelectResponse {
-    async fn register(
-        self,
-        device: &mut crate::device::Device,
-        writer: &mut FloeWriterDefault,
-    ) -> Result<(), crate::device::DeviceError> {
-        device
-            .register_entity(
-                writer,
-                &self.name,
-                self.key,
-                crate::model::EntityType::Select,
-            )
-            .await?;
-        add_entity_category(writer, self.entity_category()).await?;
-        add_icon(writer, &self.icon).await?;
-        writer.text_select().await?;
-        writer.text_list(&self.options).await?;
-        Ok(())
+impl EntityRegister for api::ListEntitiesSelectResponse {
+    fn comps(self) -> Vec<Component> {
+        let mut comps = Vec::with_capacity(4);
+        add_entity_category(&mut comps, self.entity_category());
+        add_icon(&mut comps, &self.icon);
+        comps.push(Component::TextSelect);
+        comps.push(Component::TextList(self.options));
+        comps
     }
 }
 
-#[async_trait]
 impl EntityUpdate for api::SelectStateResponse {
     fn key(&self) -> u32 {
         self.key
@@ -43,34 +27,31 @@ impl EntityUpdate for api::SelectStateResponse {
         self.missing_state
     }
 
-    async fn write_to(&self, writer: &mut FloeWriterDefault) -> Result<(), std::io::Error> {
-        writer.text(&self.state).await
+    fn comps(&self) -> Vec<Component> {
+        vec![Component::Text(self.state.clone())]
     }
 }
 
+#[inline]
 pub async fn process(
     device: &mut Device,
     key: u32,
-    commands: Vec<(u16, Vec<u8>)>,
+    comps: Vec<Component>,
 ) -> Result<(), DeviceError> {
     let mut req = api::SelectCommandRequest {
         key,
         state: String::new(),
     };
 
-    for (cmd_id, payload) in commands {
-        match cmd_id {
-            WRITE_TEXT => {
-                let state: Text = borsh::from_slice(&payload)?;
+    for comp in comps {
+        use Component::*;
+        match comp {
+            Text(state) => {
                 req.state = state;
             }
 
-            DESELECT_ENTITY | END_TRANSACTION => {
-                unreachable!();
-            }
-
-            _ => {
-                println!("Select got unexpected command {cmd_id} during transaction. Skipping..");
+            comp => {
+                println!("Select got unexpected component '{comp:?}' during transaction. Skipping..");
             }
         }
     }
