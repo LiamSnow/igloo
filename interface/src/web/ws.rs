@@ -1,21 +1,20 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::From;
-
 use crate::{
     Component,
     query::{DeviceSnapshot, FloeSnapshot, GroupSnapshot},
     web::dash::Dashboard,
 };
+use bincode::{Decode, Encode};
+use derive_more::From;
 
 /// WASM -> Igloo
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
+#[derive(Debug, Clone, Encode, Decode, From)]
 pub enum ClientMessage {
     // ExecSetQuery(SetQuery),
     Init,
     GetPageData(ClientPage),
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
+#[derive(Debug, Clone, Encode, Decode, From)]
 pub enum ClientPage {
     Dashboard(Option<String>),
     Tree,
@@ -24,7 +23,7 @@ pub enum ClientPage {
 }
 
 /// Igloo -> WASM
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
+#[derive(Debug, Clone, Encode, Decode, From)]
 pub enum ServerMessage {
     Dashboards(Vec<DashboardMeta>),
     Dashboard(Option<String>, Box<Dashboard>),
@@ -32,20 +31,20 @@ pub enum ServerMessage {
     ElementUpdate(ElementUpdate),
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
+#[derive(Debug, Clone, Encode, Decode, From)]
 pub struct DashboardMeta {
     pub id: String,
     pub display_name: String,
     pub is_default: bool,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct ElementUpdate {
     pub watch_id: u32,
     pub value: Component,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From)]
+#[derive(Debug, Clone, Encode, Decode, From)]
 pub struct GlobalSnapshot {
     pub floes: Vec<FloeSnapshot>,
     pub groups: Vec<GroupSnapshot>,

@@ -1,11 +1,11 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use bincode::{Decode, Encode};
 use derive_more::Display;
 use std::{
     ops::{Add, Div, Mul, Sub},
     str::FromStr,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("#{:02x}{:02x}{:02x}", (self.r * 255.0) as u8, (self.g * 255.0) as u8, (self.b * 255.0) as u8)]
 pub struct IglooColor {
@@ -17,7 +17,7 @@ pub struct IglooColor {
     pub b: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{year:04}-{month:02}-{day:02}")]
 pub struct IglooDate {
@@ -26,7 +26,7 @@ pub struct IglooDate {
     pub day: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{hour:02}:{minute:02}:{second:02}")]
 pub struct IglooTime {

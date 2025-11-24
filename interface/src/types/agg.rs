@@ -1,7 +1,7 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use bincode::{Decode, Encode};
 use derive_more::Display;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Encode, Decode)]
 pub enum AggregationOp {
     #[display("mean")]
     Mean,

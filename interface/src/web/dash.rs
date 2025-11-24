@@ -1,15 +1,13 @@
-use std::collections::HashMap;
-
-use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::{Display, From};
-
 use crate::{Component, query::Query};
+use bincode::{Decode, Encode};
+use derive_more::{Display, From};
+use std::collections::HashMap;
 
 // TODO we need to experiment with different systems
 // for sizing, margins, and padding. For now we will
 // leave that off
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Dashboard {
     pub display_name: String,
     pub child: DashElement,
@@ -17,7 +15,7 @@ pub struct Dashboard {
     pub idx: Option<u16>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, From, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, From, PartialEq)]
 pub enum DashElement {
     Custom(CustomElement),
     If(IfElement),
@@ -56,41 +54,41 @@ pub enum DashElement {
 /// Custom element, defined in Ron
 /// To aid users easily making composable
 /// Dashboards
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct CustomElementDefn {
     pub(super) name: String,
     pub(super) children: Vec<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct DashBinding {
     pub name: String,
     pub query: Query,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct CustomElement {
     pub name: String,
     pub binding_mods: HashMap<String, Query>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct IfElement {
     pub condition: Expr,
     pub then: Vec<DashElement>,
     pub r#else: Vec<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct RepeatElement {
     pub count: Expr,
     pub each: Vec<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ForEachElement {}
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct HStackElement {
     pub justify: HAlign,
     pub align: VAlign, // TODO this right?
@@ -98,7 +96,7 @@ pub struct HStackElement {
     pub children: Vec<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct VStackElement {
     pub justify: VAlign,
     pub align: HAlign,
@@ -106,18 +104,18 @@ pub struct VStackElement {
     pub children: Vec<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct TabsElement {
     pub pages: HashMap<String, Vec<DashElement>>,
 }
 
 /// make a badge with `Card(HStack { children: [..] })`
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct CardElement {
     pub child: Box<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct SwitchElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -130,7 +128,7 @@ pub struct SwitchElement {
     // TODO variant?
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct CheckboxElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -143,7 +141,7 @@ pub struct CheckboxElement {
     // TODO variant?
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ToggleButtonElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -156,7 +154,7 @@ pub struct ToggleButtonElement {
     // TODO variant?
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct IconElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -168,7 +166,7 @@ pub struct IconElement {
     pub size: Size,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ButtonElement {
     /// calls a ::Set query with ComponentType::Trigger
     // TODO should also be able to run Penguin script
@@ -180,7 +178,7 @@ pub struct ButtonElement {
     pub children: Vec<DashElement>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct TextElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -191,7 +189,7 @@ pub struct TextElement {
     pub size: Size,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct TextInputElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -206,7 +204,7 @@ pub struct TextInputElement {
     pub multi_line: bool,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct NumberInputElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -221,7 +219,7 @@ pub struct NumberInputElement {
     pub disable_validation: bool,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct TimePickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -229,7 +227,7 @@ pub struct TimePickerElement {
     pub binding: DashBinding,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct DatePickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -237,7 +235,7 @@ pub struct DatePickerElement {
     pub binding: DashBinding,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct DateTimePickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -245,7 +243,7 @@ pub struct DateTimePickerElement {
     pub binding: DashBinding,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct DurationPickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -253,7 +251,7 @@ pub struct DurationPickerElement {
     pub binding: DashBinding,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct WeekdayPickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -265,7 +263,7 @@ pub struct WeekdayPickerElement {
 }
 
 // TODO orientation??
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct SliderElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -281,7 +279,7 @@ pub struct SliderElement {
     pub step: Option<f32>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ColorPickerElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -290,7 +288,7 @@ pub struct ColorPickerElement {
     pub variant: ColorPickerVariant,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct TextSelectElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -302,7 +300,7 @@ pub struct TextSelectElement {
     pub variant: SelectVariant,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ModeSelectElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -314,7 +312,7 @@ pub struct ModeSelectElement {
     pub variant: SelectVariant,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct CustomSelectElement {
     /// DO NOT SAVE
     /// Will be set by Igloo Server
@@ -326,32 +324,32 @@ pub struct CustomSelectElement {
 }
 
 /// filler for now
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ChartElement {}
 
 /// filler for now
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct TableElement {}
 
 /// filler for now
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct VideoFeedElement {}
 
 /// filler for now
 /// should be able to link to internal pages (other dashboards)
 /// and external links
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct LinkElement {}
 
 /// filler for now
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct ImageElement {}
 
 /// filler for now
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub struct CollapsableElement {}
 
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Encode, Decode, PartialEq)]
 pub enum ColorPickerVariant {
     /// hue/saturation circle
     #[default]
@@ -372,7 +370,7 @@ pub enum ColorPickerVariant {
     Square,
 }
 
-#[derive(Debug, Clone, Default, Display, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Display, Encode, Decode, PartialEq)]
 pub enum SelectVariant {
     Dropdown,
     #[default]
@@ -380,7 +378,7 @@ pub enum SelectVariant {
     Radio,
 }
 
-#[derive(Debug, Clone, Default, Display, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Display, Encode, Decode, PartialEq)]
 pub enum ButtonVariant {
     #[default]
     #[display("normal")]
@@ -399,7 +397,7 @@ pub enum ButtonVariant {
     // buttons outlined or something
 }
 
-#[derive(Debug, Clone, Default, Display, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Display, Encode, Decode, PartialEq)]
 pub enum Size {
     #[display("xsmall")]
     XSmall,
@@ -414,7 +412,7 @@ pub enum Size {
     XLarge,
 }
 
-#[derive(Debug, Clone, Display, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Display, Encode, Decode, PartialEq)]
 pub enum HAlign {
     #[display("flex-start")]
     Start,
@@ -430,7 +428,7 @@ pub enum HAlign {
     SpaceEvenly,
 }
 
-#[derive(Debug, Clone, Display, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Display, Encode, Decode, PartialEq)]
 pub enum VAlign {
     #[display("flex-start")]
     Start,
@@ -442,7 +440,7 @@ pub enum VAlign {
     Stretch,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub enum Primitive {
     Int(i64),
     Float(f64),
@@ -450,7 +448,7 @@ pub enum Primitive {
     String(String),
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq)]
 pub enum Expr {
     Primitive(Primitive),
     Query(DashBinding),
@@ -461,7 +459,7 @@ pub enum Expr {
     Neg(Box<Expr>),
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Encode, Decode, PartialEq, Eq)]
 pub enum Opcode {
     Add,
     Sub,

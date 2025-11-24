@@ -1,18 +1,15 @@
+use bincode::{Decode, Encode};
+use derive_more::Display;
 use std::str::FromStr;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::Display;
-
 /// persistent
-#[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, BorshSerialize, BorshDeserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(\"{_0}\")")]
 pub struct FloeID(pub String);
 
 /// ephemeral
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(#{_0})")]
 pub struct FloeRef(pub usize);
@@ -28,8 +25,8 @@ pub struct FloeRef(pub usize);
     Ord,
     Hash,
     Display,
-    BorshSerialize,
-    BorshDeserialize,
+    bincode::Encode,
+    bincode::Decode,
 )]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Device({}:{})", self.index(), self.generation())]
@@ -46,8 +43,8 @@ pub struct DeviceID(u64);
     Ord,
     Hash,
     Display,
-    BorshSerialize,
-    BorshDeserialize,
+    bincode::Encode,
+    bincode::Decode,
 )]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Group({}:{})", self.index(), self.generation())]

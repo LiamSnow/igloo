@@ -4,7 +4,7 @@ use crate::{
     query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
     types::{agg::AggregationOp, compare::ComparisonOp, math::MathOp},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use bincode::{Decode, Encode};
 use rustc_hash::FxHashSet;
 
 // TODO if we make a Pyo3 rust python library for Floes, we should
@@ -24,7 +24,7 @@ use rustc_hash::FxHashSet;
 // FUTURE IDEAS:
 //  4. temporal queries: values & agg (ex. mean of last month)
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum Query {
     Floe(FloeQuery),
     Group(GroupQuery),
@@ -33,14 +33,14 @@ pub enum Query {
     Component(ComponentQuery),
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub struct FloeQuery {
     pub id: IDFilter<FloeID>,
     pub action: FloeAction,
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum FloeAction {
     GetId,
     Snapshot,
@@ -52,14 +52,14 @@ pub enum FloeAction {
     Inherit,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub struct GroupQuery {
     pub id: IDFilter<GroupID>,
     pub action: GroupAction,
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum GroupAction {
     GetId,
     Snapshot,
@@ -71,14 +71,14 @@ pub enum GroupAction {
     Inherit,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub struct DeviceQuery {
     pub filter: DeviceFilter,
     pub action: DeviceAction,
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum DeviceAction {
     GetId,
     /// true=include entity snapshots
@@ -95,7 +95,7 @@ pub enum DeviceAction {
     Inherit,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub struct EntityQuery {
     pub device_filter: DeviceFilter,
     pub entity_filter: EntityFilter,
@@ -103,7 +103,7 @@ pub struct EntityQuery {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum EntityAction {
     Snapshot,
     ObserveComponentPut,
@@ -112,7 +112,7 @@ pub enum EntityAction {
     // entities dont attach
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub struct ComponentQuery {
     pub device_filter: DeviceFilter,
     pub entity_filter: EntityFilter,
@@ -125,7 +125,7 @@ pub struct ComponentQuery {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum ComponentAction {
     GetValue,
     ObserveValue,
@@ -138,15 +138,15 @@ pub enum ComponentAction {
     Inherit,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
-pub enum IDFilter<T: PartialEq + BorshSerialize + BorshDeserialize> {
+#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
+pub enum IDFilter<T> {
     #[default]
     Any,
     Id(T),
     IdIn(Vec<T>),
 }
 
-#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 pub struct DeviceFilter {
     pub id: IDFilter<DeviceID>,
     pub owner: IDFilter<FloeID>,
@@ -158,7 +158,7 @@ pub struct DeviceFilter {
     pub last_update: Option<(ComparisonOp, usize)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 pub enum DeviceGroupFilter {
     #[default]
     Any,
@@ -167,7 +167,7 @@ pub enum DeviceGroupFilter {
     InAllGroups(Vec<GroupID>),
 }
 
-#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 pub struct EntityFilter {
     pub name: NameFilter,
 
@@ -181,7 +181,7 @@ pub struct EntityFilter {
     pub last_update: Option<(ComparisonOp, usize)>,
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum TypeFilter {
     With(ComponentType),
     Without(ComponentType),
@@ -190,7 +190,7 @@ pub enum TypeFilter {
     Not(Box<TypeFilter>),
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum ValueFilter {
     If(ComparisonOp, Component),
     And(Vec<ValueFilter>),
@@ -198,7 +198,7 @@ pub enum ValueFilter {
     Not(Box<ValueFilter>),
 }
 
-#[derive(Debug, Clone, PartialEq, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 pub enum NameFilter {
     #[default]
     Any,
@@ -207,7 +207,7 @@ pub enum NameFilter {
     NameMatches(String),
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum QueryResult {
     /// For Put, Set, Apply
     Ok,
@@ -231,7 +231,7 @@ pub enum QueryResult {
     Count(usize),
 }
 
-#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum QueryResultType {
     Ok,
 

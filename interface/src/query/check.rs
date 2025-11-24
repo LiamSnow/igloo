@@ -118,14 +118,14 @@ impl Query {
                             return Err(ERR::ValueTypeMismatch(it_2, it));
                         }
 
-                        R::Ok
+                        R::Count
                     }
                     C::Apply(op) => {
                         if !op.can_eval(&it) {
                             return Err(ERR::OperationNotApplicable(it));
                         }
 
-                        R::Ok
+                        R::Count
                     }
                     C::Count | C::Inherit => unreachable!(),
                 }

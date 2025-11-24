@@ -3,7 +3,7 @@ use crate::{
     id::{DeviceID, FloeID, GroupID},
     query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use bincode::{Decode, Encode};
 use derive_more::Display;
 
 pub mod agg;
@@ -33,7 +33,7 @@ pub type DeviceSnapshotList = Vec<DeviceSnapshot>;
 pub type GroupSnapshotList = Vec<GroupSnapshot>;
 pub type EntitySnapshotList = Vec<EntitySnapshot>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 pub enum IglooType {
     #[display("Integer")]
@@ -131,7 +131,7 @@ pub static IGLOO_TYPES: [IglooType; 28] = [
     IglooType::EntitySnapshotList,
 ];
 
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 pub enum IglooValue {
     #[display("{_0}")]

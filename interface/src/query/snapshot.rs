@@ -1,13 +1,12 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use derive_more::Display;
-use rustc_hash::FxHashSet;
-
 use crate::{
     Component,
     id::{DeviceID, FloeID, FloeRef, GroupID},
 };
+use bincode::{Decode, Encode};
+use derive_more::Display;
+use rustc_hash::FxHashSet;
 
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{id}{{name={name},devices=[..]}}")]
 pub struct GroupSnapshot {
@@ -16,7 +15,7 @@ pub struct GroupSnapshot {
     pub devices: FxHashSet<DeviceID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{id}{{ref={fref},msc={max_supported_component}}}")]
 pub struct FloeSnapshot {
@@ -26,7 +25,7 @@ pub struct FloeSnapshot {
     pub devices: Vec<DeviceID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("{id}{{name={name},owner={owner},owner_ref={owner_ref:?},entities=[..],groups=[..]}}")]
 pub struct DeviceSnapshot {
@@ -38,7 +37,7 @@ pub struct DeviceSnapshot {
     pub groups: FxHashSet<GroupID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Entity{{name={name},index={index},components=[..]}}")]
 pub struct EntitySnapshot {

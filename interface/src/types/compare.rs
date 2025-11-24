@@ -1,9 +1,8 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::types::{IglooType, IglooValue, cast::CastDirection};
+use bincode::{Decode, Encode};
 use derive_more::Display;
 
-use crate::types::{IglooType, IglooValue, cast::CastDirection};
-
-#[derive(Debug, Clone, PartialEq, Display, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
 pub enum ComparisonOp {
     #[display("==")]
     Eq,
