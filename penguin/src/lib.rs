@@ -1,13 +1,13 @@
 extern crate console_error_panic_hook;
 use crate::app::APP;
 use igloo_interface::{
-    IglooType, IglooValue,
     penguin::{
         NodeInputFeatureID, PenguinNodeDefnRef, PenguinPinID, PenguinPinType,
         graph::{
             PenguinGraph, PenguinInputValue, PenguinNode, PenguinNodeID, PenguinWire, PenguinWireID,
         },
     },
+    types::{IglooType, IglooValue},
 };
 use log::Level;
 use std::{collections::HashMap, panic};

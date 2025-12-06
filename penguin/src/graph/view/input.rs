@@ -1,6 +1,6 @@
 use igloo_interface::{
-    IglooType,
     penguin::{NodeInputFeatureID, NodeInputType, PenguinPinID, graph::PenguinNodeID},
+    types::IglooType,
 };
 
 use crate::dom::{self, Input, TextArea, events::EventTarget, node::DomNode};
