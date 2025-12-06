@@ -24,6 +24,9 @@ rand = "0.9.2"
 kanal = "0.1.1"
 
 
+[dev-dependencies]
+criterion = { version = "0.7.0", features = ["html_reports"] }
+
 [profile.release]
 opt-level = 3
 lto = "fat"
@@ -31,9 +34,6 @@ codegen-units = 1
 debug = true
 # strip = true
 panic = "abort"
-
-[dev-dependencies]
-criterion = { version = "0.7.0", features = ["html_reports"] }
 
 [profile.bench]
 debug = true

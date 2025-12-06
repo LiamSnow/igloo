@@ -1,18 +1,30 @@
 use bincode::{Decode, Encode};
 use derive_more::Display;
+use std::fmt;
+use std::hash::Hash;
 use std::str::FromStr;
 
 /// persistent
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(\"{_0}\")")]
+#[repr(transparent)]
 pub struct FloeID(pub String);
 
 /// ephemeral
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(#{_0})")]
+#[repr(transparent)]
 pub struct FloeRef(pub usize);
+
+/// ephemeral
+// TODO actually use this
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
+#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[display("Entity(#{_0})")]
+#[repr(transparent)]
+pub struct EntityRef(pub usize);
 
 /// persistent
 #[derive(
@@ -30,6 +42,7 @@ pub struct FloeRef(pub usize);
 )]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Device({}:{})", self.index(), self.generation())]
+#[repr(transparent)]
 pub struct DeviceID(u64);
 
 /// persistent
@@ -48,49 +61,69 @@ pub struct DeviceID(u64);
 )]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Group({}:{})", self.index(), self.generation())]
+#[repr(transparent)]
 pub struct GroupID(u64);
 
-impl GroupID {
+pub trait GenerationalID: Copy + Eq + Hash + fmt::Display + fmt::Debug {
+    fn from_parts(index: u32, generation: u32) -> Self;
+    fn from_comb(c: u64) -> Self;
+    fn index(&self) -> u32;
+    fn generation(&self) -> u32;
+    fn take(self) -> u64;
+}
+
+impl GenerationalID for GroupID {
     #[inline]
-    pub fn from_parts(index: u32, generation: u32) -> Self {
+    fn from_parts(index: u32, generation: u32) -> Self {
         let packed = (index as u64) | ((generation as u64) << 32);
         GroupID(packed)
     }
 
     #[inline]
-    pub fn index(&self) -> u32 {
+    fn from_comb(c: u64) -> Self {
+        GroupID(c)
+    }
+
+    #[inline]
+    fn index(&self) -> u32 {
         self.0 as u32
     }
 
     #[inline]
-    pub fn generation(&self) -> u32 {
+    fn generation(&self) -> u32 {
         (self.0 >> 32) as u32
+    }
+
+    #[inline]
+    fn take(self) -> u64 {
+        self.0
     }
 }
 
-impl DeviceID {
+impl GenerationalID for DeviceID {
     #[inline]
-    pub fn from_parts(index: u32, generation: u32) -> Self {
+    fn from_parts(index: u32, generation: u32) -> Self {
         let packed = (index as u64) | ((generation as u64) << 32);
         DeviceID(packed)
     }
 
     #[inline]
-    pub fn from_comb(c: u64) -> Self {
+    fn from_comb(c: u64) -> Self {
         DeviceID(c)
     }
 
     #[inline]
-    pub fn index(&self) -> u32 {
+    fn index(&self) -> u32 {
         self.0 as u32
     }
 
     #[inline]
-    pub fn generation(&self) -> u32 {
+    fn generation(&self) -> u32 {
         (self.0 >> 32) as u32
     }
 
-    pub fn take(self) -> u64 {
+    #[inline]
+    fn take(self) -> u64 {
         self.0
     }
 }

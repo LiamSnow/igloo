@@ -1,4 +1,4 @@
-use crate::tree::{DeviceTree, Group};
+use crate::tree::{DeviceTree, Group, arena::Entry};
 use igloo_interface::{id::GroupID, query::IDFilter};
 use std::ops::ControlFlow;
 
@@ -31,8 +31,8 @@ where
             ControlFlow::Continue(())
         }
         IDFilter::Any => {
-            for group in tree.groups() {
-                let Some(group) = group else {
+            for group in tree.groups().items() {
+                let Entry::Occupied { value: group, .. } = group else {
                     continue;
                 };
                 f(group)?;

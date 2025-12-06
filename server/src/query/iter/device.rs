@@ -1,4 +1,4 @@
-use crate::tree::{Device, DeviceTree};
+use crate::tree::{Device, DeviceTree, arena::Entry};
 use igloo_interface::{
     id::{DeviceID, FloeID},
     query::{DeviceFilter, DeviceGroupFilter, IDFilter, TypeFilter},
@@ -232,8 +232,8 @@ where
     }
 
     // worst case we have to full scan
-    for device in tree.devices() {
-        let Some(device) = device else {
+    for device in tree.devices().items() {
+        let Entry::Occupied { value: device, .. } = device else {
             continue;
         };
 

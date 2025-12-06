@@ -9,19 +9,18 @@ use smallvec::SmallVec;
 use std::time::Instant;
 use tokio::task::JoinHandle;
 
+use crate::tree::arena::Arena;
+
 pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
 
 /// Root
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DeviceTree {
-    pub(super) groups: Vec<Option<Group>>,
+    pub(super) groups: Arena<GroupID, Group>,
     pub(super) attached_floes: Vec<Option<Floe>>,
     pub(super) floe_ref_lut: FxHashMap<FloeID, FloeRef>,
-    pub(super) devices: Vec<Option<Device>>,
-
-    pub(super) group_generation: u32,
-    pub(super) device_generation: u32,
+    pub(super) devices: Arena<DeviceID, Device>,
 }
 
 /// Connected Floe
@@ -87,13 +86,9 @@ pub struct Entity {
 #[derive(thiserror::Error, Debug)]
 pub enum TreeIDError {
     #[error("Device {0} does not exist")]
-    DeviceNotExistant(DeviceID),
-    #[error("Device {0} is a stale reference. It was deleted and something else replaced it.")]
-    DeviceStale(DeviceID),
+    DeviceDeleted(DeviceID),
     #[error("Group {0} does not exist")]
-    GroupNotExistant(GroupID),
-    #[error("Group {0} is a stale reference. It was deleted and something else replaced it.")]
-    GroupStale(GroupID),
+    GroupDeleted(GroupID),
     /// Really really shouldn't happen
     #[error("Floe Reference {0} is invalid, because the Floe has detached.")]
     FloeDetached(FloeRef),
@@ -108,59 +103,42 @@ impl DeviceTree {
         &self.attached_floes
     }
 
-    pub fn groups(&self) -> &Vec<Option<Group>> {
+    pub fn groups(&self) -> &Arena<GroupID, Group> {
         &self.groups
     }
 
-    pub fn devices(&self) -> &Vec<Option<Device>> {
+    pub fn devices(&self) -> &Arena<DeviceID, Device> {
         &self.devices
     }
 
     /// Gets & Validates from DeviceID
     #[inline]
     pub fn device(&self, did: &DeviceID) -> Result<&Device, TreeIDError> {
-        let index = did.index() as usize;
-        match self.devices.get(index).and_then(|o| o.as_ref()) {
-            Some(d) if d.id.generation() == did.generation() => Ok(d),
-            Some(_) => Err(TreeIDError::DeviceStale(*did)),
-            None => Err(TreeIDError::DeviceNotExistant(*did)),
-        }
+        self.devices
+            .get(did)
+            .ok_or(TreeIDError::DeviceDeleted(*did))
     }
 
     /// Gets & Validates from DeviceID
     #[inline]
     pub fn device_mut(&mut self, did: &DeviceID) -> Result<&mut Device, TreeIDError> {
-        let index = did.index() as usize;
-        match self.devices.get_mut(index).and_then(|o| o.as_mut()) {
-            Some(d) if d.id.generation() == did.generation() => Ok(d),
-            Some(_) => Err(TreeIDError::DeviceStale(*did)),
-            None => Err(TreeIDError::DeviceNotExistant(*did)),
-        }
+        self.devices
+            .get_mut(did)
+            .ok_or(TreeIDError::DeviceDeleted(*did))
     }
 
     /// Gets & Validates from GroupID
     #[inline]
     pub fn group(&self, gid: &GroupID) -> Result<&Group, TreeIDError> {
-        match self
-            .groups
-            .get(gid.index() as usize)
-            .and_then(|o| o.as_ref())
-        {
-            Some(g) if g.id.generation() == gid.generation() => Ok(g),
-            Some(_) => Err(TreeIDError::GroupStale(*gid)),
-            None => Err(TreeIDError::GroupNotExistant(*gid)),
-        }
+        self.groups.get(gid).ok_or(TreeIDError::GroupDeleted(*gid))
     }
 
     /// Gets & Validates from GroupID
     #[inline]
     pub(super) fn group_mut(&mut self, gid: &GroupID) -> Result<&mut Group, TreeIDError> {
-        let index = gid.index() as usize;
-        match self.groups.get_mut(index).and_then(|o| o.as_mut()) {
-            Some(g) if g.id.generation() == gid.generation() => Ok(g),
-            Some(_) => Err(TreeIDError::GroupStale(*gid)),
-            None => Err(TreeIDError::GroupNotExistant(*gid)),
-        }
+        self.groups
+            .get_mut(gid)
+            .ok_or(TreeIDError::GroupDeleted(*gid))
     }
 
     #[inline]

@@ -1,6 +1,6 @@
 use super::{Device, DeviceTree, Group};
-use crate::tree::{COMP_TYPE_ARR_LEN, Presense};
-use igloo_interface::id::{DeviceID, FloeID, GroupID};
+use crate::tree::{COMP_TYPE_ARR_LEN, Presense, arena::Arena};
+use igloo_interface::id::{DeviceID, FloeID, GenerationalID, GroupID};
 use ini::Ini;
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use smallvec::SmallVec;
@@ -23,8 +23,13 @@ pub const DEVICES_FILE: &str = "devices.ini";
 pub enum TreePersistError {
     #[error("File system error: {0}")]
     FileSystem(#[from] std::io::Error),
-    #[error("Ini parse error error: {0}")]
+    #[error("Ini parse error: {0}")]
     IniParse(#[from] ini::ParseError),
+
+    #[error("Missing generation field at top of file")]
+    MissingGlobalGeneration,
+    #[error("Bad global generation field. Expected Integer. Error: {0}")]
+    BadGlobalGeneration(ParseIntError),
 
     #[error("Bad Group Index: '{0}'. Expected Integer. Error: {1}")]
     GroupBadIndex(String, ParseIntError),
@@ -32,7 +37,7 @@ pub enum TreePersistError {
     GroupMissingName(usize),
     #[error("Group #{0} '{1}' missing generation field")]
     GroupMissingGeneration(usize, String),
-    #[error("Group #{0} '{1}' has bad generation field. Expected Integer. Error: {1}")]
+    #[error("Group #{0} '{1}' has bad generation field. Expected Integer. Error: {2}")]
     GroupBadGeneration(usize, String, ParseIntError),
     #[error("Group #{0} '{1}''s device {2} missing index part. Expected 'idx:generation'")]
     GroupDeviceMissingIndex(usize, String, String),
@@ -64,27 +69,12 @@ impl DeviceTree {
         let groups = Self::load_groups()?;
         let devices = Self::load_devices()?;
 
-        let group_generation = groups
-            .iter()
-            .filter_map(|g| g.as_ref().map(|g| g.id.generation()))
-            .max()
-            .unwrap_or(0);
-
-        let device_generation = devices
-            .iter()
-            .filter_map(|d| d.as_ref().map(|d| d.id.generation()))
-            .max()
-            .unwrap_or(0);
-
         // put groups on devices
         let mut devices = devices;
-        for g in groups.iter().flatten() {
-            for did in &g.devices {
-                if let Some(device) = devices
-                    .get_mut(did.index() as usize)
-                    .and_then(|d| d.as_mut())
-                {
-                    device.groups.insert(g.id);
+        for group in groups.iter() {
+            for did in &group.devices {
+                if let Some(device) = devices.get_mut(did) {
+                    device.groups.insert(group.id);
                 }
             }
         }
@@ -92,27 +82,35 @@ impl DeviceTree {
         Ok(Self {
             groups,
             devices,
-            group_generation,
-            device_generation,
-            ..Default::default()
+            attached_floes: Vec::with_capacity(10),
+            floe_ref_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
         })
     }
 
-    fn load_groups() -> Result<Vec<Option<Group>>, TreePersistError> {
+    fn load_groups() -> Result<Arena<GroupID, Group>, TreePersistError> {
         if !fs::exists(GROUPS_FILE)? {
-            return Ok(Vec::with_capacity(50));
+            return Ok(Arena::with_capacity(50));
         }
 
         let content = fs::read_to_string(GROUPS_FILE)?;
         let ini = Ini::load_from_str(&content)?;
 
+        // read global generation
+        let global_gen = ini
+            .general_section()
+            .get("generation")
+            .ok_or(TreePersistError::MissingGlobalGeneration)?
+            .parse::<u32>()
+            .map_err(TreePersistError::BadGlobalGeneration)?;
+
+        // find max index to preallocate
         let max_idx = ini
             .sections()
             .filter_map(|s| s?.parse::<usize>().ok())
             .max()
             .unwrap_or(0);
 
-        let mut groups = vec![None; (max_idx + 1).max(50)];
+        let mut arena = Arena::with_preallocated_slots(max_idx, global_gen);
 
         for section in ini.sections() {
             let Some(idx_str) = section else { continue };
@@ -192,31 +190,44 @@ impl DeviceTree {
             };
 
             let id = GroupID::from_parts(group_idx as u32, group_gen);
-            groups[group_idx] = Some(Group {
+            let group = Group {
                 id,
                 name: group_name,
                 devices,
-            });
+            };
+
+            arena
+                .insert_at(id, group)
+                .expect("failed to insert group during load");
         }
 
-        Ok(groups)
+        Ok(arena)
     }
 
-    fn load_devices() -> Result<Vec<Option<Device>>, TreePersistError> {
+    fn load_devices() -> Result<Arena<DeviceID, Device>, TreePersistError> {
         if !fs::exists(DEVICES_FILE)? {
-            return Ok(Vec::with_capacity(200));
+            return Ok(Arena::with_capacity(200));
         }
 
         let content = fs::read_to_string(DEVICES_FILE)?;
         let ini = Ini::load_from_str(&content)?;
 
+        // read global generation
+        let global_gen = ini
+            .general_section()
+            .get("generation")
+            .ok_or(TreePersistError::MissingGlobalGeneration)?
+            .parse::<u32>()
+            .map_err(TreePersistError::BadGlobalGeneration)?;
+
+        // find max index to preallocate
         let max_idx = ini
             .sections()
             .filter_map(|s| s?.parse::<usize>().ok())
             .max()
             .unwrap_or(0);
 
-        let mut devices = vec![None; (max_idx + 1).max(200)];
+        let mut arena = Arena::with_preallocated_slots(max_idx, global_gen);
 
         for section in ini.sections() {
             let Some(idx_str) = section else { continue };
@@ -247,8 +258,7 @@ impl DeviceTree {
             );
 
             let id = DeviceID::from_parts(device_idx as u32, device_gen);
-            // FIXME add device new function plz
-            devices[device_idx] = Some(Device {
+            let device = Device {
                 id,
                 name: device_name,
                 owner,
@@ -259,17 +269,27 @@ impl DeviceTree {
                 entity_index_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
                 last_updated: Instant::now(),
                 comp_to_entity: [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN],
-            });
+            };
+
+            arena
+                .insert_at(id, device)
+                .expect("failed to insert device during load");
         }
 
-        Ok(devices)
+        Ok(arena)
     }
 
     pub(super) fn save_groups(&self) -> Result<(), TreePersistError> {
         let mut ini = Ini::new();
 
-        for (idx, group) in self.groups.iter().enumerate() {
-            let Some(group) = group else { continue };
+        // write global generation at top
+        ini.with_general_section()
+            .set("generation", self.groups.generation().to_string());
+
+        for (idx, entry) in self.groups.items().iter().enumerate() {
+            let Some(group) = entry.value() else {
+                continue;
+            };
 
             ini.with_section(Some(idx.to_string()))
                 .set("name", &group.name)
@@ -295,8 +315,14 @@ impl DeviceTree {
     pub(super) fn save_devices(&self) -> Result<(), TreePersistError> {
         let mut ini = Ini::new();
 
-        for (idx, device) in self.devices.iter().enumerate() {
-            let Some(device) = device else { continue };
+        // write global generation at top
+        ini.with_general_section()
+            .set("generation", self.devices.generation().to_string());
+
+        for (idx, entry) in self.devices.items().iter().enumerate() {
+            let Some(device) = entry.value() else {
+                continue;
+            };
 
             ini.with_section(Some(idx.to_string()))
                 .set("name", &device.name)

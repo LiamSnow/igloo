@@ -61,7 +61,6 @@ impl DeviceTree {
         let devices = self
             .devices
             .iter()
-            .filter_map(|d| d.as_ref())
             .filter(|d| d.owner == id)
             .map(|d| d.id)
             .collect();
@@ -89,11 +88,9 @@ impl DeviceTree {
         });
 
         // link devices owned by this Floe
-        for device in &mut self.devices {
-            if let Some(d) = device.as_mut()
-                && d.owner == id
-            {
-                d.owner_ref = Some(fref);
+        for device in self.devices.iter_mut() {
+            if device.owner == id {
+                device.owner_ref = Some(fref);
             }
         }
 
@@ -118,11 +115,9 @@ impl DeviceTree {
         self.floe_ref_lut.remove(fid);
 
         // unlink devices
-        for device in &mut self.devices {
-            if let Some(d) = device.as_mut()
-                && d.owner_ref == Some(fref)
-            {
-                d.owner_ref = None;
+        for device in self.devices.iter_mut() {
+            if device.owner_ref == Some(fref) {
+                device.owner_ref = None;
             }
         }
 
@@ -146,7 +141,7 @@ impl DeviceTree {
         let floe = self.floe(&owner)?;
 
         // FIXME add device new function plz
-        let mut device = Device {
+        let device = Device {
             id: DeviceID::default(),
             name,
             owner: floe.id.clone(),
@@ -159,21 +154,8 @@ impl DeviceTree {
             comp_to_entity: [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN],
         };
 
-        let did = match self.devices.iter().position(|o| o.is_none()) {
-            Some(free_slot) => {
-                self.device_generation += 1;
-                let did = DeviceID::from_parts(free_slot as u32, self.device_generation);
-                device.id = did;
-                self.devices[free_slot] = Some(device);
-                did
-            }
-            None => {
-                let did = DeviceID::from_parts(self.devices.len() as u32, self.device_generation);
-                device.id = did;
-                self.devices.push(Some(device));
-                did
-            }
-        };
+        let did = self.devices.insert(device);
+        self.devices.get_mut(&did).unwrap().id = did;
 
         if let Some(floe) = self.attached_floes[owner.0].as_mut() {
             floe.devices.push(did);
@@ -192,10 +174,9 @@ impl DeviceTree {
         engine: &mut QueryEngine,
         did: DeviceID,
     ) -> Result<(), IglooError> {
-        // make sure its valid first
-        self.device(&did)?;
-
-        let device = self.devices[did.index() as usize].take().unwrap();
+        let Some(device) = self.devices.remove(did) else {
+            return Err(IglooError::DeviceTreeID(TreeIDError::DeviceDeleted(did)));
+        };
 
         // remove from Floe
         if let Some(owner_ref) = device.owner_ref
@@ -314,27 +295,14 @@ impl DeviceTree {
         engine: &mut QueryEngine,
         name: String,
     ) -> Result<GroupID, IglooError> {
-        let mut group = Group {
+        let group = Group {
             id: GroupID::default(),
             name,
             devices: HashSet::with_capacity_and_hasher(10, FxBuildHasher),
         };
 
-        let gid = match self.groups.iter().position(|g| g.is_none()) {
-            Some(free_slot) => {
-                self.group_generation += 1;
-                let gid = GroupID::from_parts(free_slot as u32, self.group_generation);
-                group.id = gid;
-                self.groups[free_slot] = Some(group);
-                gid
-            }
-            None => {
-                let gid = GroupID::from_parts(self.groups.len() as u32, self.group_generation);
-                group.id = gid;
-                self.groups.push(Some(group));
-                gid
-            }
-        };
+        let gid = self.groups.insert(group);
+        self.groups.get_mut(&gid).unwrap().id = gid;
 
         self.save_groups()?;
 
@@ -347,23 +315,22 @@ impl DeviceTree {
     pub fn delete_group(
         &mut self,
         engine: &mut QueryEngine,
-        gid: &GroupID,
+        gid: GroupID,
     ) -> Result<(), IglooError> {
-        // make sure its valid first
-        self.group(gid)?;
-
-        let group = self.groups[gid.index() as usize].take().unwrap();
+        let Some(group) = self.groups.remove(gid) else {
+            return Err(IglooError::DeviceTreeID(TreeIDError::GroupDeleted(gid)));
+        };
 
         // remove from all devices
         for did in group.devices {
             if let Ok(device) = self.device_mut(&did) {
-                device.groups.remove(gid);
+                device.groups.remove(&gid);
             }
         }
 
         self.save_groups()?;
 
-        engine.on_group_deleted(self, gid)?;
+        engine.on_group_deleted(self, &gid)?;
 
         Ok(())
     }

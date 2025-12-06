@@ -1,3 +1,4 @@
+pub mod arena;
 pub mod model;
 pub mod mutation;
 pub mod persist;

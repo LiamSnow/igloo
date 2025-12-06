@@ -8,6 +8,7 @@ use crate::{
 };
 use igloo_interface::{
     Aggregator, Component,
+    id::GenerationalID,
     ipc::IglooMessage,
     query::{ComponentAction as A, ComponentQuery, QueryResult as R, check::QueryError},
 };
