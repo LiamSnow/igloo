@@ -109,9 +109,9 @@ impl FloeHandle {
                 }
             };
 
-            let req = IglooRequest::FloeMessage {
-                floe: self.fref,
-                msg,
+            let req = IglooRequest::HandleMessage {
+                sender: self.fref,
+                content: msg,
             };
 
             if let Err(e) = self.tx.send(req).await {

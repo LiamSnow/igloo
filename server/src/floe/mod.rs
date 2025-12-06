@@ -4,7 +4,7 @@ use crate::{
     tree::DeviceTree,
 };
 use igloo_interface::{
-    id::{DeviceID, FloeID, FloeRef},
+    id::{DeviceID, FloeID, FloeRef, GenerationalID},
     ipc::IglooMessage,
 };
 use std::{error::Error, path::Path};
