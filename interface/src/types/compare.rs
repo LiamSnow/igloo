@@ -42,10 +42,10 @@ impl ComparisonOp {
                         | (ColorList, Color)
                         | (DateList, Date)
                         | (TimeList, Time)
-                        | (FloeIDList, FloeID)
+                        | (ExtensionIDList, ExtensionID)
                         | (DeviceIDList, DeviceID)
                         | (GroupIDList, GroupID)
-                        | (FloeSnapshotList, FloeSnapshot)
+                        | (ExtensionSnapshotList, ExtensionSnapshot)
                         | (DeviceSnapshotList, DeviceSnapshot)
                         | (GroupSnapshotList, GroupSnapshot)
                         | (EntitySnapshotList, EntitySnapshot)
@@ -128,10 +128,10 @@ impl ComparisonOp {
                 (ColorList(list), Color(val)) => list.contains(val),
                 (DateList(list), Date(val)) => list.contains(val),
                 (TimeList(list), Time(val)) => list.contains(val),
-                (FloeIDList(list), FloeID(val)) => list.contains(val),
+                (ExtensionIDList(list), ExtensionID(val)) => list.contains(val),
                 (DeviceIDList(list), DeviceID(val)) => list.contains(val),
                 (GroupIDList(list), GroupID(val)) => list.contains(val),
-                (FloeSnapshotList(list), FloeSnapshot(val)) => list.contains(val),
+                (ExtensionSnapshotList(list), ExtensionSnapshot(val)) => list.contains(val),
                 (DeviceSnapshotList(list), DeviceSnapshot(val)) => list.contains(val),
                 (GroupSnapshotList(list), GroupSnapshot(val)) => list.contains(val),
                 (EntitySnapshotList(list), EntitySnapshot(val)) => list.contains(val),

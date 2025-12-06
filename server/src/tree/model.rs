@@ -1,8 +1,8 @@
 use igloo_interface::{
     Component, ComponentType, MSIC,
-    id::{DeviceID, FloeID, FloeRef, GroupID},
+    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
     ipc::IWriter,
-    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot, TypeFilter},
+    query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot, TypeFilter},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
@@ -18,18 +18,18 @@ pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
 #[derive(Debug)]
 pub struct DeviceTree {
     pub(super) groups: Arena<GroupID, Group>,
-    pub(super) attached_floes: Vec<Option<Floe>>,
-    pub(super) floe_ref_lut: FxHashMap<FloeID, FloeRef>,
+    pub(super) attached_exts: Vec<Option<Extension>>,
+    pub(super) ext_ref_lut: FxHashMap<ExtensionID, ExtensionIndex>,
     pub(super) devices: Arena<DeviceID, Device>,
 }
 
-/// Connected Floe
-/// `FloeRef` is an ephemeral array index
-/// `FloeID` is the persistent name
+/// Connected Extension
+/// `ExtensionIndex` is an ephemeral array index
+/// `ExtensionID` is the persistent name
 #[derive(Debug)]
-pub struct Floe {
-    pub(super) id: FloeID,
-    pub(super) fref: FloeRef,
+pub struct Extension {
+    pub(super) id: ExtensionID,
+    pub(super) index: ExtensionIndex,
     pub writer: IWriter,
     pub(super) devices: SmallVec<[DeviceID; 50]>,
     pub(super) handle: JoinHandle<()>,
@@ -45,22 +45,21 @@ pub struct Group {
     pub(super) devices: FxHashSet<DeviceID>,
 }
 
-/// Physical Device, owned (registered & attached) by Floe
+/// Physical Device, owned (registered & attached) by Extension
 #[derive(Debug, Clone)]
 pub struct Device {
     pub(super) id: DeviceID,
     pub(super) name: String,
-    pub(super) owner: FloeID,
-    pub(super) owner_ref: Option<FloeRef>,
+    pub(super) owner: ExtensionID,
+    pub(super) owner_ref: Option<ExtensionIndex>,
     pub(super) groups: FxHashSet<GroupID>,
     /// Bitset of which component types exist on any of its entity
     pub(super) presense: Presense,
     /// ComponentType -> Entity Indexes
-    pub(super) comp_to_entity: [SmallVec<[usize; 4]>; COMP_TYPE_ARR_LEN],
+    pub(super) comp_to_entity: [SmallVec<[EntityIndex; 4]>; COMP_TYPE_ARR_LEN],
     /// Entity index -> Entity
     pub(super) entities: SmallVec<[Entity; 16]>,
-    /// Entity name -> index
-    pub(super) entity_index_lut: FxHashMap<String, usize>,
+    pub(super) entity_index_lut: FxHashMap<EntityID, EntityIndex>,
     pub(super) last_updated: Instant,
 }
 
@@ -73,9 +72,9 @@ pub struct Presense(pub [u32; COMP_TYPE_ARR_LEN.div_ceil(32)]);
 #[derive(Debug, Clone)]
 pub struct Entity {
     #[allow(dead_code)]
-    pub(super) name: String,
+    pub(super) id: EntityID,
     #[allow(dead_code)]
-    pub(super) index: usize,
+    pub(super) index: EntityIndex,
     pub(super) components: SmallVec<[Component; 8]>,
     /// Maps `ComponentType` ID -> index in `components`
     /// `0xFF` = not present
@@ -90,17 +89,17 @@ pub enum TreeIDError {
     #[error("Group {0} does not exist")]
     GroupDeleted(GroupID),
     /// Really really shouldn't happen
-    #[error("Floe Reference {0} is invalid, because the Floe has detached.")]
-    FloeDetached(FloeRef),
-    #[error("Floe Reference {0} is out of bounds. Most likely this is an internal issue.")]
-    FloeRefOutOfBounds(FloeRef),
-    #[error("Floe {0} is invalid. Maybe it isn't attached?")]
-    FloeIDInvalid(FloeID),
+    #[error("Extension Reference {0} is invalid, because the Extension has detached.")]
+    ExtensionDetached(ExtensionIndex),
+    #[error("Extension Reference {0} is out of bounds. Most likely this is an internal issue.")]
+    ExtensionRefOutOfBounds(ExtensionIndex),
+    #[error("Extension {0} is invalid. Maybe it isn't attached?")]
+    ExtensionIDInvalid(ExtensionID),
 }
 
 impl DeviceTree {
-    pub fn floes(&self) -> &Vec<Option<Floe>> {
-        &self.attached_floes
+    pub fn exts(&self) -> &Vec<Option<Extension>> {
+        &self.attached_exts
     }
 
     pub fn groups(&self) -> &Arena<GroupID, Group> {
@@ -142,33 +141,33 @@ impl DeviceTree {
     }
 
     #[inline]
-    pub fn floe(&self, fref: &FloeRef) -> Result<&Floe, TreeIDError> {
-        match self.attached_floes.get(fref.0) {
+    pub fn ext(&self, index: &ExtensionIndex) -> Result<&Extension, TreeIDError> {
+        match self.attached_exts.get(index.0) {
             Some(o) => match o.as_ref() {
                 Some(f) => Ok(f),
-                None => Err(TreeIDError::FloeDetached(*fref)),
+                None => Err(TreeIDError::ExtensionDetached(*index)),
             },
-            None => Err(TreeIDError::FloeRefOutOfBounds(*fref)),
+            None => Err(TreeIDError::ExtensionRefOutOfBounds(*index)),
         }
     }
 
     #[inline]
     #[allow(dead_code)]
-    pub fn floe_mut(&mut self, fref: &FloeRef) -> Result<&mut Floe, TreeIDError> {
-        match self.attached_floes.get_mut(fref.0) {
+    pub fn ext_mut(&mut self, index: &ExtensionIndex) -> Result<&mut Extension, TreeIDError> {
+        match self.attached_exts.get_mut(index.0) {
             Some(o) => match o.as_mut() {
                 Some(f) => Ok(f),
-                None => Err(TreeIDError::FloeDetached(*fref)),
+                None => Err(TreeIDError::ExtensionDetached(*index)),
             },
-            None => Err(TreeIDError::FloeRefOutOfBounds(*fref)),
+            None => Err(TreeIDError::ExtensionRefOutOfBounds(*index)),
         }
     }
 
     #[inline]
-    pub fn floe_ref(&self, fid: &FloeID) -> Result<&FloeRef, TreeIDError> {
-        self.floe_ref_lut
-            .get(fid)
-            .ok_or(TreeIDError::FloeIDInvalid(fid.clone()))
+    pub fn ext_index(&self, eid: &ExtensionID) -> Result<&ExtensionIndex, TreeIDError> {
+        self.ext_ref_lut
+            .get(eid)
+            .ok_or(TreeIDError::ExtensionIDInvalid(eid.clone()))
     }
 }
 
@@ -195,8 +194,8 @@ impl Default for Entity {
         Self {
             components: SmallVec::new(),
             indices: [0xFF; COMP_TYPE_ARR_LEN],
-            name: String::with_capacity(20),
-            index: usize::MAX,
+            id: EntityID(String::with_capacity(20)),
+            index: EntityIndex(usize::MAX),
             last_updated: Instant::now(),
         }
     }
@@ -204,13 +203,13 @@ impl Default for Entity {
 
 impl Entity {
     #[inline]
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn id(&self) -> &EntityID {
+        &self.id
     }
 
     #[inline]
     #[allow(dead_code)]
-    pub fn index(&self) -> &usize {
+    pub fn index(&self) -> &EntityIndex {
         &self.index
     }
 
@@ -259,7 +258,7 @@ impl Entity {
 
     pub fn snapshot(&self, parent: DeviceID) -> EntitySnapshot {
         EntitySnapshot {
-            name: self.name.clone(),
+            id: self.id.clone(),
             index: self.index,
             components: self.components.to_vec(),
             parent,
@@ -297,19 +296,19 @@ impl Device {
 
     #[inline]
     #[allow(dead_code)]
-    pub fn owner(&self) -> &FloeID {
+    pub fn owner(&self) -> &ExtensionID {
         &self.owner
     }
 
     #[inline]
     #[allow(dead_code)]
-    pub fn owner_ref(&self) -> Option<FloeRef> {
+    pub fn owner_ref(&self) -> Option<ExtensionIndex> {
         self.owner_ref
     }
 
     #[inline]
     #[allow(dead_code)]
-    pub fn entity_index(&self, eid: &str) -> Option<&usize> {
+    pub fn entity_index(&self, eid: &EntityID) -> Option<&EntityIndex> {
         self.entity_index_lut.get(eid)
     }
 
@@ -364,7 +363,7 @@ impl Device {
         }
     }
 
-    pub fn comp_to_entity(&self) -> &[SmallVec<[usize; 4]>; COMP_TYPE_ARR_LEN] {
+    pub fn comp_to_entity(&self) -> &[SmallVec<[EntityIndex; 4]>; COMP_TYPE_ARR_LEN] {
         &self.comp_to_entity
     }
 }
@@ -396,15 +395,15 @@ impl Group {
     }
 }
 
-impl Floe {
+impl Extension {
     #[inline]
-    pub fn id(&self) -> &FloeID {
+    pub fn id(&self) -> &ExtensionID {
         &self.id
     }
 
     #[inline]
-    pub fn fref(&self) -> &FloeRef {
-        &self.fref
+    pub fn index(&self) -> &ExtensionIndex {
+        &self.index
     }
 
     #[inline]
@@ -412,10 +411,10 @@ impl Floe {
         &self.devices
     }
 
-    pub fn snapshot(&self) -> FloeSnapshot {
-        FloeSnapshot {
+    pub fn snapshot(&self) -> ExtensionSnapshot {
+        ExtensionSnapshot {
             id: self.id.clone(),
-            fref: self.fref,
+            index: self.index,
             max_supported_component: self.msic,
             devices: self.devices.to_vec(),
         }

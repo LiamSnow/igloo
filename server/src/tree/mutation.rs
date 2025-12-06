@@ -3,20 +3,20 @@
 //!
 //! Has a few important things to watch for:
 //!  1. Good error handling
-//!  2. ID validation (generational and bounds checking, using .group, .device, .floe)
+//!  2. ID validation (generational and bounds checking, using .group, .device, .ext)
 //!  3. Internal side-effects (ex. updating device presence)
 //!  4. External side-effects (persistence, query engine)
 
-use super::{Device, DeviceTree, Entity, Floe, Group};
+use super::{Device, DeviceTree, Entity, Extension, Group};
 use crate::{
     core::IglooError,
-    floe::FloeHandle,
+    ext::ExtensionHandle,
     query::QueryEngine,
     tree::{COMP_TYPE_ARR_LEN, Presense, TreeIDError, persist::TreePersistError},
 };
 use igloo_interface::{
     Component,
-    id::{DeviceID, FloeID, FloeRef, GroupID},
+    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
     ipc::IWriter,
 };
 use rustc_hash::FxBuildHasher;
@@ -32,54 +32,54 @@ pub enum TreeMutationError {
     Persist(#[from] TreePersistError),
     #[error("Tree ID error: {0}")]
     ID(#[from] TreeIDError),
-    #[error("Floe {0} already attached. Cannot attach again.")]
-    FloeAlreadyAttached(FloeID),
+    #[error("Extension {0} already attached. Cannot attach again.")]
+    ExtensionAlreadyAttached(ExtensionID),
     #[error(
-        "Bad entity registration. Floe expected index={2} but is index={3}. Device={0}, Entity={1}."
+        "Bad entity registration. Extension expected index={2} but is index={3}. Device={0}, Entity={1}."
     )]
-    BadEntityRegistration(DeviceID, String, usize, usize),
+    BadEntityRegistration(DeviceID, EntityID, EntityIndex, EntityIndex),
 }
 
-// Floe Mutations
+// Extension Mutations
 impl DeviceTree {
-    pub fn attach_floe(
+    pub fn attach_ext(
         &mut self,
         engine: &mut QueryEngine,
-        mut handle: FloeHandle,
+        mut handle: ExtensionHandle,
         writer: IWriter,
-    ) -> Result<FloeRef, IglooError> {
-        let id = handle.id.clone();
+    ) -> Result<ExtensionIndex, IglooError> {
+        let xid = handle.id.clone();
         let msic = handle.msic;
         let msim = handle.msim;
 
-        if self.floe_ref_lut.contains_key(&id) {
+        if self.ext_ref_lut.contains_key(&xid) {
             return Err(IglooError::DeviceTreeMutation(
-                TreeMutationError::FloeAlreadyAttached(id),
+                TreeMutationError::ExtensionAlreadyAttached(xid),
             ))?;
         }
 
         let devices = self
             .devices
             .iter()
-            .filter(|d| d.owner == id)
+            .filter(|d| d.owner == xid)
             .map(|d| d.id)
             .collect();
 
-        let index = match self.attached_floes.iter().position(|f| f.is_none()) {
+        let xindex = match self.attached_exts.iter().position(|f| f.is_none()) {
             Some(index) => index,
             None => {
-                self.attached_floes.push(None);
-                self.attached_floes.len() - 1
+                self.attached_exts.push(None);
+                self.attached_exts.len() - 1
             }
         };
 
-        let fref = FloeRef(index);
-        handle.fref = fref;
+        let xindex = ExtensionIndex(xindex);
+        handle.index = xindex;
         let handle = handle.spawn();
 
-        self.attached_floes[index] = Some(Floe {
-            id: id.clone(),
-            fref,
+        self.attached_exts[xindex.0] = Some(Extension {
+            id: xid.clone(),
+            index: xindex,
             writer,
             devices,
             handle,
@@ -87,44 +87,44 @@ impl DeviceTree {
             msim,
         });
 
-        // link devices owned by this Floe
+        // link devices owned by this Extension
         for device in self.devices.iter_mut() {
-            if device.owner == id {
-                device.owner_ref = Some(fref);
+            if device.owner == xid {
+                device.owner_ref = Some(xindex);
             }
         }
 
-        self.floe_ref_lut.insert(id, fref);
+        self.ext_ref_lut.insert(xid, xindex);
 
-        engine.on_floe_attached(self, self.floe(&fref)?)?;
+        engine.on_ext_attached(self, self.ext(&xindex)?)?;
 
-        Ok(fref)
+        Ok(xindex)
     }
 
     #[allow(dead_code)]
-    pub fn detach_floe(
+    pub fn detach_ext(
         &mut self,
         engine: &mut QueryEngine,
-        fref: FloeRef,
+        index: ExtensionIndex,
     ) -> Result<(), IglooError> {
         // make sure valid first
-        self.floe(&fref)?;
+        self.ext(&index)?;
 
-        let floe = self.attached_floes[fref.0].take().unwrap(); // FIXME unwrap
-        let fid = &floe.id;
-        self.floe_ref_lut.remove(fid);
+        let ext = self.attached_exts[index.0].take().unwrap(); // FIXME unwrap
+        let xid = &ext.id;
+        self.ext_ref_lut.remove(xid);
 
         // unlink devices
         for device in self.devices.iter_mut() {
-            if device.owner_ref == Some(fref) {
+            if device.owner_ref == Some(index) {
                 device.owner_ref = None;
             }
         }
 
         // kill it
-        floe.handle.abort();
+        ext.handle.abort();
 
-        engine.on_floe_detached(self, &fref)?;
+        engine.on_ext_detached(self, &index)?;
 
         Ok(())
     }
@@ -136,15 +136,15 @@ impl DeviceTree {
         &mut self,
         engine: &mut QueryEngine,
         name: String,
-        owner: FloeRef,
+        owner: ExtensionIndex,
     ) -> Result<DeviceID, IglooError> {
-        let floe = self.floe(&owner)?;
+        let ext = self.ext(&owner)?;
 
         // FIXME add device new function plz
         let device = Device {
             id: DeviceID::default(),
             name,
-            owner: floe.id.clone(),
+            owner: ext.id.clone(),
             owner_ref: Some(owner),
             groups: HashSet::with_capacity_and_hasher(10, FxBuildHasher),
             presense: Presense::default(),
@@ -157,8 +157,8 @@ impl DeviceTree {
         let did = self.devices.insert(device);
         self.devices.get_mut(&did).unwrap().id = did;
 
-        if let Some(floe) = self.attached_floes[owner.0].as_mut() {
-            floe.devices.push(did);
+        if let Some(ext) = self.attached_exts[owner.0].as_mut() {
+            ext.devices.push(did);
         }
 
         self.save_devices()?;
@@ -178,12 +178,12 @@ impl DeviceTree {
             return Err(IglooError::DeviceTreeID(TreeIDError::DeviceDeleted(did)));
         };
 
-        // remove from Floe
+        // remove from ext
         if let Some(owner_ref) = device.owner_ref
-            && let Some(floe) = self.attached_floes[owner_ref.0].as_mut()
-            && let Some(pos) = floe.devices.iter().position(|d| d == &did)
+            && let Some(ext) = self.attached_exts[owner_ref.0].as_mut()
+            && let Some(pos) = ext.devices.iter().position(|d| d == &did)
         {
-            floe.devices.remove(pos);
+            ext.devices.remove(pos);
         }
 
         // remove from Groups
@@ -225,27 +225,24 @@ impl DeviceTree {
         &mut self,
         engine: &mut QueryEngine,
         did: DeviceID,
-        name: String,
-        expected_index: usize,
+        id: EntityID,
+        expected_index: EntityIndex,
     ) -> Result<(), IglooError> {
         let device = self.device_mut(&did)?;
-        let index = device.entities.len();
+        let index = EntityIndex(device.entities.len());
 
         if index != expected_index {
-            Err(TreeMutationError::BadEntityRegistration(
-                did,
-                name.clone(),
-                expected_index,
-                index,
-            ))?
+            return Err(IglooError::DeviceTreeMutation(
+                TreeMutationError::BadEntityRegistration(did, id, expected_index, index),
+            ));
         }
 
         device.entities.push(Entity {
-            name: name.clone(),
+            id: id.clone(),
             index,
             ..Default::default()
         });
-        device.entity_index_lut.insert(name, index);
+        device.entity_index_lut.insert(id, index);
         device.last_updated = Instant::now();
 
         engine.on_entity_registered(self, self.device(&did)?, index)?;
@@ -257,7 +254,7 @@ impl DeviceTree {
         &mut self,
         engine: &mut QueryEngine,
         did: DeviceID,
-        eindex: usize,
+        eindex: EntityIndex,
         comps: Vec<Component>,
     ) -> Result<(), IglooError> {
         let device = self.device_mut(&did)?;
@@ -266,7 +263,7 @@ impl DeviceTree {
         for comp in comps {
             // FIXME super slow
             let device = self.device_mut(&did)?;
-            let entity = &mut device.entities[eindex];
+            let entity = &mut device.entities[eindex.0];
 
             let comp_type = comp.get_type();
             entity.last_updated = Instant::now();

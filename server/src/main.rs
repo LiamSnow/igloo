@@ -1,4 +1,4 @@
-// TODO glacier should register Floe #0 As internal
+// TODO glacier should register Extension #0 As internal
 // We should be able to get:
 //  - Current users name, uid, etc.
 //  - Current time, date, datetime, weekday
@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 mod core;
-mod floe;
+mod ext;
 mod query;
 mod tree;
 

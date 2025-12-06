@@ -1,6 +1,6 @@
 use super::{Device, DeviceTree, Group};
 use crate::tree::{COMP_TYPE_ARR_LEN, Presense, arena::Arena};
-use igloo_interface::id::{DeviceID, FloeID, GenerationalID, GroupID};
+use igloo_interface::id::{DeviceID, ExtensionID, GenerationalID, GroupID};
 use ini::Ini;
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use smallvec::SmallVec;
@@ -82,8 +82,8 @@ impl DeviceTree {
         Ok(Self {
             groups,
             devices,
-            attached_floes: Vec::with_capacity(10),
-            floe_ref_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
+            attached_exts: Vec::with_capacity(10),
+            ext_ref_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
         })
     }
 
@@ -250,7 +250,7 @@ impl DeviceTree {
                     TreePersistError::DeviceBadGeneration(device_idx, device_name.clone(), e)
                 })?;
 
-            let owner = FloeID(
+            let owner = ExtensionID(
                 section_data
                     .get("owner")
                     .ok_or(TreePersistError::DeviceMissingOwner(device_idx))?

@@ -1,7 +1,7 @@
 use crate::{
     IGLOO_ENUMS, IglooEnumType, IglooEnumValue,
-    id::{DeviceID, FloeID, GroupID},
-    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
+    id::{DeviceID, ExtensionID, GroupID},
+    query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot},
 };
 use bincode::{Decode, Encode};
 use derive_more::Display;
@@ -25,10 +25,10 @@ pub type IglooColorList = Vec<IglooColor>;
 pub type IglooDateList = Vec<IglooDate>;
 pub type IglooTimeList = Vec<IglooTime>;
 
-pub type FloeIDList = Vec<FloeID>;
+pub type ExtensionIDList = Vec<ExtensionID>;
 pub type DeviceIDList = Vec<DeviceID>;
 pub type GroupIDList = Vec<GroupID>;
-pub type FloeSnapshotList = Vec<FloeSnapshot>;
+pub type ExtensionSnapshotList = Vec<ExtensionSnapshot>;
 pub type DeviceSnapshotList = Vec<DeviceSnapshot>;
 pub type GroupSnapshotList = Vec<GroupSnapshot>;
 pub type EntitySnapshotList = Vec<EntitySnapshot>;
@@ -51,14 +51,14 @@ pub enum IglooType {
     #[display("Time")]
     Time, // TODO add duration?
 
-    #[display("FloeID")]
-    FloeID,
+    #[display("ExtensionID")]
+    ExtensionID,
     #[display("DeviceID")]
     DeviceID,
     #[display("GroupID")]
     GroupID,
-    #[display("FloeSnapshot")]
-    FloeSnapshot,
+    #[display("ExtensionSnapshot")]
+    ExtensionSnapshot,
     #[display("DeviceSnapshot")]
     DeviceSnapshot,
     #[display("GroupSnapshot")]
@@ -81,14 +81,14 @@ pub enum IglooType {
     #[display("TimeList")]
     TimeList,
 
-    #[display("FloeIDList")]
-    FloeIDList,
+    #[display("ExtensionIDList")]
+    ExtensionIDList,
     #[display("DeviceIDList")]
     DeviceIDList,
     #[display("GroupIDList")]
     GroupIDList,
-    #[display("FloeSnapshotList")]
-    FloeSnapshotList,
+    #[display("ExtensionSnapshotList")]
+    ExtensionSnapshotList,
     #[display("DeviceSnapshotList")]
     DeviceSnapshotList,
     #[display("GroupSnapshotList")]
@@ -108,10 +108,10 @@ pub static IGLOO_TYPES: [IglooType; 28] = [
     IglooType::Color,
     IglooType::Date,
     IglooType::Time,
-    IglooType::FloeID,
+    IglooType::ExtensionID,
     IglooType::DeviceID,
     IglooType::GroupID,
-    IglooType::FloeSnapshot,
+    IglooType::ExtensionSnapshot,
     IglooType::DeviceSnapshot,
     IglooType::GroupSnapshot,
     IglooType::EntitySnapshot,
@@ -122,10 +122,10 @@ pub static IGLOO_TYPES: [IglooType; 28] = [
     IglooType::ColorList,
     IglooType::DateList,
     IglooType::TimeList,
-    IglooType::FloeIDList,
+    IglooType::ExtensionIDList,
     IglooType::DeviceIDList,
     IglooType::GroupIDList,
-    IglooType::FloeSnapshotList,
+    IglooType::ExtensionSnapshotList,
     IglooType::DeviceSnapshotList,
     IglooType::GroupSnapshotList,
     IglooType::EntitySnapshotList,
@@ -150,13 +150,13 @@ pub enum IglooValue {
     Time(IglooTime),
 
     #[display("{_0}")]
-    FloeID(FloeID),
+    ExtensionID(ExtensionID),
     #[display("{_0}")]
     DeviceID(DeviceID),
     #[display("{_0}")]
     GroupID(GroupID),
     #[display("{_0}")]
-    FloeSnapshot(FloeSnapshot),
+    ExtensionSnapshot(ExtensionSnapshot),
     #[display("{_0}")]
     DeviceSnapshot(DeviceSnapshot),
     #[display("{_0}")]
@@ -180,13 +180,13 @@ pub enum IglooValue {
     TimeList(IglooTimeList),
 
     #[display("{_0:?}")]
-    FloeIDList(FloeIDList),
+    ExtensionIDList(ExtensionIDList),
     #[display("{_0:?}")]
     DeviceIDList(DeviceIDList),
     #[display("{_0:?}")]
     GroupIDList(GroupIDList),
     #[display("{_0:?}")]
-    FloeSnapshotList(FloeSnapshotList),
+    ExtensionSnapshotList(ExtensionSnapshotList),
     #[display("{_0:?}")]
     DeviceSnapshotList(DeviceSnapshotList),
     #[display("{_0:?}")]
@@ -210,10 +210,12 @@ impl IglooValue {
             IglooType::Time => IglooValue::Time(IglooTime::default()),
 
             //
-            IglooType::FloeID => IglooValue::FloeID(FloeID::default()),
+            IglooType::ExtensionID => IglooValue::ExtensionID(ExtensionID::default()),
             IglooType::DeviceID => IglooValue::DeviceID(DeviceID::default()),
             IglooType::GroupID => IglooValue::GroupID(GroupID::default()),
-            IglooType::FloeSnapshot => IglooValue::FloeSnapshot(FloeSnapshot::default()),
+            IglooType::ExtensionSnapshot => {
+                IglooValue::ExtensionSnapshot(ExtensionSnapshot::default())
+            }
             IglooType::DeviceSnapshot => IglooValue::DeviceSnapshot(DeviceSnapshot::default()),
             IglooType::GroupSnapshot => IglooValue::GroupSnapshot(GroupSnapshot::default()),
             IglooType::EntitySnapshot => IglooValue::EntitySnapshot(EntitySnapshot::default()),
@@ -228,10 +230,12 @@ impl IglooValue {
             IglooType::TimeList => IglooValue::TimeList(Vec::with_capacity(10)),
 
             //
-            IglooType::FloeIDList => IglooValue::FloeIDList(Vec::with_capacity(10)),
+            IglooType::ExtensionIDList => IglooValue::ExtensionIDList(Vec::with_capacity(10)),
             IglooType::DeviceIDList => IglooValue::DeviceIDList(Vec::with_capacity(10)),
             IglooType::GroupIDList => IglooValue::GroupIDList(Vec::with_capacity(10)),
-            IglooType::FloeSnapshotList => IglooValue::FloeSnapshotList(Vec::with_capacity(10)),
+            IglooType::ExtensionSnapshotList => {
+                IglooValue::ExtensionSnapshotList(Vec::with_capacity(10))
+            }
             IglooType::DeviceSnapshotList => IglooValue::DeviceSnapshotList(Vec::with_capacity(10)),
             IglooType::GroupSnapshotList => IglooValue::GroupSnapshotList(Vec::with_capacity(10)),
             IglooType::EntitySnapshotList => IglooValue::EntitySnapshotList(Vec::with_capacity(10)),
@@ -253,10 +257,10 @@ impl IglooValue {
             IglooType::Time => Some(IglooValue::Time(value.parse().ok()?)),
 
             //
-            IglooType::FloeID => Some(IglooValue::FloeID(FloeID(value))),
+            IglooType::ExtensionID => Some(IglooValue::ExtensionID(ExtensionID(value))),
             IglooType::DeviceID => Some(IglooValue::DeviceID(value.parse().ok()?)),
             IglooType::GroupID => Some(IglooValue::GroupID(value.parse().ok()?)),
-            IglooType::FloeSnapshot => None,
+            IglooType::ExtensionSnapshot => None,
             IglooType::DeviceSnapshot => None,
             IglooType::GroupSnapshot => None,
             IglooType::EntitySnapshot => None,
@@ -301,10 +305,10 @@ impl IglooValue {
             }
 
             //
-            IglooType::FloeIDList => {
+            IglooType::ExtensionIDList => {
                 let items = parse_list(&value)?;
-                Some(IglooValue::FloeIDList(
-                    items.into_iter().map(FloeID).collect(),
+                Some(IglooValue::ExtensionIDList(
+                    items.into_iter().map(ExtensionID).collect(),
                 ))
             }
             IglooType::DeviceIDList => {
@@ -317,7 +321,7 @@ impl IglooValue {
                 let list: Option<Vec<GroupID>> = items.iter().map(|s| s.parse().ok()).collect();
                 Some(IglooValue::GroupIDList(list?))
             }
-            IglooType::FloeSnapshotList => None,
+            IglooType::ExtensionSnapshotList => None,
             IglooType::DeviceSnapshotList => None,
             IglooType::GroupSnapshotList => None,
             IglooType::EntitySnapshotList => None,
@@ -338,10 +342,10 @@ impl IglooValue {
             IglooValue::Time(_) => IglooType::Time,
 
             //
-            IglooValue::FloeID(_) => IglooType::FloeID,
+            IglooValue::ExtensionID(_) => IglooType::ExtensionID,
             IglooValue::DeviceID(_) => IglooType::DeviceID,
             IglooValue::GroupID(_) => IglooType::GroupID,
-            IglooValue::FloeSnapshot(_) => IglooType::FloeSnapshot,
+            IglooValue::ExtensionSnapshot(_) => IglooType::ExtensionSnapshot,
             IglooValue::DeviceSnapshot(_) => IglooType::DeviceSnapshot,
             IglooValue::GroupSnapshot(_) => IglooType::GroupSnapshot,
             IglooValue::EntitySnapshot(_) => IglooType::EntitySnapshot,
@@ -356,10 +360,10 @@ impl IglooValue {
             IglooValue::TimeList(_) => IglooType::TimeList,
 
             //
-            IglooValue::FloeIDList(_) => IglooType::FloeIDList,
+            IglooValue::ExtensionIDList(_) => IglooType::ExtensionIDList,
             IglooValue::DeviceIDList(_) => IglooType::DeviceIDList,
             IglooValue::GroupIDList(_) => IglooType::GroupIDList,
-            IglooValue::FloeSnapshotList(_) => IglooType::FloeSnapshotList,
+            IglooValue::ExtensionSnapshotList(_) => IglooType::ExtensionSnapshotList,
             IglooValue::DeviceSnapshotList(_) => IglooType::DeviceSnapshotList,
             IglooValue::GroupSnapshotList(_) => IglooType::GroupSnapshotList,
             IglooValue::EntitySnapshotList(_) => IglooType::EntitySnapshotList,
@@ -405,10 +409,10 @@ impl IglooType {
             Time => "#1abc9c",
 
             //
-            FloeID => "#e91e63",
+            ExtensionID => "#e91e63",
             DeviceID => "#16a085",
             GroupID => "#f1c40f",
-            FloeSnapshot => "#8e44ad",
+            ExtensionSnapshot => "#8e44ad",
             DeviceSnapshot => "#2c3e50",
             GroupSnapshot => "#d35400",
             EntitySnapshot => "#7f8c8d",
@@ -423,10 +427,10 @@ impl IglooType {
             TimeList => "#76d7c4",
 
             //
-            FloeIDList => "#f48fb1",
+            ExtensionIDList => "#f48fb1",
             DeviceIDList => "#7dcea0",
             GroupIDList => "#f9e79f",
-            FloeSnapshotList => "#af7ac5",
+            ExtensionSnapshotList => "#af7ac5",
             DeviceSnapshotList => "#5d6d7e",
             GroupSnapshotList => "#e59866",
             EntitySnapshotList => "#bdc3c7",

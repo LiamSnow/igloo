@@ -1,6 +1,6 @@
 use crate::{
     Component,
-    query::{DeviceSnapshot, FloeSnapshot, GroupSnapshot},
+    query::{DeviceSnapshot, ExtensionSnapshot, GroupSnapshot},
     web::dash::Dashboard,
 };
 use bincode::{Decode, Encode};
@@ -46,7 +46,7 @@ pub struct ElementUpdate {
 
 #[derive(Debug, Clone, Encode, Decode, From)]
 pub struct GlobalSnapshot {
-    pub floes: Vec<FloeSnapshot>,
+    pub floes: Vec<ExtensionSnapshot>,
     pub groups: Vec<GroupSnapshot>,
     pub devices: Vec<DeviceSnapshot>,
 }

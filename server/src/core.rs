@@ -1,10 +1,10 @@
 use crate::{
-    floe,
+    ext,
     query::{QueryEngine, observer::ObserverID},
     tree::{DeviceTree, TreeIDError, mutation::TreeMutationError, persist::TreePersistError},
 };
 use igloo_interface::{
-    id::FloeRef,
+    id::ExtensionIndex,
     ipc::IglooMessage,
     query::{Query, QueryResult, check::QueryError},
 };
@@ -39,7 +39,7 @@ pub enum IglooRequest {
     },
 
     HandleMessage {
-        sender: FloeRef,
+        sender: ExtensionIndex,
         content: IglooMessage,
     },
 }
@@ -104,7 +104,7 @@ pub async fn spawn() -> Result<(JoinHandle<()>, kanal::Sender<IglooRequest>), Bo
     let mut engine = QueryEngine::default();
     let (tx, rx) = kanal::bounded(100);
 
-    floe::spawn_all(&mut tree, &mut engine, &tx).await?;
+    ext::spawn_all(&mut tree, &mut engine, &tx).await?;
 
     let core = IglooCore {
         tree,
@@ -143,7 +143,7 @@ impl IglooCore {
             HandleMessage {
                 sender: from,
                 content: msg,
-            } => floe::handle_msg(&mut self.tree, &mut self.engine, from, msg),
+            } => ext::handle_msg(&mut self.tree, &mut self.engine, from, msg),
             RegisterClient(channel) => self.cm.register(channel),
             UnregisterClient { client_id } => {
                 let observer_ids = self.cm.unregister(client_id)?;

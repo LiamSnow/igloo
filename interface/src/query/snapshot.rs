@@ -1,6 +1,6 @@
 use crate::{
     Component,
-    id::{DeviceID, FloeID, FloeRef, GroupID},
+    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
 };
 use bincode::{Decode, Encode};
 use derive_more::Display;
@@ -17,10 +17,10 @@ pub struct GroupSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("{id}{{ref={fref},msc={max_supported_component}}}")]
-pub struct FloeSnapshot {
-    pub id: FloeID,
-    pub fref: FloeRef,
+#[display("{id}{{index={index},msc={max_supported_component}}}")]
+pub struct ExtensionSnapshot {
+    pub id: ExtensionID,
+    pub index: ExtensionIndex,
     pub max_supported_component: u16,
     pub devices: Vec<DeviceID>,
 }
@@ -32,17 +32,17 @@ pub struct DeviceSnapshot {
     pub id: DeviceID,
     pub name: String,
     pub entities: Vec<EntitySnapshot>,
-    pub owner: FloeID,
-    pub owner_ref: Option<FloeRef>,
+    pub owner: ExtensionID,
+    pub owner_ref: Option<ExtensionIndex>,
     pub groups: FxHashSet<GroupID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("Entity{{name={name},index={index},components=[..]}}")]
+#[display("Entity{{id={id},index={index},components=[..]}}")]
 pub struct EntitySnapshot {
-    pub name: String,
-    pub index: usize,
+    pub id: EntityID,
+    pub index: EntityIndex,
     pub components: Vec<Component>,
     pub parent: DeviceID,
 }

@@ -1,6 +1,6 @@
 use crate::tree::{Device, DeviceTree, arena::Entry};
 use igloo_interface::{
-    id::{DeviceID, FloeID},
+    id::{DeviceID, ExtensionID},
     query::{DeviceFilter, DeviceGroupFilter, IDFilter, TypeFilter},
     types::compare::ComparisonOp,
 };
@@ -9,26 +9,26 @@ use std::{collections::HashSet, ops::ControlFlow, time::Instant};
 
 pub fn estimate_device_count(tree: &DeviceTree, filter: &DeviceFilter) -> usize {
     match &filter.id {
-        IDFilter::Id(_) => 1,
-        IDFilter::IdIn(ids) => ids.len(),
+        IDFilter::Is(_) => 1,
+        IDFilter::OneOf(ids) => ids.len(),
         IDFilter::Any => match &filter.owner {
-            IDFilter::Id(fid) => tree
-                .floe_ref(fid)
+            IDFilter::Is(fid) => tree
+                .ext_index(fid)
                 .ok()
-                .and_then(|fref| tree.floe(fref).ok())
+                .and_then(|ext_index| tree.ext(ext_index).ok())
                 .map(|f| f.devices().len())
                 .unwrap_or(0),
-            IDFilter::IdIn(fids) => fids.len() << 4,
+            IDFilter::OneOf(fids) => fids.len() << 4,
             IDFilter::Any => match &filter.group {
-                DeviceGroupFilter::InGroup(gid) => {
+                DeviceGroupFilter::In(gid) => {
                     tree.group(gid).map(|g| g.devices().len()).unwrap_or(0)
                 }
-                DeviceGroupFilter::InAnyGroup(gids) => gids
+                DeviceGroupFilter::InAny(gids) => gids
                     .iter()
                     .filter_map(|gid| tree.group(gid).ok())
                     .map(|g| g.devices().len())
                     .sum(),
-                DeviceGroupFilter::InAllGroups(gids) => gids
+                DeviceGroupFilter::InAll(gids) => gids
                     .iter()
                     .filter_map(|gid| tree.group(gid).ok())
                     .map(|g| g.devices().len())
@@ -54,7 +54,7 @@ where
 {
     // iterate over specified IDs (best case)
     match &filter.id {
-        IDFilter::Id(id) => {
+        IDFilter::Is(id) => {
             let Some(device) = tree.device(id).ok() else {
                 return ControlFlow::Continue(());
             };
@@ -68,7 +68,7 @@ where
             }
             return ControlFlow::Continue(());
         }
-        IDFilter::IdIn(ids) => {
+        IDFilter::OneOf(ids) => {
             for did in ids {
                 let Ok(device) = tree.device(did) else {
                     continue;
@@ -88,13 +88,13 @@ where
         IDFilter::Any => {}
     }
 
-    // iterate over Floe's devices
+    // iterate over Extension's devices
     match &filter.owner {
-        IDFilter::Id(fid) => {
+        IDFilter::Is(fid) => {
             let Some(dids) = tree
-                .floe_ref(fid)
+                .ext_index(fid)
                 .ok()
-                .and_then(|fref| tree.floe(fref).ok())
+                .and_then(|ext_index| tree.ext(ext_index).ok())
                 .map(|f| f.devices())
             else {
                 return ControlFlow::Continue(());
@@ -115,15 +115,15 @@ where
             }
             return ControlFlow::Continue(());
         }
-        IDFilter::IdIn(fids) => {
+        IDFilter::OneOf(fids) => {
             for fid in fids {
-                let Ok(fref) = tree.floe_ref(fid) else {
+                let Ok(ext_index) = tree.ext_index(fid) else {
                     continue;
                 };
-                let Ok(floe) = tree.floe(fref) else {
+                let Ok(ext) = tree.ext(ext_index) else {
                     continue;
                 };
-                for did in floe.devices() {
+                for did in ext.devices() {
                     let Ok(device) = tree.device(did) else {
                         continue;
                     };
@@ -145,7 +145,7 @@ where
 
     // iterate over Group's devices
     match &filter.group {
-        DeviceGroupFilter::InGroup(group_id) => {
+        DeviceGroupFilter::In(group_id) => {
             let Ok(group) = tree.group(group_id) else {
                 return ControlFlow::Continue(());
             };
@@ -165,7 +165,7 @@ where
             }
             return ControlFlow::Continue(());
         }
-        DeviceGroupFilter::InAnyGroup(group_ids) => {
+        DeviceGroupFilter::InAny(group_ids) => {
             let mut seen = HashSet::with_capacity_and_hasher(group_ids.len() << 3, FxBuildHasher);
             for gid in group_ids {
                 let Ok(group) = tree.group(gid) else { continue };
@@ -189,7 +189,7 @@ where
             }
             return ControlFlow::Continue(());
         }
-        DeviceGroupFilter::InAllGroups(group_ids) => {
+        DeviceGroupFilter::InAll(group_ids) => {
             if group_ids.is_empty() {
                 return ControlFlow::Continue(());
             }
@@ -257,17 +257,17 @@ where
 fn passes_id_filter(device: &Device, filter: &IDFilter<DeviceID>) -> bool {
     match filter {
         IDFilter::Any => true,
-        IDFilter::Id(id) => device.id() == id,
-        IDFilter::IdIn(ids) => ids.contains(device.id()),
+        IDFilter::Is(id) => device.id() == id,
+        IDFilter::OneOf(ids) => ids.contains(device.id()),
     }
 }
 
 #[inline(always)]
-fn passes_owner_filter(device: &Device, filter: &IDFilter<FloeID>) -> bool {
+fn passes_owner_filter(device: &Device, filter: &IDFilter<ExtensionID>) -> bool {
     match filter {
         IDFilter::Any => true,
-        IDFilter::Id(fid) => device.owner() == fid,
-        IDFilter::IdIn(fids) => fids.contains(device.owner()),
+        IDFilter::Is(fid) => device.owner() == fid,
+        IDFilter::OneOf(fids) => fids.contains(device.owner()),
     }
 }
 
@@ -275,16 +275,16 @@ fn passes_owner_filter(device: &Device, filter: &IDFilter<FloeID>) -> bool {
 fn passes_group_filter(device: &Device, filter: &DeviceGroupFilter, tree: &DeviceTree) -> bool {
     match filter {
         DeviceGroupFilter::Any => true,
-        DeviceGroupFilter::InGroup(gid) => tree
+        DeviceGroupFilter::In(gid) => tree
             .group(gid)
             .map(|g| g.devices().contains(device.id()))
             .unwrap_or(false),
-        DeviceGroupFilter::InAnyGroup(gids) => gids.iter().any(|gid| {
+        DeviceGroupFilter::InAny(gids) => gids.iter().any(|gid| {
             tree.group(gid)
                 .map(|g| g.devices().contains(device.id()))
                 .unwrap_or(false)
         }),
-        DeviceGroupFilter::InAllGroups(gids) => gids.iter().all(|gid| {
+        DeviceGroupFilter::InAll(gids) => gids.iter().all(|gid| {
             tree.group(gid)
                 .map(|g| g.devices().contains(device.id()))
                 .unwrap_or(false)

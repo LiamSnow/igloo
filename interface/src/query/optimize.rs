@@ -361,7 +361,8 @@ mod tests {
     use crate::{
         Component,
         query::{
-            ComponentAction, ComponentQuery, DeviceFilter, EntityAction, EntityQuery, NameFilter,
+            ComponentAction, ComponentQuery, DeviceFilter, EntityAction, EntityIDFilter,
+            EntityQuery,
         },
         types::compare::ComparisonOp,
     };
@@ -561,7 +562,7 @@ mod tests {
     #[test]
     fn test_entity_filter_add_components() {
         let mut filter = EntityFilter {
-            name: NameFilter::Any,
+            id: EntityIDFilter::Any,
             type_filter: None,
             value_filter: None,
             last_update: None,
@@ -573,7 +574,7 @@ mod tests {
         );
 
         let mut filter = EntityFilter {
-            name: NameFilter::Any,
+            id: EntityIDFilter::Any,
             type_filter: Some(TypeFilter::With(ComponentType::Light)),
             value_filter: None,
             last_update: None,
@@ -585,7 +586,7 @@ mod tests {
         }
 
         let mut filter = EntityFilter {
-            name: NameFilter::Any,
+            id: EntityIDFilter::Any,
             type_filter: Some(TypeFilter::And(vec![TypeFilter::With(
                 ComponentType::Light,
             )])),
@@ -602,7 +603,7 @@ mod tests {
     #[test]
     fn test_entity_filter_value_to_type() {
         let mut filter = EntityFilter {
-            name: NameFilter::Any,
+            id: EntityIDFilter::Any,
             type_filter: None,
             value_filter: Some(ValueFilter::If(ComparisonOp::Eq, Component::Dimmer(0.1))),
             last_update: None,
@@ -614,7 +615,7 @@ mod tests {
         );
 
         let mut filter = EntityFilter {
-            name: NameFilter::Any,
+            id: EntityIDFilter::Any,
             type_filter: Some(TypeFilter::With(ComponentType::Light)),
             value_filter: Some(ValueFilter::If(ComparisonOp::Eq, Component::Dimmer(0.1))),
             last_update: None,
@@ -629,7 +630,7 @@ mod tests {
     #[test]
     fn test_entity_filter_removes_empty() {
         let mut filter = EntityFilter {
-            name: NameFilter::Any,
+            id: EntityIDFilter::Any,
             type_filter: Some(TypeFilter::And(vec![])),
             value_filter: None,
             last_update: None,
@@ -643,7 +644,7 @@ mod tests {
         let mut query = Query::Component(ComponentQuery {
             device_filter: DeviceFilter::default(),
             entity_filter: EntityFilter {
-                name: NameFilter::Any,
+                id: EntityIDFilter::Any,
                 type_filter: None,
                 value_filter: Some(ValueFilter::If(ComparisonOp::Eq, Component::Switch(false))),
                 last_update: None,
@@ -675,7 +676,7 @@ mod tests {
         let mut query = Query::Entity(EntityQuery {
             device_filter: DeviceFilter::default(),
             entity_filter: EntityFilter {
-                name: NameFilter::Any,
+                id: EntityIDFilter::Any,
                 type_filter: Some(TypeFilter::And(vec![
                     TypeFilter::With(ComponentType::Light),
                     TypeFilter::With(ComponentType::Light),

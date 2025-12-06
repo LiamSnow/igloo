@@ -32,7 +32,7 @@ impl QueryEngine {
                 R::Count(count)
             }
 
-            A::GetId => {
+            A::GetID => {
                 let limit = query.limit.unwrap_or(usize::MAX);
                 let estimate = estimate_device_count(tree, &query.filter).min(limit);
                 let mut ids = Vec::with_capacity(estimate);
@@ -64,11 +64,11 @@ impl QueryEngine {
             }
             A::IsAttached => match query.filter.id {
                 IDFilter::Any => panic!("Must provide ID to check if device is attached"),
-                IDFilter::Id(id) => {
+                IDFilter::Is(id) => {
                     let attached = tree.device(&id).is_ok();
                     R::DeviceAttached(vec![(id, attached)])
                 }
-                IDFilter::IdIn(ids) => {
+                IDFilter::OneOf(ids) => {
                     let limit = query.limit.unwrap_or(usize::MAX);
                     let mut res = Vec::with_capacity(limit.min(ids.len()));
                     for id in ids {

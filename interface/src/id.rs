@@ -9,14 +9,21 @@ use std::str::FromStr;
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(\"{_0}\")")]
 #[repr(transparent)]
-pub struct FloeID(pub String);
+pub struct ExtensionID(pub String);
 
 /// ephemeral
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Floe(#{_0})")]
 #[repr(transparent)]
-pub struct FloeRef(pub usize);
+pub struct ExtensionIndex(pub usize);
+
+/// persistent
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
+#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[display("Entity(\"{_0}\")")]
+#[repr(transparent)]
+pub struct EntityID(pub String);
 
 /// ephemeral
 // TODO actually use this
@@ -24,7 +31,7 @@ pub struct FloeRef(pub usize);
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
 #[display("Entity(#{_0})")]
 #[repr(transparent)]
-pub struct EntityRef(pub usize);
+pub struct EntityIndex(pub usize);
 
 /// persistent
 #[derive(
@@ -128,13 +135,19 @@ impl GenerationalID for DeviceID {
     }
 }
 
-impl Default for FloeID {
+impl Default for ExtensionID {
     fn default() -> Self {
         Self("undefined".to_string())
     }
 }
 
-impl Default for FloeRef {
+impl Default for EntityID {
+    fn default() -> Self {
+        Self("undefined".to_string())
+    }
+}
+
+impl Default for ExtensionIndex {
     fn default() -> Self {
         Self(usize::MAX)
     }
@@ -149,6 +162,12 @@ impl Default for DeviceID {
 impl Default for GroupID {
     fn default() -> Self {
         Self(u64::MAX)
+    }
+}
+
+impl Default for EntityIndex {
+    fn default() -> Self {
+        Self(usize::MAX)
     }
 }
 

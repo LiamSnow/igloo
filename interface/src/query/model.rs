@@ -1,19 +1,19 @@
 use crate::{
     Component, ComponentType, IglooType, IglooValue,
-    id::{DeviceID, FloeID, GroupID},
-    query::{DeviceSnapshot, EntitySnapshot, FloeSnapshot, GroupSnapshot},
+    id::{DeviceID, ExtensionID, GroupID},
+    query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot},
     types::{agg::AggregationOp, compare::ComparisonOp, math::MathOp},
 };
 use bincode::{Decode, Encode};
 use rustc_hash::FxHashSet;
 
-// TODO if we make a Pyo3 rust python library for Floes, we should
+// TODO if we make a Pyo3 rust python library for Extensions, we should
 // be able to drop Borsh and just use Bincode. This way we can easily
 // add more optimizations like SmallVecs
 //
 // By doing this we can potentially add huge optimizations. A complete
-// Floe Rust library allows us to do really cool things like a A::SetFunction
-// This would ship over the function to the Floe itself which spawns fake
+// Extension Rust library allows us to do really cool things like a A::SetFunction
+// This would ship over the function to the Extension itself which spawns fake
 // messages.
 // For things like an RGB effect we can get serious performance benefits
 // Alternatively, we can implement SetFunctions into the query engine.
@@ -26,7 +26,7 @@ use rustc_hash::FxHashSet;
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum Query {
-    Floe(FloeQuery),
+    Extension(ExtensionQuery),
     Group(GroupQuery),
     Device(DeviceQuery),
     Entity(EntityQuery),
@@ -34,15 +34,15 @@ pub enum Query {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub struct FloeQuery {
-    pub id: IDFilter<FloeID>,
-    pub action: FloeAction,
+pub struct ExtensionQuery {
+    pub id: IDFilter<ExtensionID>,
+    pub action: ExtensionAction,
     pub limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub enum FloeAction {
-    GetId,
+pub enum ExtensionAction {
+    GetID,
     Snapshot,
 
     IsAttached,
@@ -61,7 +61,7 @@ pub struct GroupQuery {
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum GroupAction {
-    GetId,
+    GetID,
     Snapshot,
 
     ObserveRename,
@@ -80,7 +80,7 @@ pub struct DeviceQuery {
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum DeviceAction {
-    GetId,
+    GetID,
     /// true=include entity snapshots
     Snapshot(bool),
 
@@ -142,14 +142,14 @@ pub enum ComponentAction {
 pub enum IDFilter<T> {
     #[default]
     Any,
-    Id(T),
-    IdIn(Vec<T>),
+    Is(T),
+    OneOf(Vec<T>),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 pub struct DeviceFilter {
     pub id: IDFilter<DeviceID>,
-    pub owner: IDFilter<FloeID>,
+    pub owner: IDFilter<ExtensionID>,
     pub group: DeviceGroupFilter,
 
     pub entity_count: Option<(ComparisonOp, usize)>,
@@ -162,14 +162,14 @@ pub struct DeviceFilter {
 pub enum DeviceGroupFilter {
     #[default]
     Any,
-    InGroup(GroupID),
-    InAnyGroup(Vec<GroupID>),
-    InAllGroups(Vec<GroupID>),
+    In(GroupID),
+    InAny(Vec<GroupID>),
+    InAll(Vec<GroupID>),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 pub struct EntityFilter {
-    pub name: NameFilter,
+    pub id: EntityIDFilter,
 
     /// Optimized by using device presense
     /// to reduce scanning a device's entities
@@ -199,12 +199,13 @@ pub enum ValueFilter {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
-pub enum NameFilter {
+pub enum EntityIDFilter {
     #[default]
     Any,
-    Name(String),
-    NameIn(FxHashSet<String>),
-    NameMatches(String),
+    Is(String),
+    OneOf(FxHashSet<String>),
+    /// glob pattern
+    Matches(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
@@ -212,9 +213,9 @@ pub enum QueryResult {
     /// For Put, Set, Apply
     Ok,
 
-    FloeId(Vec<FloeID>),
-    FloeSnapshot(Vec<FloeSnapshot>),
-    FloeAttached(Vec<(FloeID, bool)>),
+    ExtensionId(Vec<ExtensionID>),
+    ExtensionSnapshot(Vec<ExtensionSnapshot>),
+    ExtensionAttached(Vec<(ExtensionID, bool)>),
 
     GroupId(Vec<GroupID>),
     GroupSnapshot(Vec<GroupSnapshot>),
@@ -235,14 +236,14 @@ pub enum QueryResult {
 pub enum QueryResultType {
     Ok,
 
-    FloeId,
-    FloeSnapshot,
-    FloeAttached,
+    ExtensionID,
+    ExtensionSnapshot,
+    ExtensionAttached,
 
-    GroupId,
+    GroupID,
     GroupSnapshot,
 
-    DeviceId,
+    DeviceID,
     DeviceSnapshot,
     DeviceAttached,
 
@@ -257,7 +258,7 @@ pub enum QueryResultType {
 impl Query {
     pub fn is_observer(&self) -> bool {
         match self {
-            Query::Floe(q) => matches!(q.action, FloeAction::ObserveAttached),
+            Query::Extension(q) => matches!(q.action, ExtensionAction::ObserveAttached),
             Query::Group(q) => matches!(
                 q.action,
                 GroupAction::ObserveRename | GroupAction::ObserveMembershipChanged

@@ -109,7 +109,7 @@ impl IWriter {
     ) -> Result<(), IWriterError> {
         self.write(&IglooMessage::RegisterEntity {
             device,
-            entity_name,
+            entity_id: entity_name,
             entity_index,
         })
         .await

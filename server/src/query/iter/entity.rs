@@ -7,7 +7,8 @@ use crate::{
 };
 use igloo_interface::{
     ComponentType,
-    query::{DeviceFilter, EntityFilter, NameFilter, TypeFilter, ValueFilter},
+    id::EntityIndex,
+    query::{DeviceFilter, EntityFilter, EntityIDFilter, TypeFilter, ValueFilter},
     types::compare::ComparisonOp,
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
@@ -51,9 +52,10 @@ where
                 // types it will be checked multiple times
                 Some(types) => {
                     for t in types {
-                        let indices: &SmallVec<[usize; 4]> = &device.comp_to_entity()[*t as usize];
+                        let indices: &SmallVec<[EntityIndex; 4]> =
+                            &device.comp_to_entity()[*t as usize];
                         for index in indices {
-                            let Some(entity) = device.entities().get(*index) else {
+                            let Some(entity) = device.entities().get(index.0) else {
                                 continue;
                             };
 
@@ -104,7 +106,7 @@ fn check_entity(
         return false;
     }
 
-    if !passes_name_filter(ctx, entity, &entity_filter.name) {
+    if !passes_entity_id_filter(ctx, entity, &entity_filter.id) {
         return false;
     }
 
@@ -154,14 +156,18 @@ fn passes_value_filter(entity: &Entity, filter: &ValueFilter) -> bool {
 }
 
 #[inline(always)]
-fn passes_name_filter(ctx: &mut QueryContext, entity: &Entity, filter: &NameFilter) -> bool {
+fn passes_entity_id_filter(
+    ctx: &mut QueryContext,
+    entity: &Entity,
+    filter: &EntityIDFilter,
+) -> bool {
     match filter {
-        NameFilter::Any => true,
-        NameFilter::Name(name) => entity.name() == name,
-        NameFilter::NameIn(set) => set.contains(entity.name()),
-        NameFilter::NameMatches(pattern) => {
+        EntityIDFilter::Any => true,
+        EntityIDFilter::Is(id) => &entity.id().0 == id,
+        EntityIDFilter::OneOf(set) => set.contains(&entity.id().0),
+        EntityIDFilter::Matches(pattern) => {
             let glob = ctx.glob(pattern);
-            glob.is_match(entity.name())
+            glob.is_match(&entity.id().0)
         }
     }
 }

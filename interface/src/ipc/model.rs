@@ -26,7 +26,7 @@ pub enum IglooMessage {
 
     RegisterEntity {
         device: u64,
-        entity_name: String,
+        entity_id: String,
         entity_index: usize,
     } = 3,
 

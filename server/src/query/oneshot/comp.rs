@@ -90,7 +90,7 @@ impl QueryEngine {
                                 error = Some(QueryError::ComponentNoValue(query.component));
                                 return ControlFlow::Break(());
                             };
-                            res.push((*device.id(), entity.name().to_string(), iv));
+                            res.push((*device.id(), entity.id().to_string(), iv));
                             if res.len() >= limit {
                                 ControlFlow::Break(())
                             } else {
@@ -145,7 +145,7 @@ impl QueryEngine {
                 let comp = Component::from_igloo_value(query.component, value).unwrap(); // FIXME unwrap
                 let msic = query.component as u16;
                 let mut scratch = Vec::with_capacity(64);
-                let mut floes_to_kill = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
+                let mut exts_to_kill = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
                 let mut msg = IglooMessage::WriteComponents {
                     device: u64::MAX,
                     entity: usize::MAX,
@@ -163,11 +163,11 @@ impl QueryEngine {
                             return ControlFlow::Continue(());
                         };
 
-                        if floes_to_kill.contains(&fref) {
+                        if exts_to_kill.contains(&fref) {
                             return ControlFlow::Continue(());
                         }
 
-                        let Ok(floe) = tree.floe(&fref) else {
+                        let Ok(floe) = tree.ext(&fref) else {
                             return ControlFlow::Continue(());
                         };
 
@@ -183,13 +183,13 @@ impl QueryEngine {
                         } = &mut msg
                         {
                             *d = device.id().take();
-                            *e = *entity.index();
+                            *e = entity.index().0;
                         }
 
                         let res = floe.writer.try_write_immut(&msg, &mut scratch);
                         if res.is_err() {
                             // TODO print error
-                            floes_to_kill.insert(fref);
+                            exts_to_kill.insert(fref);
                         }
 
                         count += 1;
@@ -202,10 +202,10 @@ impl QueryEngine {
                     },
                 );
 
-                for fref in floes_to_kill {
-                    println!("{fref}'s unix socket is full. Killing..");
+                for xindex in exts_to_kill {
+                    println!("{xindex}'s unix socket is full. Killing..");
                     // TODO reboot instead of kill
-                    tree.detach_floe(self, fref)?;
+                    tree.detach_ext(self, xindex)?;
                 }
 
                 R::Count(count)
@@ -213,7 +213,7 @@ impl QueryEngine {
 
             A::Apply(op) => {
                 let mut scratch = Vec::with_capacity(64);
-                let mut floes_to_kill = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
+                let mut exts_to_kill = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
                 let mut count = 0;
 
                 let _ = for_each_entity(
@@ -241,15 +241,15 @@ impl QueryEngine {
                             return ControlFlow::Break(());
                         };
 
-                        let Some(fref) = device.owner_ref() else {
+                        let Some(xindex) = device.owner_ref() else {
                             return ControlFlow::Continue(());
                         };
 
-                        if floes_to_kill.contains(&fref) {
+                        if exts_to_kill.contains(&xindex) {
                             return ControlFlow::Continue(());
                         }
 
-                        let Ok(floe) = tree.floe(&fref) else {
+                        let Ok(ext) = tree.ext(&xindex) else {
                             return ControlFlow::Continue(());
                         };
 
@@ -258,13 +258,13 @@ impl QueryEngine {
 
                         let msg = IglooMessage::WriteComponents {
                             device: device.id().take(),
-                            entity: *entity.index(),
+                            entity: entity.index().0,
                             comps: vec![comp],
                         };
 
-                        let res = floe.writer.try_write_immut(&msg, &mut scratch);
+                        let res = ext.writer.try_write_immut(&msg, &mut scratch);
                         if res.is_err() {
-                            floes_to_kill.insert(fref);
+                            exts_to_kill.insert(xindex);
                         }
 
                         count += 1;
@@ -277,10 +277,10 @@ impl QueryEngine {
                     },
                 );
 
-                for fref in floes_to_kill {
+                for fref in exts_to_kill {
                     println!("{fref}'s unix socket is full. Killing..");
                     // TODO reboot instead of kill
-                    tree.detach_floe(self, fref)?;
+                    tree.detach_ext(self, fref)?;
                 }
 
                 R::Count(count)

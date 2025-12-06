@@ -7,7 +7,6 @@ use crate::{
     tree::DeviceTree,
 };
 use igloo_interface::query::Query;
-use rustc_hash::FxHashSet;
 
 mod ctx;
 mod iter;
@@ -31,15 +30,6 @@ impl Default for QueryEngine {
 }
 
 impl QueryEngine {
-    // TODO need a way to unregister 1 observer
-
-    pub fn unregister(&mut self, observers: FxHashSet<ObserverID>) {
-        for observer in observers {
-            self.subscribers.unsubscribe(observer);
-            self.observers[observer] = None;
-        }
-    }
-
     pub fn eval(
         &mut self,
         tree: &mut DeviceTree,
@@ -58,7 +48,7 @@ impl QueryEngine {
         }
 
         let result = match query {
-            Query::Floe(q) => self.eval_floe(tree, q)?,
+            Query::Extension(q) => self.eval_extension(tree, q)?,
             Query::Group(q) => self.eval_group(tree, q)?,
             Query::Device(q) => self.eval_device(tree, q)?,
             Query::Entity(q) => self.eval_entity(tree, q)?,
@@ -66,5 +56,12 @@ impl QueryEngine {
         };
 
         cm.send(client_id, IglooResponse::Result { query_id, result })
+    }
+
+    pub fn drop_observers(&mut self, observers: Vec<ObserverID>) {
+        for observer in observers {
+            self.subscribers.unsubscribe(observer);
+            self.observers[observer] = None;
+        }
     }
 }

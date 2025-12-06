@@ -1,7 +1,7 @@
 use crate::{
     ComponentType as CT, IglooType,
     query::{
-        ComponentAction as C, DeviceAction as D, EntityAction as E, FloeAction as F,
+        ComponentAction as C, DeviceAction as D, EntityAction as E, ExtensionAction as X,
         GroupAction as G, Query, QueryResultType as R,
     },
     types::agg::AggregationOp,
@@ -45,16 +45,16 @@ impl Query {
     /// and ensures it is a valid Query
     pub fn check(&self) -> Result<R, ERR> {
         Ok(match self {
-            Query::Floe(q) => match &q.action {
-                F::GetId => R::FloeId,
-                F::Snapshot => R::FloeId,
-                F::IsAttached => R::FloeAttached,
-                F::ObserveAttached => R::FloeAttached,
-                F::Count => R::Count,
-                F::Inherit => return Err(ERR::Inherit),
+            Query::Extension(q) => match &q.action {
+                X::GetID => R::ExtensionID,
+                X::Snapshot => R::ExtensionID,
+                X::IsAttached => R::ExtensionAttached,
+                X::ObserveAttached => R::ExtensionAttached,
+                X::Count => R::Count,
+                X::Inherit => return Err(ERR::Inherit),
             },
             Query::Group(q) => match &q.action {
-                G::GetId => R::GroupId,
+                G::GetID => R::GroupID,
                 G::Snapshot => R::GroupSnapshot,
                 G::ObserveRename => R::Ok,
                 G::ObserveMembershipChanged => R::Ok,
@@ -62,13 +62,13 @@ impl Query {
                 G::Inherit => return Err(ERR::Inherit),
             },
             Query::Device(q) => match &q.action {
-                D::GetId => R::DeviceId,
+                D::GetID => R::DeviceID,
                 D::Snapshot(_) => R::DeviceSnapshot,
                 D::IsAttached => R::DeviceAttached,
                 D::ObserveAttached => R::DeviceAttached,
-                D::ObserveName => R::DeviceId,
-                D::ObserveEntityAdded => R::DeviceId,
-                D::ObserveComponentPut => R::DeviceId,
+                D::ObserveName => R::DeviceID,
+                D::ObserveEntityAdded => R::DeviceID,
+                D::ObserveComponentPut => R::DeviceID,
                 D::Count => R::Count,
                 D::Inherit => return Err(ERR::Inherit),
             },

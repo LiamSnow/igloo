@@ -1,8 +1,9 @@
+use super::EXTS_DIR;
 use crate::core::{IglooError, IglooRequest};
 use futures_util::StreamExt;
 use igloo_interface::{
     MSIC,
-    id::{FloeID, FloeRef},
+    id::{ExtensionID, ExtensionIndex},
     ipc::{IReader, IWriter, IglooMessage, MSIM},
 };
 use std::{path::Path, process::Stdio};
@@ -13,24 +14,24 @@ use tokio::{
     task::JoinHandle,
 };
 
-pub struct FloeHandle {
-    pub id: FloeID,
-    pub fref: FloeRef,
+pub struct ExtensionHandle {
+    pub id: ExtensionID,
+    pub index: ExtensionIndex,
     pub tx: kanal::AsyncSender<IglooRequest>,
     pub reader: IReader,
     pub msic: u16,
     pub msim: u8,
 }
 
-impl FloeHandle {
+impl ExtensionHandle {
     // TODO remove unwraps and panics
     pub async fn new(
-        id: FloeID,
+        id: ExtensionID,
         tx: &kanal::Sender<IglooRequest>,
     ) -> Result<(Self, IWriter), IglooError> {
-        println!("Initializing Floe {id}");
+        println!("Initializing Extension {id}");
 
-        let cwd = format!("./floes/{}", id.0);
+        let cwd = format!("{EXTS_DIR}/{}", id.0);
 
         let data_path = format!("{cwd}/data");
         fs::create_dir_all(&data_path).await?;
@@ -40,7 +41,7 @@ impl FloeHandle {
         let listener = UnixListener::bind(&socket_path)?;
 
         // TODO need to properly keep track of this for shutdown
-        let mut process = process::Command::new(Path::new("./floe"))
+        let mut process = process::Command::new(Path::new("./ext"))
             .current_dir(cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -77,9 +78,9 @@ impl FloeHandle {
         };
 
         Ok((
-            FloeHandle {
+            ExtensionHandle {
                 id,
-                fref: FloeRef(usize::MAX),
+                index: ExtensionIndex(usize::MAX),
                 tx: tx.clone_async(),
                 reader,
                 msic,
@@ -95,7 +96,7 @@ impl FloeHandle {
 
     /// just forward transactions up to to Glacier
     pub async fn run(mut self) {
-        println!("{} running as {}", self.id, self.fref);
+        println!("{} running as {}", self.id, self.index);
 
         while let Some(msg) = self.reader.next().await {
             let msg = match msg {
@@ -103,51 +104,51 @@ impl FloeHandle {
                 Err(e) => {
                     eprintln!(
                         "Error reading msg from {}/{}: {e}. Skipping..",
-                        self.id, self.fref
+                        self.id, self.index
                     );
                     continue;
                 }
             };
 
             let req = IglooRequest::HandleMessage {
-                sender: self.fref,
+                sender: self.index,
                 content: msg,
             };
 
             if let Err(e) = self.tx.send(req).await {
-                eprintln!("{}/{} failed to message to core: {e}", self.id, self.fref);
+                eprintln!("{}/{} failed to message to core: {e}", self.id, self.index);
             }
         }
 
-        println!("{}/{} shutdown", self.id, self.fref);
+        println!("{}/{} shutdown", self.id, self.index);
     }
 }
 
-/// Proxies stdout and stderr to this process prefixed with Floe's name
-fn proxy_stdio(child: &mut Child, fid: &FloeID) {
+/// Proxies stdout and stderr to this process prefixed with Extension's name
+fn proxy_stdio(child: &mut Child, eid: &ExtensionID) {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
     if let Some(stdout) = stdout {
-        let fid_1 = fid.clone();
+        let eid_1 = eid.clone();
         tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                println!("[{fid_1}] {line}");
+                println!("[{eid_1}] {line}");
             }
         });
     }
 
     if let Some(stderr) = stderr {
-        let fid_1 = fid.clone();
+        let eid_1 = eid.clone();
         tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[{fid_1}] {line}");
+                eprintln!("[{eid_1}] {line}");
             }
         });
     }

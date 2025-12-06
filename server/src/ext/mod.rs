@@ -4,7 +4,7 @@ use crate::{
     tree::DeviceTree,
 };
 use igloo_interface::{
-    id::{DeviceID, FloeID, FloeRef, GenerationalID},
+    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GenerationalID},
     ipc::IglooMessage,
 };
 use std::{error::Error, path::Path};
@@ -13,62 +13,67 @@ use tokio::fs;
 pub mod handle;
 pub use handle::*;
 
-pub const FLOES_DIR: &str = "./floes";
+pub const EXTS_DIR: &str = "./extensions";
 
 pub async fn spawn_all(
     tree: &mut DeviceTree,
     engine: &mut QueryEngine,
     tx: &kanal::Sender<IglooRequest>,
 ) -> Result<(), Box<dyn Error>> {
-    for id in get_all_floe_ids().await? {
-        let (handle, writer) = FloeHandle::new(id.clone(), tx).await?;
-        tree.attach_floe(engine, handle, writer)?;
+    for id in get_all_ext_ids().await? {
+        let (handle, writer) = ExtensionHandle::new(id.clone(), tx).await?;
+        tree.attach_ext(engine, handle, writer)?;
     }
     Ok(())
 }
 
-/// Takes commands from a Floe and applies to Device Tree
+/// Takes commands from a Extension and applies to Device Tree
 pub fn handle_msg(
     tree: &mut DeviceTree,
     engine: &mut QueryEngine,
-    fref: FloeRef,
+    xindex: ExtensionIndex,
     msg: IglooMessage,
 ) -> Result<(), IglooError> {
     use IglooMessage::*;
     match msg {
         CreateDevice(name) => {
-            let id = tree.create_device(engine, name.clone(), fref)?;
-            let floe = tree.floe(&fref)?;
+            let id = tree.create_device(engine, name.clone(), xindex)?;
+            let ext = tree.ext(&xindex)?;
             let mut scratch = Vec::with_capacity(name.len() + 32);
             let msg = IglooMessage::DeviceCreated(name, id.take());
-            let res = floe.writer.try_write_immut(&msg, &mut scratch);
+            let res = ext.writer.try_write_immut(&msg, &mut scratch);
             if let Err(e) = res {
                 eprintln!(
-                    "{}/{fref}'s Unix socket is full. Killing.. Error={e}",
-                    floe.id()
+                    "{}/{xindex}'s Unix socket is full. Killing.. Error={e}",
+                    ext.id()
                 );
                 // TODO reboot instead of kill
-                tree.detach_floe(engine, fref)?;
+                tree.detach_ext(engine, xindex)?;
             }
             Ok(())
         }
 
         RegisterEntity {
             device,
-            entity_name,
+            entity_id,
             entity_index,
         } => tree.register_entity(
             engine,
             DeviceID::from_comb(device),
-            entity_name,
-            entity_index,
+            EntityID(entity_id),
+            EntityIndex(entity_index),
         ),
 
         WriteComponents {
             device,
             entity,
             comps,
-        } => tree.write_components(engine, DeviceID::from_comb(device), entity, comps),
+        } => tree.write_components(
+            engine,
+            DeviceID::from_comb(device),
+            EntityIndex(entity),
+            comps,
+        ),
 
         WhatsUpIgloo { .. } | DeviceCreated(..) | Custom { .. } => {
             // TODO return err
@@ -77,16 +82,16 @@ pub fn handle_msg(
     }
 }
 
-async fn get_all_floe_ids() -> Result<Vec<FloeID>, IglooError> {
-    let floes_path = Path::new(FLOES_DIR);
-    if !floes_path.exists() {
-        fs::create_dir(floes_path).await?;
-        println!("Created directory: {FLOES_DIR}");
-    } else if !floes_path.is_dir() {
-        panic!("{FLOES_DIR} exists but is not a directory!");
+async fn get_all_ext_ids() -> Result<Vec<ExtensionID>, IglooError> {
+    let exts_path = Path::new(EXTS_DIR);
+    if !exts_path.exists() {
+        fs::create_dir(exts_path).await?;
+        println!("Created directory: {EXTS_DIR}");
+    } else if !exts_path.is_dir() {
+        panic!("{EXTS_DIR} exists but is not a directory!");
     }
 
-    let mut entries = fs::read_dir(floes_path).await?;
+    let mut entries = fs::read_dir(exts_path).await?;
     let mut res = Vec::new();
 
     while let Some(entry) = entries.next_entry().await? {
@@ -101,7 +106,7 @@ async fn get_all_floe_ids() -> Result<Vec<FloeID>, IglooError> {
             continue;
         };
 
-        res.push(FloeID(name.to_string()));
+        res.push(ExtensionID(name.to_string()));
     }
 
     Ok(res)

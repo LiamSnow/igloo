@@ -4,11 +4,11 @@
 
 use crate::tree::arena::Arena;
 
-use super::{COMP_TYPE_ARR_LEN, Device, DeviceTree, Entity, Floe, Group, Presense};
+use super::{COMP_TYPE_ARR_LEN, Device, DeviceTree, Entity, Extension, Group, Presense};
 use igloo_interface::{
     AlarmState, ClimateMode, ColorMode, Component, CoverState, FanDirection, FanOscillation,
     FanSpeed, LockState, MediaState, SensorStateClass, Unit, ValveState,
-    id::{DeviceID, FloeID, FloeRef, GenerationalID, GroupID},
+    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GenerationalID, GroupID},
     types::IglooColor,
 };
 use rand::{Rng, rngs::ThreadRng};
@@ -34,7 +34,7 @@ const ROOM_NAMES: &[&str] = &[
     "Master Bedroom",
 ];
 
-const FLOE_NAMES: &[&str] = &[
+const EXT_NAMES: &[&str] = &[
     "ESPHome",
     "Zigbee2MQTT",
     "Tasmota",
@@ -101,7 +101,7 @@ impl DeviceArchetype {
     }
 }
 
-pub fn make_test_tree(num_floes: usize, num_groups: usize, num_devices: usize) -> DeviceTree {
+pub fn make_test_tree(num_exts: usize, num_groups: usize, num_devices: usize) -> DeviceTree {
     let mut rng = rand::rng();
 
     let mut groups: Arena<GroupID, Group> =
@@ -123,12 +123,12 @@ pub fn make_test_tree(num_floes: usize, num_groups: usize, num_devices: usize) -
             .expect("failed to insert group in test tree");
     }
 
-    let floe_ids: Vec<FloeID> = (0..num_floes)
+    let ext_ids: Vec<ExtensionID> = (0..num_exts)
         .map(|i| {
-            FloeID(
-                FLOE_NAMES
-                    .get(i % FLOE_NAMES.len())
-                    .unwrap_or(&"Floe")
+            ExtensionID(
+                EXT_NAMES
+                    .get(i % EXT_NAMES.len())
+                    .unwrap_or(&"Extension")
                     .to_string(),
             )
         })
@@ -138,11 +138,11 @@ pub fn make_test_tree(num_floes: usize, num_groups: usize, num_devices: usize) -
         Arena::with_preallocated_slots(num_devices.max(200).saturating_sub(1), 0);
 
     for i in 0..num_devices {
-        let owner_idx = i % num_floes.max(1);
-        let owner = floe_ids
+        let owner_idx = i % num_exts.max(1);
+        let owner = ext_ids
             .get(owner_idx)
             .cloned()
-            .unwrap_or(FloeID("Default".into()));
+            .unwrap_or(ExtensionID("Default".into()));
 
         let archetype = DeviceArchetype::random(&mut rng);
         let room = ROOM_NAMES.get(i % ROOM_NAMES.len()).unwrap_or(&"Room");
@@ -152,21 +152,20 @@ pub fn make_test_tree(num_floes: usize, num_groups: usize, num_devices: usize) -
         let entities = make_entities_for_archetype(&mut rng, archetype);
 
         let mut presense = Presense::default();
-        let mut comp_to_entity: [SmallVec<[usize; 4]>; COMP_TYPE_ARR_LEN] =
+        let mut comp_to_entity: [SmallVec<[EntityIndex; 4]>; COMP_TYPE_ARR_LEN] =
             [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN];
 
-        for (eidx, entity) in entities.iter().enumerate() {
+        for entity in entities.iter() {
             for comp in &entity.components {
                 let typ = comp.get_type();
                 presense.set(typ);
-                comp_to_entity[typ as usize].push(eidx);
+                comp_to_entity[typ as usize].push(entity.index);
             }
         }
 
         let entity_index_lut = entities
             .iter()
-            .enumerate()
-            .map(|(idx, e)| (e.name.clone(), idx))
+            .map(|entity| (entity.id.clone(), entity.index))
             .collect();
 
         let mut device_groups = FxHashSet::default();
@@ -178,7 +177,7 @@ pub fn make_test_tree(num_floes: usize, num_groups: usize, num_devices: usize) -
             id: did,
             name,
             owner,
-            owner_ref: Some(FloeRef(owner_idx)),
+            owner_ref: Some(ExtensionIndex(owner_idx)),
             groups: device_groups,
             presense,
             comp_to_entity,
@@ -202,16 +201,16 @@ pub fn make_test_tree(num_floes: usize, num_groups: usize, num_devices: usize) -
     }
 
     // FIXME mock writer
-    let floes: Vec<Option<Floe>> = Vec::new();
-    let mut floe_ref_lut = FxHashMap::default();
-    for (fidx, fid) in floe_ids.iter().enumerate() {
-        floe_ref_lut.insert(fid.clone(), FloeRef(fidx));
+    let exts: Vec<Option<Extension>> = Vec::new();
+    let mut ext_ref_lut = FxHashMap::default();
+    for (eindex, eid) in ext_ids.iter().enumerate() {
+        ext_ref_lut.insert(eid.clone(), ExtensionIndex(eindex));
     }
 
     DeviceTree {
         groups,
-        attached_floes: floes,
-        floe_ref_lut,
+        attached_exts: exts,
+        ext_ref_lut,
         devices,
     }
 }
@@ -513,15 +512,15 @@ fn make_entities_for_archetype(
     entities
 }
 
-fn make_entity(index: usize, name: &str, components: Vec<Component>) -> Entity {
+fn make_entity(eindex: usize, eid: &str, components: Vec<Component>) -> Entity {
     let mut indices = [0xFF; COMP_TYPE_ARR_LEN];
     for (cidx, comp) in components.iter().enumerate() {
         indices[comp.get_type() as usize] = cidx as u8;
     }
 
     Entity {
-        name: name.to_string(),
-        index,
+        id: EntityID(eid.to_string()),
+        index: EntityIndex(eindex),
         components: components.into(),
         indices,
         last_updated: Instant::now(),

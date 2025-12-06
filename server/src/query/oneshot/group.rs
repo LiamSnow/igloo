@@ -31,7 +31,7 @@ impl QueryEngine {
                 R::Count(count)
             }
 
-            A::GetId => {
+            A::GetID => {
                 let limit = query.limit.unwrap_or(usize::MAX);
                 let estimate = estimate_group_count(tree, &query.id).min(limit);
                 let mut ids = Vec::with_capacity(estimate);
