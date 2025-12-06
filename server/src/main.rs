@@ -6,11 +6,7 @@
 // What should dummies be?
 
 use crate::core::{IglooRequest, IglooResponse};
-use igloo_interface::{
-    ComponentType,
-    query::{ComponentAction, ComponentQuery, DeviceFilter, EntityFilter, Query},
-    types::IglooValue,
-};
+use igloo_interface::query::{DeviceAction, DeviceFilter, DeviceQuery, Query};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -26,51 +22,31 @@ async fn main() {
     sleep(Duration::from_secs(5)).await;
 
     let (res_tx, res_rx) = kanal::bounded(200);
-    req_tx.send(IglooRequest::Register(res_tx)).unwrap();
+    req_tx.send(IglooRequest::RegisterClient(res_tx)).unwrap();
     let res_rx = res_rx.to_async();
 
     let IglooResponse::Registered { client_id } = res_rx.recv().await.unwrap() else {
         panic!()
     };
 
-    tokio::spawn(async move {
-        while let Ok(_resp) = res_rx.recv().await {
-            // println!("got {resp:?}");
-        }
+    tokio::spawn(async move {});
+
+    let query = Query::Device(DeviceQuery {
+        filter: DeviceFilter::default(),
+        action: DeviceAction::Snapshot(true),
+        limit: Some(1),
     });
 
-    let mut bri = 0.;
-    loop {
-        let query = Query::Component(ComponentQuery {
-            device_filter: DeviceFilter::default(),
-            entity_filter: EntityFilter::default(),
-            action: ComponentAction::Set(IglooValue::Real(bri)),
-            component: ComponentType::Dimmer,
-            post_op: None,
-            include_parents: false,
-            limit: None,
-        });
+    req_tx
+        .send(IglooRequest::EvalQuery {
+            client_id,
+            query_id: 0,
+            query: query.clone(),
+        })
+        .unwrap();
 
-        req_tx
-            .send(IglooRequest::Eval {
-                client_id,
-                query_id: 0,
-                query: query.clone(),
-            })
-            .unwrap();
-
-        bri += 0.5;
-
-        if bri > 1.0 {
-            break;
-        }
-
-        sleep(Duration::from_millis(200)).await;
-    }
-
-    println!("DONE");
-
-    sleep(Duration::from_secs(5)).await;
+    let resp = res_rx.recv().await;
+    println!("got {resp:?}");
 
     println!("SHUTTING DOWN");
 

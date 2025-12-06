@@ -8,8 +8,7 @@ use igloo_interface::{
     ipc::IglooMessage,
     query::{Query, QueryResult, check::QueryError},
 };
-use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::{collections::HashSet, error::Error, thread::JoinHandle};
+use std::{error::Error, thread::JoinHandle};
 
 // we allow the large size difference since
 // eval and apply are the most common operations
@@ -19,25 +18,29 @@ pub enum IglooRequest {
     Shutdown,
 
     /// Register with Igloo
-    Register(kanal::Sender<IglooResponse>),
+    RegisterClient(kanal::Sender<IglooResponse>),
 
     #[allow(dead_code)]
-    Unregister {
+    UnregisterClient {
         client_id: usize,
     },
 
     // TODO unregister observer
     /// Evaluate a query
-    Eval {
+    EvalQuery {
         client_id: usize,
         query_id: usize,
         query: Query,
     },
 
-    /// Apply commands from a Floe
-    FloeMessage {
-        floe: FloeRef,
-        msg: IglooMessage,
+    DropQuery {
+        client_id: usize,
+        query_id: usize,
+    },
+
+    HandleMessage {
+        sender: FloeRef,
+        content: IglooMessage,
     },
 }
 
@@ -92,7 +95,8 @@ pub struct ClientManager {
 #[derive(Debug, Clone)]
 pub struct Client {
     channel: kanal::Sender<IglooResponse>,
-    observers: FxHashSet<ObserverID>,
+    /// [(query_id, observer_id)]
+    observers: Vec<(usize, ObserverID)>,
 }
 
 pub async fn spawn() -> Result<(JoinHandle<()>, kanal::Sender<IglooRequest>), Box<dyn Error>> {
@@ -136,19 +140,25 @@ impl IglooCore {
         use IglooRequest::*;
         match req {
             Shutdown => unreachable!(),
-            FloeMessage { floe: from, msg } => {
-                floe::handle_msg(&mut self.tree, &mut self.engine, from, msg)
-            }
-            Register(channel) => self.cm.register(channel),
-            Unregister { client_id } => {
-                let Some(client) = self.cm.unregister(client_id) else {
-                    return Ok(());
-                };
-
-                self.engine.unregister(client.observers);
+            HandleMessage {
+                sender: from,
+                content: msg,
+            } => floe::handle_msg(&mut self.tree, &mut self.engine, from, msg),
+            RegisterClient(channel) => self.cm.register(channel),
+            UnregisterClient { client_id } => {
+                let observer_ids = self.cm.unregister(client_id)?;
+                self.engine.drop_observers(observer_ids);
                 Ok(())
             }
-            Eval {
+            DropQuery {
+                client_id,
+                query_id,
+            } => {
+                let observer_ids = self.cm.drop_query(client_id, query_id)?;
+                self.engine.drop_observers(observer_ids);
+                Ok(())
+            }
+            EvalQuery {
                 client_id,
                 query_id,
                 query,
@@ -172,7 +182,7 @@ impl ClientManager {
             Ok(true) => {
                 self.clients[client_id] = Some(Client {
                     channel,
-                    observers: HashSet::with_capacity_and_hasher(10, FxBuildHasher),
+                    observers: Vec::with_capacity(5),
                 });
                 Ok(())
             }
@@ -181,8 +191,16 @@ impl ClientManager {
         }
     }
 
-    fn unregister(&mut self, client_id: usize) -> Option<Client> {
-        self.clients.get_mut(client_id).and_then(|o| o.take())
+    fn unregister(&mut self, client_id: usize) -> Result<Vec<usize>, IglooError> {
+        let Some(client) = self.clients.get_mut(client_id).and_then(|o| o.take()) else {
+            return Err(IglooError::InvalidClient(client_id));
+        };
+
+        Ok(client
+            .observers
+            .into_iter()
+            .map(|(_, observer_id)| observer_id)
+            .collect())
     }
 
     pub fn send(&mut self, client_id: usize, response: IglooResponse) -> Result<(), IglooError> {
@@ -201,13 +219,40 @@ impl ClientManager {
         }
     }
 
-    pub fn add_observer(&mut self, client_id: usize, observer_id: usize) -> Result<(), IglooError> {
+    pub fn add_observer(
+        &mut self,
+        client_id: usize,
+        query_id: usize,
+        observer_id: usize,
+    ) -> Result<(), IglooError> {
         match self.clients.get_mut(client_id) {
             Some(Some(client)) => {
-                client.observers.insert(observer_id);
+                client.observers.push((query_id, observer_id));
                 Ok(())
             }
             _ => Err(IglooError::InvalidClient(client_id)),
         }
+    }
+
+    pub fn drop_query(
+        &mut self,
+        client_id: usize,
+        query_id: usize,
+    ) -> Result<Vec<usize>, IglooError> {
+        let Some(Some(client)) = self.clients.get_mut(client_id) else {
+            return Err(IglooError::InvalidClient(client_id));
+        };
+
+        let mut observer_ids = Vec::new();
+        let mut i = 0;
+        while i < client.observers.len() {
+            if client.observers[i].0 == query_id {
+                observer_ids.push(client.observers.swap_remove(i).1);
+            } else {
+                i += 1;
+            }
+        }
+
+        Ok(observer_ids)
     }
 }
