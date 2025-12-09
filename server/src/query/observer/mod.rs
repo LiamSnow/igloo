@@ -1,6 +1,6 @@
 use crate::query::observer::{
-    comp::ComponentObserver, device::DeviceObserver, entity::EntityObserver, floe::FloeObserver,
-    group::GroupObserver,
+    comp::ComponentObserver, device::DeviceObserver, entity::EntityObserver,
+    ext::ExtensionObserver, group::GroupObserver,
 };
 
 pub mod dispatch;
@@ -9,7 +9,7 @@ pub mod subscriber;
 mod comp;
 mod device;
 mod entity;
-mod floe;
+mod ext;
 mod group;
 
 pub type ObserverID = usize;
@@ -20,5 +20,5 @@ pub enum Observer {
     Entities(EntityObserver),
     Components(ComponentObserver),
     Groups(GroupObserver),
-    Floes(FloeObserver),
+    Extensions(ExtensionObserver),
 }

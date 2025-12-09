@@ -7,14 +7,14 @@ use std::str::FromStr;
 /// persistent
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("Floe(\"{_0}\")")]
+#[display("Extension(\"{_0}\")")]
 #[repr(transparent)]
 pub struct ExtensionID(pub String);
 
 /// ephemeral
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
 #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
-#[display("Floe(#{_0})")]
+#[display("Extension(#{_0})")]
 #[repr(transparent)]
 pub struct ExtensionIndex(pub usize);
 

@@ -10,7 +10,7 @@ pub enum IglooMessage {
     // WARN: Append-only. Never change order or it will break backwards-compatibility
     //.
     //.
-    /// Floe/Script must send to Igloo on boot
+    /// Extension/Script must send to Igloo on boot
     /// Igloo will then never send >MSIC or >MSIM
     WhatsUpIgloo {
         // max supported igloo component

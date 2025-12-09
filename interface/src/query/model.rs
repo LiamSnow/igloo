@@ -1,6 +1,6 @@
 use crate::{
     Component, ComponentType, IglooType, IglooValue,
-    id::{DeviceID, ExtensionID, GroupID},
+    id::{DeviceID, EntityID, ExtensionID, GroupID},
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot},
     types::{agg::AggregationOp, compare::ComparisonOp, math::MathOp},
 };
@@ -64,8 +64,9 @@ pub enum GroupAction {
     GetID,
     Snapshot,
 
-    ObserveRename,
-    ObserveMembershipChanged,
+    ObserveName,
+    /// device added, device removed
+    ObserveMembership,
 
     Count,
     Inherit,
@@ -87,9 +88,6 @@ pub enum DeviceAction {
     IsAttached,
     ObserveAttached,
     ObserveName,
-    ObserveEntityAdded,
-    /// component put on any of its children (entities)
-    ObserveComponentPut,
 
     Count,
     Inherit,
@@ -106,9 +104,10 @@ pub struct EntityQuery {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum EntityAction {
     Snapshot,
-    ObserveComponentPut,
     Count,
     Inherit,
+    ObserveRegistered,
+    ObserveComponentPut,
     // entities dont attach
 }
 
@@ -226,8 +225,9 @@ pub enum QueryResult {
 
     EntitySnapshot(Vec<EntitySnapshot>),
 
+    Aggregate(Option<IglooValue>),
     ComponentValue(Vec<IglooValue>),
-    ComponentValueWithParents(Vec<(DeviceID, String, IglooValue)>),
+    ComponentValueWithParents(Vec<(DeviceID, EntityID, IglooValue)>),
 
     Count(usize),
 }
@@ -242,17 +242,60 @@ pub enum QueryResultType {
 
     GroupID,
     GroupSnapshot,
+    GroupMutation,
 
     DeviceID,
     DeviceSnapshot,
     DeviceAttached,
+    DeviceRenamed,
+    DeviceEntityAdded,
 
     EntitySnapshot,
 
+    Aggregate(IglooType),
     ComponentValue(IglooType),
     ComponentValueWithParents(IglooType),
 
     Count,
+
+    Observer(ObserverUpdateType),
+}
+
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+pub enum ObserverUpdate {
+    ExtensionAttached(ExtensionID, bool),
+
+    GroupRenamed(GroupID, String),
+    /// true => added, false => removed
+    GroupMembershipChanged(GroupID, DeviceID, bool),
+
+    DeviceRenamed(DeviceID, String),
+    DeviceAttached(DeviceID, bool),
+
+    EntityRegistered(DeviceID, EntityID),
+    EntityComponentPut(DeviceID, EntityID, Component),
+
+    Aggregate(IglooValue),
+    ComponentValue(IglooValue),
+    ComponentValueWithParents(DeviceID, EntityID, IglooValue),
+}
+
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+pub enum ObserverUpdateType {
+    ExtensionAttached,
+
+    GroupRenamed,
+    GroupMembership,
+
+    DeviceRenamed,
+    DeviceAttached,
+
+    EntityRegistered,
+    EntityComponentPut,
+
+    Aggregate(IglooType),
+    ComponentValue(IglooType),
+    ComponentValueWithParents(IglooType),
 }
 
 impl Query {
@@ -261,16 +304,16 @@ impl Query {
             Query::Extension(q) => matches!(q.action, ExtensionAction::ObserveAttached),
             Query::Group(q) => matches!(
                 q.action,
-                GroupAction::ObserveRename | GroupAction::ObserveMembershipChanged
+                GroupAction::ObserveName | GroupAction::ObserveMembership
             ),
             Query::Device(q) => matches!(
                 q.action,
-                DeviceAction::ObserveAttached
-                    | DeviceAction::ObserveName
-                    | DeviceAction::ObserveEntityAdded
-                    | DeviceAction::ObserveComponentPut
+                DeviceAction::ObserveAttached | DeviceAction::ObserveName
             ),
-            Query::Entity(q) => matches!(q.action, EntityAction::ObserveComponentPut),
+            Query::Entity(q) => matches!(
+                q.action,
+                EntityAction::ObserveComponentPut | EntityAction::ObserveRegistered
+            ),
             Query::Component(q) => matches!(q.action, ComponentAction::ObserveValue),
         }
     }

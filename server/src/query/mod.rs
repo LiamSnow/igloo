@@ -44,7 +44,18 @@ impl QueryEngine {
         query.optimize();
 
         if query.is_observer() {
-            return self.register_observer(tree, cm, client_id, query_id, query);
+            return match self.register_observer(tree, cm, client_id, query_id, query)? {
+                Err(e) => cm.send(
+                    client_id,
+                    IglooResponse::QueryResult {
+                        query_id,
+                        result: Err(e),
+                    },
+                ),
+                // observer registered successfully, no response
+                // will be given until an event occurs
+                Ok(()) => Ok(()),
+            };
         }
 
         let result = match query {
@@ -52,10 +63,10 @@ impl QueryEngine {
             Query::Group(q) => self.eval_group(tree, q)?,
             Query::Device(q) => self.eval_device(tree, q)?,
             Query::Entity(q) => self.eval_entity(tree, q)?,
-            Query::Component(q) => self.eval_component(tree, q)?,
+            Query::Component(q) => self.eval_component(cm, tree, q)?,
         };
 
-        cm.send(client_id, IglooResponse::Result { query_id, result })
+        cm.send(client_id, IglooResponse::QueryResult { query_id, result })
     }
 
     pub fn drop_observers(&mut self, observers: Vec<ObserverID>) {

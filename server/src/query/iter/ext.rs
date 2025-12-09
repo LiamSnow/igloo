@@ -17,31 +17,31 @@ where
 {
     match xid {
         IDFilter::Is(id) => {
-            let Ok(fref) = tree.ext_index(id) else {
+            let Ok(xindex) = tree.ext_index(id) else {
                 return ControlFlow::Continue(());
             };
-            if let Ok(floe) = tree.ext(fref) {
-                return f(floe);
+            if let Ok(ext) = tree.ext(xindex) {
+                return f(ext);
             }
             ControlFlow::Continue(())
         }
         IDFilter::OneOf(ids) => {
             for id in ids {
-                let Ok(fref) = tree.ext_index(id) else {
+                let Ok(xindex) = tree.ext_index(id) else {
                     continue;
                 };
-                if let Ok(floe) = tree.ext(fref) {
-                    f(floe)?;
+                if let Ok(ext) = tree.ext(xindex) {
+                    f(ext)?;
                 }
             }
             ControlFlow::Continue(())
         }
         IDFilter::Any => {
-            for floe in tree.exts() {
-                let Some(floe) = floe else {
+            for ext in tree.exts() {
+                let Some(ext) = ext else {
                     continue;
                 };
-                f(floe)?;
+                f(ext)?;
             }
             ControlFlow::Continue(())
         }

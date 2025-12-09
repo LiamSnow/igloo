@@ -1,5 +1,5 @@
 use crate::{
-    core::IglooError,
+    core::{ClientManager, IglooError},
     query::{
         QueryEngine,
         iter::{estimate_entity_count, for_each_entity},
@@ -18,6 +18,7 @@ use std::{collections::HashSet, ops::ControlFlow};
 impl QueryEngine {
     pub fn eval_component(
         &mut self,
+        cm: &mut ClientManager,
         tree: &mut DeviceTree,
         query: ComponentQuery,
     ) -> Result<Result<R, QueryError>, IglooError> {
@@ -64,10 +65,7 @@ impl QueryEngine {
                         },
                     );
 
-                    R::ComponentValue(match agg.finish() {
-                        Some(v) => vec![v],
-                        None => vec![],
-                    })
+                    R::Aggregate(agg.finish())
                 }
 
                 None if query.include_parents => {
@@ -90,7 +88,7 @@ impl QueryEngine {
                                 error = Some(QueryError::ComponentNoValue(query.component));
                                 return ControlFlow::Break(());
                             };
-                            res.push((*device.id(), entity.id().to_string(), iv));
+                            res.push((*device.id(), entity.id().clone(), iv));
                             if res.len() >= limit {
                                 ControlFlow::Break(())
                             } else {
@@ -159,20 +157,20 @@ impl QueryEngine {
                     &query.device_filter,
                     &query.entity_filter,
                     |device, entity| {
-                        let Some(fref) = device.owner_ref() else {
+                        let Some(xindex) = device.owner_ref() else {
                             return ControlFlow::Continue(());
                         };
 
-                        if exts_to_kill.contains(&fref) {
+                        if exts_to_kill.contains(&xindex) {
                             return ControlFlow::Continue(());
                         }
 
-                        let Ok(floe) = tree.ext(&fref) else {
+                        let Ok(ext) = tree.ext(&xindex) else {
                             return ControlFlow::Continue(());
                         };
 
-                        if msic > floe.msic {
-                            // floe doesn't support this component so dont send it
+                        if msic > ext.msic {
+                            // extension doesn't support this component so dont send it
                             return ControlFlow::Continue(());
                         }
 
@@ -186,10 +184,10 @@ impl QueryEngine {
                             *e = entity.index().0;
                         }
 
-                        let res = floe.writer.try_write_immut(&msg, &mut scratch);
+                        let res = ext.writer.try_write_immut(&msg, &mut scratch);
                         if res.is_err() {
                             // TODO print error
-                            exts_to_kill.insert(fref);
+                            exts_to_kill.insert(xindex);
                         }
 
                         count += 1;
@@ -205,7 +203,7 @@ impl QueryEngine {
                 for xindex in exts_to_kill {
                     println!("{xindex}'s unix socket is full. Killing..");
                     // TODO reboot instead of kill
-                    tree.detach_ext(self, xindex)?;
+                    tree.detach_ext(cm, self, xindex)?;
                 }
 
                 R::Count(count)
@@ -277,10 +275,10 @@ impl QueryEngine {
                     },
                 );
 
-                for fref in exts_to_kill {
-                    println!("{fref}'s unix socket is full. Killing..");
+                for xindicies in exts_to_kill {
+                    println!("{xindicies}'s unix socket is full. Killing..");
                     // TODO reboot instead of kill
-                    tree.detach_ext(self, fref)?;
+                    tree.detach_ext(cm, self, xindicies)?;
                 }
 
                 R::Count(count)

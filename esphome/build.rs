@@ -15,24 +15,14 @@ fn main() {
 
     let msgs = parse_proto_messages("src/api.proto");
     let entities = extract_entity_types(&msgs);
-    // let states = extract_state_responses(&msgs);
 
     let msg_enum = gen_message_type_enum(&msgs);
     let entity_enum = gen_entity_type_enum(&entities);
-    // let process_fn = gen_process_state_update(&states);
-    // let register_fn = gen_register_entities(&entities);
 
     let code = quote! {
         // THIS IS GENERATED CODE - DO NOT MODIFY
 
         use strum_macros::{Display, FromRepr};
-        // use crate::api;
-        // use prost::Message;
-        // use crate::entity::EntityRegister;
-        // use crate::device::{Device, DeviceError};
-        // use bytes::BytesMut;
-        // use igloo_interface::FloeWriterDefault;
-        // use crate::connection::base::Connectionable;
 
         #msg_enum
 
@@ -142,18 +132,6 @@ fn extract_entity_types(msgs: &[(String, u16)]) -> Vec<String> {
         .collect()
 }
 
-// fn extract_state_responses(msgs: &[(String, u16)]) -> Vec<String> {
-//     msgs.iter()
-//         .filter_map(|(name, _)| {
-//             if name.ends_with("StateResponse") && !name.contains("HomeAssistant") {
-//                 Some(name.clone())
-//             } else {
-//                 None
-//             }
-//         })
-//         .collect()
-// }
-
 fn gen_message_type_enum(msgs: &[(String, u16)]) -> TokenStream {
     let variants = msgs.iter().map(|(name, id)| {
         let ident = Ident::new(name, Span::call_site());
@@ -182,88 +160,3 @@ fn gen_entity_type_enum(entities: &[String]) -> TokenStream {
         }
     }
 }
-
-// fn gen_process_state_update(states: &[String]) -> TokenStream {
-//     let arms = states.iter().map(|name| {
-//         let msg_type = Ident::new(name, Span::call_site());
-//         let api_type = Ident::new(name, Span::call_site());
-//         quote! {
-//             MessageType::#msg_type => {
-//                 self.apply_entity_update(api::#api_type::decode(msg)?).await?;
-//             }
-//         }
-//     });
-
-//     quote! {
-//         impl Device {
-//             pub async fn process_state_update(
-//                 &mut self,
-//                 msg_type: MessageType,
-//                 msg: BytesMut,
-//             ) -> Result<(), DeviceError> {
-//                 match msg_type {
-//                     MessageType::DisconnectRequest
-//                     | MessageType::PingRequest
-//                     | MessageType::PingResponse
-//                     | MessageType::GetTimeRequest
-//                     | MessageType::SubscribeLogsResponse => {
-//                         unreachable!()
-//                     }
-//                     #(#arms)*
-//                     _ => {}
-//                 }
-//                 Ok(())
-//             }
-//         }
-//     }
-// }
-
-// fn gen_register_entities(entities: &[String]) -> TokenStream {
-//     let arms = entities.iter().map(|entity| {
-//         let msg = Ident::new(
-//             &format!("ListEntities{}Response", entity),
-//             Span::call_site(),
-//         );
-//         let api = Ident::new(
-//             &format!("ListEntities{}Response", entity),
-//             Span::call_site(),
-//         );
-//         quote! {
-//             MessageType::#msg => {
-//                 let msg = api::#api::decode(msg)?;
-//                 msg.register(self, writer).await?;
-//             }
-//         }
-//     });
-
-//     quote! {
-//         impl Device {
-//             pub async fn register_entities(
-//                 &mut self,
-//                 writer: &mut FloeWriterDefault,
-//             ) -> Result<(), DeviceError> {
-//                 self.send_msg(
-//                     MessageType::ListEntitiesRequest,
-//                     &api::ListEntitiesRequest {},
-//                 ).await?;
-
-//                 loop {
-//                     let (msg_type, msg) = self.connection.recv_msg().await?;
-
-//                     match msg_type {
-//                         MessageType::ListEntitiesServicesResponse => {
-//                             continue;
-//                         }
-//                         MessageType::ListEntitiesDoneResponse => break,
-//                         #(#arms)*
-//                         _ => continue,
-//                     }
-
-//                     writer.deselect_entity().await?;
-//                 }
-
-//                 Ok(())
-//             }
-//         }
-//     }
-// }

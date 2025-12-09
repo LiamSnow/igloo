@@ -9,7 +9,7 @@
 
 use super::{Device, DeviceTree, Entity, Extension, Group};
 use crate::{
-    core::IglooError,
+    core::{ClientManager, IglooError},
     ext::ExtensionHandle,
     query::QueryEngine,
     tree::{COMP_TYPE_ARR_LEN, Presense, TreeIDError, persist::TreePersistError},
@@ -44,6 +44,7 @@ pub enum TreeMutationError {
 impl DeviceTree {
     pub fn attach_ext(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         mut handle: ExtensionHandle,
         writer: IWriter,
@@ -96,7 +97,7 @@ impl DeviceTree {
 
         self.ext_ref_lut.insert(xid, xindex);
 
-        engine.on_ext_attached(self, self.ext(&xindex)?)?;
+        engine.on_ext_attached(cm, self, self.ext(&xindex)?)?;
 
         Ok(xindex)
     }
@@ -104,6 +105,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn detach_ext(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         index: ExtensionIndex,
     ) -> Result<(), IglooError> {
@@ -114,17 +116,27 @@ impl DeviceTree {
         let xid = &ext.id;
         self.ext_ref_lut.remove(xid);
 
+        // notify the QueryEngine early, so it can still check device filters
+        engine.on_ext_detached(cm, self, &ext)?;
+
         // unlink devices
+        let now = Instant::now();
         for device in self.devices.iter_mut() {
             if device.owner_ref == Some(index) {
                 device.owner_ref = None;
+
+                // clear device
+                device.presense = Presense::default();
+                device.entities = SmallVec::default();
+                device.entity_index_lut = HashMap::with_capacity_and_hasher(10, FxBuildHasher);
+                device.comp_to_entity = [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN];
+
+                device.last_updated = now;
             }
         }
 
         // kill it
         ext.handle.abort();
-
-        engine.on_ext_detached(self, &index)?;
 
         Ok(())
     }
@@ -134,6 +146,7 @@ impl DeviceTree {
 impl DeviceTree {
     pub fn create_device(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         name: String,
         owner: ExtensionIndex,
@@ -163,7 +176,7 @@ impl DeviceTree {
 
         self.save_devices()?;
 
-        engine.on_device_created(self, self.device(&did)?)?;
+        engine.on_device_created(cm, self, self.device(&did)?)?;
 
         Ok(did)
     }
@@ -171,6 +184,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn delete_device(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         did: DeviceID,
     ) -> Result<(), IglooError> {
@@ -195,7 +209,7 @@ impl DeviceTree {
 
         self.save_devices()?;
 
-        engine.on_device_deleted(self, &device)?;
+        engine.on_device_deleted(cm, self, &device)?;
 
         Ok(())
     }
@@ -203,6 +217,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn rename_device(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         did: DeviceID,
         new_name: String,
@@ -213,7 +228,7 @@ impl DeviceTree {
 
         self.save_devices()?;
 
-        engine.on_device_renamed(self, self.device(&did)?)?;
+        engine.on_device_renamed(cm, self, self.device(&did)?)?;
 
         Ok(())
     }
@@ -223,6 +238,7 @@ impl DeviceTree {
 impl DeviceTree {
     pub fn register_entity(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         did: DeviceID,
         id: EntityID,
@@ -245,13 +261,14 @@ impl DeviceTree {
         device.entity_index_lut.insert(id, index);
         device.last_updated = Instant::now();
 
-        engine.on_entity_registered(self, self.device(&did)?, index)?;
+        engine.on_entity_registered(cm, self, self.device(&did)?, index)?;
 
         Ok(())
     }
 
     pub fn write_components(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         did: DeviceID,
         eindex: EntityIndex,
@@ -268,14 +285,28 @@ impl DeviceTree {
             let comp_type = comp.get_type();
             entity.last_updated = Instant::now();
 
-            match entity.put(comp) {
+            match entity.put(comp.clone()) {
                 Some(comp_type) => {
                     device.presense.set(comp_type);
                     device.comp_to_entity[comp_type as usize].push(eindex);
-                    engine.on_component_put(self, self.device(&did)?, eindex, comp_type)?;
+                    engine.on_component_put(
+                        cm,
+                        self,
+                        self.device(&did)?,
+                        eindex,
+                        comp_type,
+                        comp,
+                    )?;
                 }
                 None => {
-                    engine.on_component_set(self, self.device(&did)?, eindex, comp_type)?;
+                    engine.on_component_set(
+                        cm,
+                        self,
+                        self.device(&did)?,
+                        eindex,
+                        comp_type,
+                        comp,
+                    )?;
                 }
             }
         }
@@ -289,6 +320,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn create_group(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         name: String,
     ) -> Result<GroupID, IglooError> {
@@ -303,7 +335,7 @@ impl DeviceTree {
 
         self.save_groups()?;
 
-        engine.on_group_created(self, self.group(&gid)?)?;
+        engine.on_group_created(cm, self, self.group(&gid)?)?;
 
         Ok(gid)
     }
@@ -311,6 +343,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn delete_group(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         gid: GroupID,
     ) -> Result<(), IglooError> {
@@ -327,7 +360,7 @@ impl DeviceTree {
 
         self.save_groups()?;
 
-        engine.on_group_deleted(self, &gid)?;
+        engine.on_group_deleted(cm, self, &gid)?;
 
         Ok(())
     }
@@ -335,6 +368,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn rename_group(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         gid: &GroupID,
         new_name: String,
@@ -344,7 +378,7 @@ impl DeviceTree {
 
         self.save_groups()?;
 
-        engine.on_group_renamed(self, self.group(gid)?)?;
+        engine.on_group_renamed(cm, self, self.group(gid)?)?;
 
         Ok(())
     }
@@ -352,6 +386,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn add_device_to_group(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         gid: GroupID,
         did: DeviceID,
@@ -364,7 +399,7 @@ impl DeviceTree {
 
         self.save_groups()?;
 
-        engine.on_group_membership_changed(self, self.group(&gid)?, self.device(&did)?)?;
+        engine.on_group_device_added(cm, self, self.group(&gid)?, self.device(&did)?)?;
 
         Ok(())
     }
@@ -372,6 +407,7 @@ impl DeviceTree {
     #[allow(dead_code)]
     pub fn remove_device_from_group(
         &mut self,
+        cm: &mut ClientManager,
         engine: &mut QueryEngine,
         gid: GroupID,
         did: DeviceID,
@@ -384,7 +420,7 @@ impl DeviceTree {
 
         self.save_groups()?;
 
-        engine.on_group_membership_changed(self, self.group(&gid)?, self.device(&did)?)?;
+        engine.on_group_device_removed(cm, self, self.group(&gid)?, self.device(&did)?)?;
 
         Ok(())
     }

@@ -18,7 +18,7 @@ pub mod model {
 
 pub const CONFIG_FILE: &str = "./data/config.ini";
 
-/// Eventually this will be described in the Floe.toml file
+/// Eventually this will be described in the Igloo.toml file
 pub const ADD_DEVICE: u16 = 32;
 
 #[derive(Debug, Default, Clone)]
@@ -33,7 +33,9 @@ pub type CommandAndPayload = (u16, Vec<u8>);
 async fn main() {
     let mut config = Config::load().await.unwrap();
 
-    let (mut writer, mut reader) = ipc::connect().await.expect("Failed to initialize Floe");
+    let (mut writer, mut reader) = ipc::connect()
+        .await
+        .expect("Failed to initialize Extension");
 
     // writer task
     let (write_tx, write_rx) = kanal::bounded_async(100);

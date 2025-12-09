@@ -1,17 +1,25 @@
+//! Each different Observers subscribes to a series of
+//! events depending on the exact query.
+//!
+//! [TreeSubscribers] keeps track of these subscriptions and is used by
+//! [dispatcher.rs] to dispatch events accordingly.
+
 use crate::{
-    core::IglooError,
     query::observer::{ObserverID, ObserverList},
+    tree::Extension,
 };
 use igloo_interface::{
     ComponentType,
-    id::{DeviceID, FloeRef, GroupID},
+    id::{DeviceID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
+use std::collections::HashMap;
 
+/// Event Name -> Subscribers by parameters
 #[derive(Default)]
 pub struct TreeSubscribers {
-    pub component_set: ComponentEventSubscribers,
-    pub component_put: ComponentEventSubscribers,
+    pub component_set: ComponentSetEventSubscribers,
+    pub component_put: ComponentPutEventSubscribers,
     pub entity_registered: EntityEventSubscribers,
     pub device_created: DeviceEventSubscribers,
     pub device_renamed: DeviceEventSubscribers,
@@ -19,9 +27,10 @@ pub struct TreeSubscribers {
     pub group_created: GroupEventSubscribers,
     pub group_renamed: GroupEventSubscribers,
     pub group_deleted: GroupEventSubscribers,
-    pub group_membership_changed: GroupEventSubscribers,
-    pub floe_attached: FloeEventSubscribers,
-    pub floe_detached: FloeEventSubscribers,
+    pub group_device_removed: GroupDeviceEventSubscribers,
+    pub group_device_added: GroupDeviceEventSubscribers,
+    pub ext_attached: ExtensionEventSubscribers,
+    pub ext_detached: ExtensionEventSubscribers,
 }
 
 impl TreeSubscribers {
@@ -35,102 +44,184 @@ impl TreeSubscribers {
         self.group_created.unsubscribe(observer_id);
         self.group_renamed.unsubscribe(observer_id);
         self.group_deleted.unsubscribe(observer_id);
-        self.group_membership_changed.unsubscribe(observer_id);
-        self.floe_attached.unsubscribe(observer_id);
-        self.floe_detached.unsubscribe(observer_id);
+        self.group_device_removed.unsubscribe(observer_id);
+        self.group_device_added.unsubscribe(observer_id);
+        self.ext_attached.unsubscribe(observer_id);
+        self.ext_detached.unsubscribe(observer_id);
     }
 }
 
-#[derive(Default)]
 pub struct GroupEventSubscribers {
     /// sub to group
-    pub by_id: FxHashMap<GroupID, ObserverList>,
+    pub by_gid: FxHashMap<GroupID, ObserverList>,
     /// sub to all groups
     pub all: ObserverList,
 }
 
-#[derive(Default)]
-pub struct FloeEventSubscribers {
-    /// sub to floe
-    pub by_ref: FxHashMap<FloeRef, ObserverList>,
-    /// sub to all floes
+pub struct GroupDeviceEventSubscribers {
+    /// sub to events from this group
+    pub by_gid: FxHashMap<GroupID, GroupDeviceEventGroupSubscribers>,
+    /// sub to any device added/removed from any group
     pub all: ObserverList,
 }
 
-#[derive(Default)]
+pub struct GroupDeviceEventGroupSubscribers {
+    /// sub to this device's added/removed from this group
+    pub by_did: FxHashMap<DeviceID, ObserverList>,
+    /// sub to any device added/removed from this group
+    pub all: ObserverList,
+}
+
+pub struct ExtensionEventSubscribers {
+    /// sub to ext
+    pub by_xid: FxHashMap<ExtensionID, ObserverList>,
+    /// sub to ext
+    pub by_xindex: FxHashMap<ExtensionIndex, ObserverList>,
+    /// sub to ext containing this device
+    pub by_did: FxHashMap<DeviceID, ObserverList>,
+    /// sub to all exts
+    pub all: ObserverList,
+}
+
 pub struct DeviceEventSubscribers {
     /// sub to device
-    pub by_id: FxHashMap<DeviceID, ObserverList>,
+    pub by_did: FxHashMap<DeviceID, ObserverList>,
     /// sub to all devices
     pub all: ObserverList,
 }
 
-#[derive(Default)]
 pub struct EntityEventSubscribers {
     /// sub to entity events on specific device
-    pub device: FxHashMap<DeviceID, ObserverList>,
+    pub by_did: FxHashMap<DeviceID, ObserverList>,
     /// sub to entity events on all devices
     pub all: ObserverList,
 }
 
-#[derive(Default)]
-pub struct ComponentEventSubscribers {
+pub struct ComponentSetEventSubscribers(
+    pub FxHashMap<(DeviceID, EntityIndex, ComponentType), ObserverList>,
+);
+
+pub struct ComponentPutEventSubscribers {
     /// sub to component events on specific device
-    pub device: FxHashMap<DeviceID, ComponentEventDeviceSubscribers>,
+    pub by_did: FxHashMap<DeviceID, ComponentPutEventDeviceSubscribers>,
     /// sub to this component event on any device/entity
-    pub comp: FxHashMap<ComponentType, ObserverList>,
+    pub by_comp_type: FxHashMap<ComponentType, ObserverList>,
     /// sub to all component events on all devices/entities
     pub all: ObserverList,
 }
 
-#[derive(Clone, Default)]
-pub struct ComponentEventDeviceSubscribers {
+#[derive(Clone)]
+pub struct ComponentPutEventDeviceSubscribers {
     /// sub to component events to specific entity
-    pub entity: FxHashMap<usize, ComponentEventEntitySubscribers>,
+    pub by_eindex: FxHashMap<EntityIndex, ComponentPutEventEntitySubscribers>,
     /// sub to this component event on any entity in this device
-    pub comp: FxHashMap<ComponentType, ObserverList>,
+    pub by_comp_type: FxHashMap<ComponentType, ObserverList>,
     /// sub to all components events on this device
     pub all: ObserverList,
 }
 
-#[derive(Clone, Default)]
-pub struct ComponentEventEntitySubscribers {
+#[derive(Clone)]
+pub struct ComponentPutEventEntitySubscribers {
     /// sub to this component event in this entity
-    pub by_type: FxHashMap<ComponentType, ObserverList>,
+    pub by_comp_type: FxHashMap<ComponentType, ObserverList>,
     /// sub to all component events on this entity
     pub all: ObserverList,
 }
 
-impl GroupEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.by_id.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
-            !list.is_empty()
-        });
-        self.all.retain(|&id| id != observer_id);
-    }
-
-    #[inline]
-    pub fn for_each(
-        &self,
-        group: GroupID,
-        mut f: impl FnMut(ObserverID) -> Result<(), IglooError>,
-    ) -> Result<(), IglooError> {
-        for &id in &self.all {
-            f(id)?;
+impl Default for GroupEventSubscribers {
+    fn default() -> Self {
+        Self {
+            by_gid: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
         }
-        if let Some(list) = self.by_id.get(&group) {
-            for &id in list {
-                f(id)?;
-            }
-        }
-        Ok(())
     }
 }
 
-impl FloeEventSubscribers {
+impl Default for GroupDeviceEventSubscribers {
+    fn default() -> Self {
+        Self {
+            by_gid: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for GroupDeviceEventGroupSubscribers {
+    fn default() -> Self {
+        Self {
+            by_did: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for ExtensionEventSubscribers {
+    fn default() -> Self {
+        Self {
+            by_xid: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            by_xindex: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            by_did: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for DeviceEventSubscribers {
+    fn default() -> Self {
+        Self {
+            by_did: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for EntityEventSubscribers {
+    fn default() -> Self {
+        Self {
+            by_did: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for ComponentSetEventSubscribers {
+    fn default() -> Self {
+        Self(HashMap::with_capacity_and_hasher(2, FxBuildHasher))
+    }
+}
+
+impl Default for ComponentPutEventSubscribers {
+    fn default() -> Self {
+        Self {
+            by_did: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            by_comp_type: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for ComponentPutEventDeviceSubscribers {
+    fn default() -> Self {
+        Self {
+            by_eindex: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            by_comp_type: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl Default for ComponentPutEventEntitySubscribers {
+    fn default() -> Self {
+        Self {
+            by_comp_type: HashMap::with_capacity_and_hasher(2, FxBuildHasher),
+            all: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl GroupEventSubscribers {
     pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.by_ref.retain(|_, list| {
+        self.by_gid.retain(|_, list| {
             list.retain(|&id| id != observer_id);
             !list.is_empty()
         });
@@ -138,26 +229,112 @@ impl FloeEventSubscribers {
     }
 
     #[inline]
-    pub fn for_each(
-        &self,
-        floe: FloeRef,
-        mut f: impl FnMut(ObserverID) -> Result<(), IglooError>,
-    ) -> Result<(), IglooError> {
-        for &id in &self.all {
-            f(id)?;
+    pub fn affected(&self, group: &GroupID) -> Vec<ObserverID> {
+        let capacity = self.all.len() + self.by_gid.get(group).map_or(0, |list| list.len());
+
+        let mut result = Vec::with_capacity(capacity);
+        result.extend_from_slice(&self.all);
+
+        if let Some(list) = self.by_gid.get(group) {
+            result.extend_from_slice(list);
         }
-        if let Some(list) = self.by_ref.get(&floe) {
-            for &id in list {
-                f(id)?;
+
+        result
+    }
+}
+
+impl GroupDeviceEventSubscribers {
+    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+        self.by_gid.retain(|_, group_sub| {
+            group_sub.unsubscribe(observer_id);
+            !group_sub.is_empty()
+        });
+        self.all.retain(|&id| id != observer_id);
+    }
+
+    #[inline]
+    pub fn affected(&self, group: &GroupID, device: &DeviceID) -> Vec<ObserverID> {
+        let group_sub = self.by_gid.get(group);
+
+        let capacity = self.all.len()
+            + group_sub.map_or(0, |gs| {
+                gs.all.len() + gs.by_did.get(device).map_or(0, |list| list.len())
+            });
+
+        let mut result = Vec::with_capacity(capacity);
+        result.extend_from_slice(&self.all);
+
+        if let Some(group_sub) = group_sub {
+            result.extend_from_slice(&group_sub.all);
+            if let Some(list) = group_sub.by_did.get(device) {
+                result.extend_from_slice(list);
             }
         }
-        Ok(())
+
+        result
+    }
+}
+
+impl GroupDeviceEventGroupSubscribers {
+    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+        self.by_did.retain(|_, list| {
+            list.retain(|&id| id != observer_id);
+            !list.is_empty()
+        });
+        self.all.retain(|&id| id != observer_id);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.by_did.is_empty() && self.all.is_empty()
+    }
+}
+
+impl ExtensionEventSubscribers {
+    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+        self.by_xid.retain(|_, list| {
+            list.retain(|&id| id != observer_id);
+            !list.is_empty()
+        });
+        self.by_xindex.retain(|_, list| {
+            list.retain(|&id| id != observer_id);
+            !list.is_empty()
+        });
+        self.all.retain(|&id| id != observer_id);
+    }
+
+    #[inline]
+    pub fn affected(&self, ext: &Extension) -> Vec<ObserverID> {
+        let capacity = self.all.len()
+            + self.by_xindex.get(ext.index()).map_or(0, |list| list.len())
+            + self.by_xid.get(ext.id()).map_or(0, |list| list.len())
+            // maybe not the best guess but realistically some devices
+            // have multiple subs, some have none so idk
+            + ext.devices().len();
+
+        let mut result = Vec::with_capacity(capacity);
+        result.extend_from_slice(&self.all);
+
+        if let Some(list) = self.by_xid.get(ext.id()) {
+            result.extend_from_slice(list);
+        }
+
+        if let Some(list) = self.by_xindex.get(ext.index()) {
+            result.extend_from_slice(list);
+        }
+
+        for did in ext.devices() {
+            if let Some(list) = self.by_did.get(did) {
+                result.extend_from_slice(list);
+            }
+        }
+
+        result
     }
 }
 
 impl DeviceEventSubscribers {
     pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.by_id.retain(|_, list| {
+        self.by_did.retain(|_, list| {
             list.retain(|&id| id != observer_id);
             !list.is_empty()
         });
@@ -165,26 +342,23 @@ impl DeviceEventSubscribers {
     }
 
     #[inline]
-    pub fn for_each(
-        &self,
-        did: DeviceID,
-        mut f: impl FnMut(ObserverID) -> Result<(), IglooError>,
-    ) -> Result<(), IglooError> {
-        for &id in &self.all {
-            f(id)?;
+    pub fn affected(&self, did: &DeviceID) -> Vec<ObserverID> {
+        let capacity = self.all.len() + self.by_did.get(did).map_or(0, |list| list.len());
+
+        let mut result = Vec::with_capacity(capacity);
+        result.extend_from_slice(&self.all);
+
+        if let Some(list) = self.by_did.get(did) {
+            result.extend_from_slice(list);
         }
-        if let Some(list) = self.by_id.get(&did) {
-            for &id in list {
-                f(id)?;
-            }
-        }
-        Ok(())
+
+        result
     }
 }
 
 impl EntityEventSubscribers {
     pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.device.retain(|_, list| {
+        self.by_did.retain(|_, list| {
             list.retain(|&id| id != observer_id);
             !list.is_empty()
         });
@@ -192,30 +366,49 @@ impl EntityEventSubscribers {
     }
 
     #[inline]
-    pub fn for_each(
-        &self,
-        did: DeviceID,
-        mut f: impl FnMut(ObserverID) -> Result<(), IglooError>,
-    ) -> Result<(), IglooError> {
-        for &id in &self.all {
-            f(id)?;
+    pub fn affected(&self, did: &DeviceID) -> Vec<ObserverID> {
+        let capacity = self.all.len() + self.by_did.get(did).map_or(0, |list| list.len());
+
+        let mut result = Vec::with_capacity(capacity);
+        result.extend_from_slice(&self.all);
+
+        if let Some(list) = self.by_did.get(did) {
+            result.extend_from_slice(list);
         }
-        if let Some(list) = self.device.get(&did) {
-            for &id in list {
-                f(id)?;
-            }
-        }
-        Ok(())
+
+        result
     }
 }
 
-impl ComponentEventSubscribers {
+impl ComponentSetEventSubscribers {
     pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.device.retain(|_, device_sub| {
+        self.0.retain(|_, list| {
+            list.retain(|&id| id != observer_id);
+            !list.is_empty()
+        });
+    }
+
+    #[inline]
+    pub fn affected(
+        &self,
+        did: DeviceID,
+        eindex: EntityIndex,
+        comp_type: ComponentType,
+    ) -> Vec<ObserverID> {
+        match self.0.get(&(did, eindex, comp_type)) {
+            Some(list) => list.to_vec(),
+            None => vec![],
+        }
+    }
+}
+
+impl ComponentPutEventSubscribers {
+    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+        self.by_did.retain(|_, device_sub| {
             device_sub.unsubscribe(observer_id);
             !device_sub.is_empty()
         });
-        self.comp.retain(|_, list| {
+        self.by_comp_type.retain(|_, list| {
             list.retain(|&id| id != observer_id);
             !list.is_empty()
         });
@@ -223,54 +416,69 @@ impl ComponentEventSubscribers {
     }
 
     #[inline]
-    pub fn for_each(
+    pub fn affected(
         &self,
-        did: DeviceID,
-        eindex: usize,
-        comp_type: ComponentType,
-        mut f: impl FnMut(ObserverID) -> Result<(), IglooError>,
-    ) -> Result<(), IglooError> {
-        for &id in &self.all {
-            f(id)?;
+        did: &DeviceID,
+        eindex: &EntityIndex,
+        comp_type: &ComponentType,
+    ) -> Vec<ObserverID> {
+        let device_sub = self.by_did.get(did);
+
+        let capacity = self.all.len()
+            + self
+                .by_comp_type
+                .get(comp_type)
+                .map_or(0, |list| list.len())
+            + device_sub.map_or(0, |dsubs| {
+                dsubs.all.len()
+                    + dsubs
+                        .by_comp_type
+                        .get(comp_type)
+                        .map_or(0, |list| list.len())
+                    + dsubs.by_eindex.get(eindex).map_or(0, |esubs| {
+                        esubs.all.len()
+                            + esubs
+                                .by_comp_type
+                                .get(comp_type)
+                                .map_or(0, |list| list.len())
+                    })
+            });
+
+        let mut result = Vec::with_capacity(capacity);
+
+        result.extend_from_slice(&self.all);
+
+        if let Some(list) = self.by_comp_type.get(comp_type) {
+            result.extend_from_slice(list);
         }
-        if let Some(list) = self.comp.get(&comp_type) {
-            for &id in list {
-                f(id)?;
+
+        if let Some(dsubs) = device_sub {
+            result.extend_from_slice(&dsubs.all);
+
+            if let Some(list) = dsubs.by_comp_type.get(comp_type) {
+                result.extend_from_slice(list);
+            }
+
+            if let Some(esubs) = dsubs.by_eindex.get(eindex) {
+                result.extend_from_slice(&esubs.all);
+
+                if let Some(list) = esubs.by_comp_type.get(comp_type) {
+                    result.extend_from_slice(list);
+                }
             }
         }
 
-        if let Some(dsubs) = self.device.get(&did) {
-            for &id in &dsubs.all {
-                f(id)?;
-            }
-            if let Some(list) = dsubs.comp.get(&comp_type) {
-                for &id in list {
-                    f(id)?;
-                }
-            }
-
-            if let Some(esubs) = dsubs.entity.get(&eindex) {
-                for &id in &esubs.all {
-                    f(id)?;
-                }
-                if let Some(list) = esubs.by_type.get(&comp_type) {
-                    for &id in list {
-                        f(id)?;
-                    }
-                }
-            }
-        }
-        Ok(())
+        result
     }
 }
 
-impl ComponentEventDeviceSubscribers {
+impl ComponentPutEventDeviceSubscribers {
     pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.entity.retain(|_, entity_sub| {
+        self.by_eindex.retain(|_, entity_sub| {
             entity_sub.unsubscribe(observer_id);
             !entity_sub.is_empty()
         });
-        self.comp.retain(|_, list| {
+        self.by_comp_type.retain(|_, list| {
             list.retain(|&id| id != observer_id);
             !list.is_empty()
         });
@@ -278,13 +486,13 @@ impl ComponentEventDeviceSubscribers {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entity.is_empty() && self.comp.is_empty() && self.all.is_empty()
+        self.by_eindex.is_empty() && self.by_comp_type.is_empty() && self.all.is_empty()
     }
 }
 
-impl ComponentEventEntitySubscribers {
+impl ComponentPutEventEntitySubscribers {
     pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.by_type.retain(|_, list| {
+        self.by_comp_type.retain(|_, list| {
             list.retain(|&id| id != observer_id);
             !list.is_empty()
         });
@@ -292,6 +500,6 @@ impl ComponentEventEntitySubscribers {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.by_type.is_empty() && self.all.is_empty()
+        self.by_comp_type.is_empty() && self.all.is_empty()
     }
 }

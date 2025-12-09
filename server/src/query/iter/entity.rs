@@ -38,7 +38,7 @@ where
 
     let required_types: Option<SmallVec<[ComponentType; 4]>> = type_filter
         .as_ref()
-        .and_then(extract_comp_types)
+        .and_then(extract_required_comp_types)
         .map(|set| set.into_iter().collect());
 
     for_each_device(
@@ -114,7 +114,7 @@ fn check_entity(
 }
 
 #[inline(always)]
-fn passes_entity_last_update(entity: &Entity, filter: &Option<(ComparisonOp, usize)>) -> bool {
+pub fn passes_entity_last_update(entity: &Entity, filter: &Option<(ComparisonOp, usize)>) -> bool {
     match filter {
         None => true,
         Some((op, seconds)) => {
@@ -124,7 +124,7 @@ fn passes_entity_last_update(entity: &Entity, filter: &Option<(ComparisonOp, usi
 }
 
 #[inline(always)]
-fn passes_value_filter(entity: &Entity, filter: &ValueFilter) -> bool {
+pub fn passes_value_filter(entity: &Entity, filter: &ValueFilter) -> bool {
     use ValueFilter::*;
     match filter {
         If(op, rhs) => entity
@@ -156,7 +156,7 @@ fn passes_value_filter(entity: &Entity, filter: &ValueFilter) -> bool {
 }
 
 #[inline(always)]
-fn passes_entity_id_filter(
+pub fn passes_entity_id_filter(
     ctx: &mut QueryContext,
     entity: &Entity,
     filter: &EntityIDFilter,
@@ -172,46 +172,63 @@ fn passes_entity_id_filter(
     }
 }
 
-fn extract_comp_types(filter: &TypeFilter) -> Option<FxHashSet<ComponentType>> {
+/// Extracts component types that are guaranteed to be present if the filter matches.
+///
+/// Returns `Some(set)` containing component types that MUST exist for any entity
+/// to pass this filter. Returns `None` if the filter doesn't guarantee any specific
+/// component types are present.
+pub fn extract_required_comp_types(filter: &TypeFilter) -> Option<FxHashSet<ComponentType>> {
     let mut set = HashSet::with_capacity_and_hasher(20, FxBuildHasher);
 
-    if collect_types(filter, &mut set) {
+    if extract_required_comp_types_rec(filter, &mut set) {
         Some(set)
     } else {
         None
     }
 }
 
-fn collect_types(filter: &TypeFilter, set: &mut FxHashSet<ComponentType>) -> bool {
+/// Returns `true` if this filter branch guarantees at least one component type
+/// is required, `false` otherwise. Populates `set` with discovered required types.
+fn extract_required_comp_types_rec(
+    filter: &TypeFilter,
+    set: &mut FxHashSet<ComponentType>,
+) -> bool {
+    use TypeFilter::*;
     match filter {
-        TypeFilter::With(t) => {
+        With(t) => {
             set.insert(*t);
             true
         }
-        TypeFilter::Without(_) => false,
-        TypeFilter::And(filters) => {
-            // only need one type for and
+        Without(_) => false,
+        And(filters) => {
+            // we only need ONE required type to use the reverse index
+
+            // try to find a simple With first (best case)
             for f in filters {
-                if let TypeFilter::With(t) = f {
+                if let With(t) = f {
                     set.insert(*t);
                     return true;
                 }
             }
+
+            // must recurse to find any branch with requirements
             for f in filters {
-                if collect_types(f, set) {
+                if extract_required_comp_types_rec(f, set) {
                     return true;
                 }
             }
             false
         }
-        TypeFilter::Or(filters) => {
+        Or(filters) => {
+            // ALL branches must guarantee a type, otherwise some matches
+            // might not have any required types (taking the branch that returned false)
             for f in filters {
-                if !collect_types(f, set) {
+                if !extract_required_comp_types_rec(f, set) {
                     return false;
                 }
             }
             true
         }
-        TypeFilter::Not(_) => false,
+        Not(_) => false,
     }
 }

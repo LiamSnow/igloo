@@ -1,5 +1,5 @@
 use crate::{
-    core::{IglooError, IglooRequest},
+    core::{ClientManager, IglooError, IglooRequest},
     query::QueryEngine,
     tree::DeviceTree,
 };
@@ -16,19 +16,21 @@ pub use handle::*;
 pub const EXTS_DIR: &str = "./extensions";
 
 pub async fn spawn_all(
+    cm: &mut ClientManager,
     tree: &mut DeviceTree,
     engine: &mut QueryEngine,
     tx: &kanal::Sender<IglooRequest>,
 ) -> Result<(), Box<dyn Error>> {
     for id in get_all_ext_ids().await? {
         let (handle, writer) = ExtensionHandle::new(id.clone(), tx).await?;
-        tree.attach_ext(engine, handle, writer)?;
+        tree.attach_ext(cm, engine, handle, writer)?;
     }
     Ok(())
 }
 
 /// Takes commands from a Extension and applies to Device Tree
 pub fn handle_msg(
+    cm: &mut ClientManager,
     tree: &mut DeviceTree,
     engine: &mut QueryEngine,
     xindex: ExtensionIndex,
@@ -37,7 +39,7 @@ pub fn handle_msg(
     use IglooMessage::*;
     match msg {
         CreateDevice(name) => {
-            let id = tree.create_device(engine, name.clone(), xindex)?;
+            let id = tree.create_device(cm, engine, name.clone(), xindex)?;
             let ext = tree.ext(&xindex)?;
             let mut scratch = Vec::with_capacity(name.len() + 32);
             let msg = IglooMessage::DeviceCreated(name, id.take());
@@ -48,7 +50,7 @@ pub fn handle_msg(
                     ext.id()
                 );
                 // TODO reboot instead of kill
-                tree.detach_ext(engine, xindex)?;
+                tree.detach_ext(cm, engine, xindex)?;
             }
             Ok(())
         }
@@ -58,6 +60,7 @@ pub fn handle_msg(
             entity_id,
             entity_index,
         } => tree.register_entity(
+            cm,
             engine,
             DeviceID::from_comb(device),
             EntityID(entity_id),
@@ -69,6 +72,7 @@ pub fn handle_msg(
             entity,
             comps,
         } => tree.write_components(
+            cm,
             engine,
             DeviceID::from_comb(device),
             EntityIndex(entity),

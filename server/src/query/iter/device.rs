@@ -12,13 +12,13 @@ pub fn estimate_device_count(tree: &DeviceTree, filter: &DeviceFilter) -> usize 
         IDFilter::Is(_) => 1,
         IDFilter::OneOf(ids) => ids.len(),
         IDFilter::Any => match &filter.owner {
-            IDFilter::Is(fid) => tree
-                .ext_index(fid)
+            IDFilter::Is(xid) => tree
+                .ext_index(xid)
                 .ok()
                 .and_then(|ext_index| tree.ext(ext_index).ok())
                 .map(|f| f.devices().len())
                 .unwrap_or(0),
-            IDFilter::OneOf(fids) => fids.len() << 4,
+            IDFilter::OneOf(xids) => xids.len() << 4,
             IDFilter::Any => match &filter.group {
                 DeviceGroupFilter::In(gid) => {
                     tree.group(gid).map(|g| g.devices().len()).unwrap_or(0)
@@ -58,8 +58,9 @@ where
             let Some(device) = tree.device(id).ok() else {
                 return ControlFlow::Continue(());
             };
+            // skip ID filter check, bc we know it passes
             if passes_entity_count(device, &filter.entity_count)
-                && passes_last_update(&now, device, &filter.last_update)
+                && passes_device_last_update(&now, device, &filter.last_update)
                 && passes_group_filter(device, &filter.group, tree)
                 && passes_type_filter(device, type_filter)
                 && passes_owner_filter(device, &filter.owner)
@@ -73,8 +74,9 @@ where
                 let Ok(device) = tree.device(did) else {
                     continue;
                 };
+                // skip ID filter check, bc we know it passes
                 if !passes_entity_count(device, &filter.entity_count)
-                    || !passes_last_update(&now, device, &filter.last_update)
+                    || !passes_device_last_update(&now, device, &filter.last_update)
                     || !passes_group_filter(device, &filter.group, tree)
                     || !passes_type_filter(device, type_filter)
                     || !passes_owner_filter(device, &filter.owner)
@@ -90,9 +92,9 @@ where
 
     // iterate over Extension's devices
     match &filter.owner {
-        IDFilter::Is(fid) => {
+        IDFilter::Is(xid) => {
             let Some(dids) = tree
-                .ext_index(fid)
+                .ext_index(xid)
                 .ok()
                 .and_then(|ext_index| tree.ext(ext_index).ok())
                 .map(|f| f.devices())
@@ -103,9 +105,10 @@ where
                 let Ok(device) = tree.device(did) else {
                     continue;
                 };
+                // skip owner filter check, bc we know it passes
                 if !passes_id_filter(device, &filter.id)
                     || !passes_entity_count(device, &filter.entity_count)
-                    || !passes_last_update(&now, device, &filter.last_update)
+                    || !passes_device_last_update(&now, device, &filter.last_update)
                     || !passes_group_filter(device, &filter.group, tree)
                     || !passes_type_filter(device, type_filter)
                 {
@@ -115,9 +118,9 @@ where
             }
             return ControlFlow::Continue(());
         }
-        IDFilter::OneOf(fids) => {
-            for fid in fids {
-                let Ok(ext_index) = tree.ext_index(fid) else {
+        IDFilter::OneOf(xids) => {
+            for xid in xids {
+                let Ok(ext_index) = tree.ext_index(xid) else {
                     continue;
                 };
                 let Ok(ext) = tree.ext(ext_index) else {
@@ -127,9 +130,10 @@ where
                     let Ok(device) = tree.device(did) else {
                         continue;
                     };
+                    // skip owner filter check, bc we know it passes
                     if !passes_id_filter(device, &filter.id)
                         || !passes_entity_count(device, &filter.entity_count)
-                        || !passes_last_update(&now, device, &filter.last_update)
+                        || !passes_device_last_update(&now, device, &filter.last_update)
                         || !passes_group_filter(device, &filter.group, tree)
                         || !passes_type_filter(device, type_filter)
                     {
@@ -153,9 +157,10 @@ where
                 let Ok(device) = tree.device(did) else {
                     continue;
                 };
+                // skip group filter check, bc we know it passes
                 if !passes_id_filter(device, &filter.id)
                     || !passes_entity_count(device, &filter.entity_count)
-                    || !passes_last_update(&now, device, &filter.last_update)
+                    || !passes_device_last_update(&now, device, &filter.last_update)
                     || !passes_type_filter(device, type_filter)
                     || !passes_owner_filter(device, &filter.owner)
                 {
@@ -177,9 +182,10 @@ where
                 let Ok(device) = tree.device(&did) else {
                     continue;
                 };
+                // skip group filter check, bc we know it passes
                 if !passes_id_filter(device, &filter.id)
                     || !passes_entity_count(device, &filter.entity_count)
-                    || !passes_last_update(&now, device, &filter.last_update)
+                    || !passes_device_last_update(&now, device, &filter.last_update)
                     || !passes_type_filter(device, type_filter)
                     || !passes_owner_filter(device, &filter.owner)
                 {
@@ -216,9 +222,10 @@ where
                 let Ok(device) = tree.device(&did) else {
                     continue;
                 };
+                // skip group filter check, bc we know it passes
                 if !passes_id_filter(device, &filter.id)
                     || !passes_entity_count(device, &filter.entity_count)
-                    || !passes_last_update(&now, device, &filter.last_update)
+                    || !passes_device_last_update(&now, device, &filter.last_update)
                     || !passes_type_filter(device, type_filter)
                     || !passes_owner_filter(device, &filter.owner)
                 {
@@ -237,9 +244,10 @@ where
             continue;
         };
 
+        // must check all filters
         if !passes_id_filter(device, &filter.id)
             || !passes_entity_count(device, &filter.entity_count)
-            || !passes_last_update(&now, device, &filter.last_update)
+            || !passes_device_last_update(&now, device, &filter.last_update)
             || !passes_type_filter(device, type_filter)
             || !passes_group_filter(device, &filter.group, tree)
             || !passes_owner_filter(device, &filter.owner)
@@ -254,7 +262,7 @@ where
 }
 
 #[inline(always)]
-fn passes_id_filter(device: &Device, filter: &IDFilter<DeviceID>) -> bool {
+pub fn passes_id_filter(device: &Device, filter: &IDFilter<DeviceID>) -> bool {
     match filter {
         IDFilter::Any => true,
         IDFilter::Is(id) => device.id() == id,
@@ -263,16 +271,16 @@ fn passes_id_filter(device: &Device, filter: &IDFilter<DeviceID>) -> bool {
 }
 
 #[inline(always)]
-fn passes_owner_filter(device: &Device, filter: &IDFilter<ExtensionID>) -> bool {
+pub fn passes_owner_filter(device: &Device, filter: &IDFilter<ExtensionID>) -> bool {
     match filter {
         IDFilter::Any => true,
-        IDFilter::Is(fid) => device.owner() == fid,
-        IDFilter::OneOf(fids) => fids.contains(device.owner()),
+        IDFilter::Is(xid) => device.owner() == xid,
+        IDFilter::OneOf(xids) => xids.contains(device.owner()),
     }
 }
 
 #[inline(always)]
-fn passes_group_filter(device: &Device, filter: &DeviceGroupFilter, tree: &DeviceTree) -> bool {
+pub fn passes_group_filter(device: &Device, filter: &DeviceGroupFilter, tree: &DeviceTree) -> bool {
     match filter {
         DeviceGroupFilter::Any => true,
         DeviceGroupFilter::In(gid) => tree
@@ -293,7 +301,7 @@ fn passes_group_filter(device: &Device, filter: &DeviceGroupFilter, tree: &Devic
 }
 
 #[inline(always)]
-fn passes_entity_count(device: &Device, filter: &Option<(ComparisonOp, usize)>) -> bool {
+pub fn passes_entity_count(device: &Device, filter: &Option<(ComparisonOp, usize)>) -> bool {
     match filter {
         None => true,
         Some((op, count)) => op.eval_usize(device.num_entities(), *count),
@@ -301,7 +309,7 @@ fn passes_entity_count(device: &Device, filter: &Option<(ComparisonOp, usize)>) 
 }
 
 #[inline(always)]
-fn passes_last_update(
+pub fn passes_device_last_update(
     now: &Instant,
     device: &Device,
     filter: &Option<(ComparisonOp, usize)>,

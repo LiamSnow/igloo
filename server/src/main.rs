@@ -6,7 +6,15 @@
 // What should dummies be?
 
 use crate::core::{IglooRequest, IglooResponse};
-use igloo_interface::query::{DeviceAction, DeviceFilter, DeviceQuery, Query};
+use igloo_interface::{
+    ComponentType,
+    id::{GenerationalID, GroupID},
+    query::{
+        ComponentAction, ComponentQuery, DeviceFilter, DeviceGroupFilter, EntityFilter, Query,
+        TypeFilter,
+    },
+    types::agg::AggregationOp,
+};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -19,7 +27,7 @@ mod tree;
 async fn main() {
     let (handle, req_tx) = core::spawn().await.unwrap();
 
-    sleep(Duration::from_secs(5)).await;
+    // sleep(Duration::from_secs(5)).await;
 
     let (res_tx, res_rx) = kanal::bounded(200);
     req_tx.send(IglooRequest::RegisterClient(res_tx)).unwrap();
@@ -29,12 +37,26 @@ async fn main() {
         panic!()
     };
 
-    tokio::spawn(async move {});
+    let task = tokio::spawn(async move {
+        while let Ok(res) = res_rx.recv().await {
+            println!("got {res:?}");
+        }
+    });
 
-    let query = Query::Device(DeviceQuery {
-        filter: DeviceFilter::default(),
-        action: DeviceAction::Snapshot(true),
-        limit: Some(1),
+    let query = Query::Component(ComponentQuery {
+        device_filter: DeviceFilter {
+            group: DeviceGroupFilter::In(GroupID::from_comb(1)),
+            ..Default::default()
+        },
+        entity_filter: EntityFilter {
+            type_filter: Some(TypeFilter::With(ComponentType::Light)),
+            ..Default::default()
+        },
+        action: ComponentAction::ObserveValue,
+        component: ComponentType::Dimmer,
+        post_op: Some(AggregationOp::Mean),
+        include_parents: false,
+        limit: None,
     });
 
     req_tx
@@ -45,12 +67,10 @@ async fn main() {
         })
         .unwrap();
 
-    let resp = res_rx.recv().await;
-    println!("got {resp:?}");
+    handle.join().unwrap();
+    task.await.unwrap();
 
     println!("SHUTTING DOWN");
 
     req_tx.send(IglooRequest::Shutdown).unwrap();
-
-    handle.join().unwrap();
 }

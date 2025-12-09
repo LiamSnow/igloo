@@ -7,12 +7,12 @@ use igloo_interface::{
     },
     types::{agg::AggregationOp, compare::ComparisonOp},
 };
-use igloo_server::glacier::{query::QueryEngine, tree::sim::make_test_tree};
+use igloo_server::{query::QueryEngine, tree::sim::make_test_tree};
 use std::hint::black_box;
 
 fn tree_sizes() -> Vec<(&'static str, usize, usize, usize)> {
     vec![
-        // # floes, # groups, # devs
+        // # extensions, # groups, # devs
         ("small", 2, 4, 14),
         ("medium", 3, 8, 40),
         ("large", 5, 15, 100),
@@ -25,7 +25,7 @@ fn queries() -> Vec<(&'static str, Query)> {
             "device_get_all_ids",
             Query::Device(DeviceQuery {
                 filter: DeviceFilter::default(),
-                action: DeviceAction::GetId,
+                action: DeviceAction::GetID,
                 limit: None,
             }),
         ),
@@ -102,7 +102,7 @@ fn bench_queries(c: &mut Criterion) {
         for (query_name, query) in queries() {
             c.bench_function(&format!("{size_name}/{query_name}"), |b| {
                 b.iter(|| {
-                    engine.test(&mut tree, black_box(query.clone())).unwrap();
+                    engine.eval(&mut tree, black_box(query.clone())).unwrap();
                 });
             });
         }

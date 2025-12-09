@@ -13,7 +13,7 @@ pub fn std_library() -> PenguinLibrary {
     // On Device Detach
     // On Device Register
     //
-    // On Floe Attach
+    // On Extension Attach
     //
     // Get All Component? (requires change in typing)
     //

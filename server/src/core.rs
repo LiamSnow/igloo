@@ -6,7 +6,7 @@ use crate::{
 use igloo_interface::{
     id::ExtensionIndex,
     ipc::IglooMessage,
-    query::{Query, QueryResult, check::QueryError},
+    query::{ObserverUpdate, Query, QueryResult, check::QueryError},
 };
 use std::{error::Error, thread::JoinHandle};
 
@@ -50,10 +50,14 @@ pub enum IglooResponse {
     /// Use this `client_id` for all future requests
     Registered { client_id: usize },
 
-    #[allow(dead_code)]
-    Result {
+    QueryResult {
         query_id: usize,
         result: Result<QueryResult, QueryError>,
+    },
+
+    ObserverUpdate {
+        query_id: usize,
+        result: ObserverUpdate,
     },
 }
 
@@ -88,6 +92,7 @@ struct IglooCore {
     cm: ClientManager,
 }
 
+// TODO client manager needs to use generational arena
 pub struct ClientManager {
     clients: Vec<Option<Client>>,
 }
@@ -103,16 +108,17 @@ pub async fn spawn() -> Result<(JoinHandle<()>, kanal::Sender<IglooRequest>), Bo
     let mut tree = DeviceTree::load()?;
     let mut engine = QueryEngine::default();
     let (tx, rx) = kanal::bounded(100);
+    let mut cm = ClientManager {
+        clients: vec![None; 20],
+    };
 
-    ext::spawn_all(&mut tree, &mut engine, &tx).await?;
+    ext::spawn_all(&mut cm, &mut tree, &mut engine, &tx).await?;
 
     let core = IglooCore {
         tree,
         engine,
         rx,
-        cm: ClientManager {
-            clients: vec![None; 20],
-        },
+        cm,
     };
 
     let handle = std::thread::spawn(move || {
@@ -143,7 +149,7 @@ impl IglooCore {
             HandleMessage {
                 sender: from,
                 content: msg,
-            } => ext::handle_msg(&mut self.tree, &mut self.engine, from, msg),
+            } => ext::handle_msg(&mut self.cm, &mut self.tree, &mut self.engine, from, msg),
             RegisterClient(channel) => self.cm.register(channel),
             UnregisterClient { client_id } => {
                 let observer_ids = self.cm.unregister(client_id)?;
@@ -213,7 +219,7 @@ impl ClientManager {
             // TODO if client channel is full for long enough, drop the client
             Ok(false) => Err(IglooError::ClientChannelFull(client_id)),
             Err(_) => {
-                self.unregister(client_id);
+                let _ = self.unregister(client_id);
                 Err(IglooError::ClientChannelClosed(client_id))
             }
         }

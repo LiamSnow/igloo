@@ -2,7 +2,7 @@ use crate::{
     ComponentType as CT, IglooType,
     query::{
         ComponentAction as C, DeviceAction as D, EntityAction as E, ExtensionAction as X,
-        GroupAction as G, Query, QueryResultType as R,
+        GroupAction as G, ObserverUpdateType as O, Query, QueryResultType as R,
     },
     types::agg::AggregationOp,
 };
@@ -36,6 +36,9 @@ pub enum QueryError {
         "Cannot use aggregation with include_parents. Aggregation combines values into a single result."
     )]
     AggregationWithParents,
+
+    #[error("Limit cannot be placed on an Observer-type query.")]
+    LimitOnObserver,
 }
 
 use QueryError as ERR;
@@ -49,34 +52,54 @@ impl Query {
                 X::GetID => R::ExtensionID,
                 X::Snapshot => R::ExtensionID,
                 X::IsAttached => R::ExtensionAttached,
-                X::ObserveAttached => R::ExtensionAttached,
                 X::Count => R::Count,
                 X::Inherit => return Err(ERR::Inherit),
+                X::ObserveAttached => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::ExtensionAttached),
+                },
             },
             Query::Group(q) => match &q.action {
                 G::GetID => R::GroupID,
                 G::Snapshot => R::GroupSnapshot,
-                G::ObserveRename => R::Ok,
-                G::ObserveMembershipChanged => R::Ok,
                 G::Count => R::Count,
                 G::Inherit => return Err(ERR::Inherit),
+                G::ObserveName => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::GroupRenamed),
+                },
+                G::ObserveMembership => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::GroupMembership),
+                },
             },
             Query::Device(q) => match &q.action {
                 D::GetID => R::DeviceID,
                 D::Snapshot(_) => R::DeviceSnapshot,
                 D::IsAttached => R::DeviceAttached,
-                D::ObserveAttached => R::DeviceAttached,
-                D::ObserveName => R::DeviceID,
-                D::ObserveEntityAdded => R::DeviceID,
-                D::ObserveComponentPut => R::DeviceID,
                 D::Count => R::Count,
                 D::Inherit => return Err(ERR::Inherit),
+                D::ObserveAttached => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::DeviceAttached),
+                },
+                D::ObserveName => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::DeviceRenamed),
+                },
             },
             Query::Entity(q) => match &q.action {
                 E::Snapshot => R::EntitySnapshot,
-                E::ObserveComponentPut => R::EntitySnapshot,
                 E::Count => R::Count,
                 E::Inherit => return Err(ERR::Inherit),
+                E::ObserveComponentPut => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::EntityComponentPut),
+                },
+                E::ObserveRegistered => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnObserver),
+                    None => R::Observer(O::EntityRegistered),
+                },
             },
             Query::Component(q) => {
                 match &q.action {
@@ -98,19 +121,27 @@ impl Query {
                     return Err(ERR::AggregationWithParents);
                 }
 
-                match &q.action {
-                    C::GetValue | C::ObserveValue => {
-                        if let Some(op) = q.post_op
-                            && !op.can_apply(&q.component)
-                        {
-                            return Err(ERR::InvalidAggregation(q.component, op));
-                        }
+                if q.limit.is_some() && !matches!(q.action, C::ObserveValue) {
+                    return Err(ERR::LimitOnObserver);
+                }
 
-                        match q.include_parents {
-                            true => R::ComponentValueWithParents(it),
-                            false => R::ComponentValue(it),
-                        }
-                    }
+                match &q.action {
+                    C::GetValue => match (q.post_op, q.include_parents) {
+                        (Some(op), _) => match op.can_apply(&q.component) {
+                            true => R::Aggregate(it),
+                            false => return Err(ERR::InvalidAggregation(q.component, op)),
+                        },
+                        (_, true) => R::ComponentValueWithParents(it),
+                        (_, false) => R::ComponentValue(it),
+                    },
+                    C::ObserveValue => R::Observer(match (q.post_op, q.include_parents) {
+                        (Some(op), _) => match op.can_apply(&q.component) {
+                            true => O::Aggregate(it),
+                            false => return Err(ERR::InvalidAggregation(q.component, op)),
+                        },
+                        (_, true) => O::ComponentValueWithParents(it),
+                        (_, false) => O::ComponentValue(it),
+                    }),
                     C::Set(iv) | C::Put(iv) => {
                         let it_2 = iv.r#type();
 

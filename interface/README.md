@@ -1,6 +1,6 @@
 # Igloo Interface
 
-Communications interface between Igloo and Floes.
+Communications interface between Igloo and Extensions.
 
 TODO docs (for now see `../example_provider`)
 

@@ -1,3 +1,6 @@
+//! Takes events from DeviceTree and dispatches to affected Observers
+//! Most of the logic lives in [subscriber.rs]
+
 use crate::{
     core::{ClientManager, IglooError},
     query::{
@@ -5,15 +8,15 @@ use crate::{
         ctx::QueryContext,
         observer::{
             Observer, comp::ComponentObserver, device::DeviceObserver, entity::EntityObserver,
-            floe::FloeObserver, group::GroupObserver,
+            ext::ExtensionObserver, group::GroupObserver, subscriber::TreeSubscribers,
         },
     },
-    tree::{Device, DeviceTree, Floe, Group},
+    tree::{Device, DeviceTree, Extension, Group},
 };
 use igloo_interface::{
-    ComponentType,
-    id::{FloeRef, GroupID},
-    query::Query,
+    Component, ComponentType,
+    id::{EntityIndex, GroupID},
+    query::{Query, check::QueryError},
 };
 
 impl QueryEngine {
@@ -24,7 +27,7 @@ impl QueryEngine {
         client_id: usize,
         query_id: usize,
         query: Query,
-    ) -> Result<(), IglooError> {
+    ) -> Result<Result<(), QueryError>, IglooError> {
         let observer_id = if let Some(slot) = self.observers.iter().position(|w| w.is_none()) {
             slot
         } else {
@@ -33,581 +36,929 @@ impl QueryEngine {
         };
 
         let observer = match query {
-            Query::Device(q) => Observer::Devices(DeviceObserver::register(
-                &mut self.ctx,
-                &mut self.subscribers,
-                tree,
-                query_id,
-                observer_id,
-                client_id,
-                q,
-            )),
+            Query::Device(q) => {
+                match DeviceObserver::register(
+                    &mut self.ctx,
+                    &mut self.subscribers,
+                    tree,
+                    query_id,
+                    observer_id,
+                    client_id,
+                    q,
+                ) {
+                    Ok(o) => Observer::Devices(o),
+                    Err(e) => return Ok(Err(e)),
+                }
+            }
 
-            Query::Entity(q) => Observer::Entities(EntityObserver::register(
-                &mut self.ctx,
-                &mut self.subscribers,
-                tree,
-                query_id,
-                observer_id,
-                client_id,
-                q,
-            )),
+            Query::Entity(q) => {
+                match EntityObserver::register(
+                    &mut self.ctx,
+                    &mut self.subscribers,
+                    tree,
+                    query_id,
+                    observer_id,
+                    client_id,
+                    q,
+                ) {
+                    Ok(o) => Observer::Entities(o),
+                    Err(e) => return Ok(Err(e)),
+                }
+            }
 
-            Query::Component(q) => Observer::Components(ComponentObserver::register(
-                &mut self.ctx,
-                &mut self.subscribers,
-                tree,
-                query_id,
-                observer_id,
-                client_id,
-                q,
-            )),
+            Query::Component(q) => {
+                match ComponentObserver::register(
+                    &mut self.ctx,
+                    &mut self.subscribers,
+                    tree,
+                    query_id,
+                    observer_id,
+                    client_id,
+                    q,
+                ) {
+                    Ok(o) => Observer::Components(o),
+                    Err(e) => return Ok(Err(e)),
+                }
+            }
 
-            Query::Group(q) => Observer::Groups(GroupObserver::register(
-                &mut self.ctx,
-                &mut self.subscribers,
-                tree,
-                query_id,
-                observer_id,
-                client_id,
-                q,
-            )),
+            Query::Group(q) => {
+                match GroupObserver::register(
+                    &mut self.ctx,
+                    &mut self.subscribers,
+                    tree,
+                    query_id,
+                    observer_id,
+                    client_id,
+                    q,
+                ) {
+                    Ok(o) => Observer::Groups(o),
+                    Err(e) => return Ok(Err(e)),
+                }
+            }
 
-            Query::Floe(q) => Observer::Floes(FloeObserver::register(
-                &mut self.ctx,
-                &mut self.subscribers,
-                tree,
-                query_id,
-                observer_id,
-                client_id,
-                q,
-            )),
+            Query::Extension(q) => {
+                match ExtensionObserver::register(
+                    &mut self.ctx,
+                    &mut self.subscribers,
+                    tree,
+                    query_id,
+                    observer_id,
+                    client_id,
+                    q,
+                ) {
+                    Ok(o) => Observer::Extensions(o),
+                    Err(e) => return Ok(Err(e)),
+                }
+            }
         };
 
-        cm.add_observer(client_id, observer_id)?;
+        cm.add_observer(client_id, query_id, observer_id)?;
 
         self.observers[observer_id] = Some(observer);
 
-        Ok(())
+        Ok(Ok(()))
     }
 
     pub fn on_component_set(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         device: &Device,
-        entity_index: usize,
+        entity_index: EntityIndex,
         comp_type: ComponentType,
+        comp: Component,
     ) -> Result<(), IglooError> {
-        self.subscribers.component_set.for_each(
-            *device.id(),
-            entity_index,
-            comp_type,
-            |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_component_set(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_component_set(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_component_set(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_component_set(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_component_set(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
+        let affected =
+            self.subscribers
+                .component_set
+                .affected(*device.id(), entity_index, comp_type);
+
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_component_set(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_component_set(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_component_set(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_component_set(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_component_set(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
                     }
                 }
-                Ok(())
-            },
-        )
+            }
+        }
+
+        Ok(())
     }
 
     pub fn on_component_put(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         device: &Device,
-        entity_index: usize,
+        entity_index: EntityIndex,
         comp_type: ComponentType,
+        comp: Component,
     ) -> Result<(), IglooError> {
-        self.subscribers.component_put.for_each(
-            *device.id(),
-            entity_index,
-            comp_type,
-            |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_component_put(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_component_put(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_component_put(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_component_put(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_component_put(
-                                &mut self.ctx,
-                                tree,
-                                device,
-                                entity_index,
-                                comp_type,
-                            )?;
-                        }
+        let affected =
+            self.subscribers
+                .component_put
+                .affected(device.id(), &entity_index, &comp_type);
+
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_component_put(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_component_put(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_component_put(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_component_put(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_component_put(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                            comp_type,
+                            &comp,
+                        )?;
                     }
                 }
-                Ok(())
-            },
-        )
+            }
+        }
+        Ok(())
     }
 
     pub fn on_device_created(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError> {
-        self.subscribers
-            .device_created
-            .for_each(*device.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_device_created(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_device_created(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_device_created(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_device_created(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_device_created(&mut self.ctx, tree, device)?;
-                        }
+        let affected = self.subscribers.device_created.affected(device.id());
+
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_device_created(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_device_created(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_device_created(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_device_created(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_device_created(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
                     }
                 }
-                Ok(())
-            })
+            }
+        }
+        Ok(())
     }
 
     pub fn on_device_deleted(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError> {
-        self.subscribers
-            .device_deleted
-            .for_each(*device.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_device_deleted(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_device_deleted(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_device_deleted(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_device_deleted(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_device_deleted(&mut self.ctx, tree, device)?;
-                        }
+        let affected = self.subscribers.device_deleted.affected(device.id());
+
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_device_deleted(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_device_deleted(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_device_deleted(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_device_deleted(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_device_deleted(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
                     }
                 }
-                Ok(())
-            })
+            }
+        }
+
+        Ok(())
     }
 
     pub fn on_device_renamed(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError> {
-        self.subscribers
-            .device_renamed
-            .for_each(*device.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_device_renamed(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_device_renamed(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_device_renamed(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_device_renamed(&mut self.ctx, tree, device)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_device_renamed(&mut self.ctx, tree, device)?;
-                        }
+        let affected = self.subscribers.device_renamed.affected(device.id());
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_device_renamed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_device_renamed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_device_renamed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_device_renamed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_device_renamed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                        )?;
                     }
                 }
-                Ok(())
-            })
+            }
+        }
+        Ok(())
     }
 
     pub fn on_entity_registered(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         device: &Device,
-        entity_index: usize,
+        entity_index: EntityIndex,
     ) -> Result<(), IglooError> {
-        self.subscribers
-            .entity_registered
-            .for_each(*device.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_entity_registered(&mut self.ctx, tree, device, entity_index)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_entity_registered(&mut self.ctx, tree, device, entity_index)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_entity_registered(&mut self.ctx, tree, device, entity_index)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_entity_registered(&mut self.ctx, tree, device, entity_index)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_entity_registered(&mut self.ctx, tree, device, entity_index)?;
-                        }
+        let affected = self.subscribers.entity_registered.affected(device.id());
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_entity_registered(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_entity_registered(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_entity_registered(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_entity_registered(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_entity_registered(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            device,
+                            entity_index,
+                        )?;
                     }
                 }
-                Ok(())
-            })
+            }
+        }
+        Ok(())
     }
 
-    pub fn on_group_created(&mut self, tree: &DeviceTree, group: &Group) -> Result<(), IglooError> {
-        self.subscribers
-            .group_created
-            .for_each(*group.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_group_created(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_group_created(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_group_created(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_group_created(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_group_created(&mut self.ctx, tree, group)?;
-                        }
-                    }
-                }
-                Ok(())
-            })
-    }
-
-    pub fn on_group_deleted(&mut self, tree: &DeviceTree, gid: &GroupID) -> Result<(), IglooError> {
-        self.subscribers
-            .group_deleted
-            .for_each(*gid, |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_group_deleted(&mut self.ctx, tree, gid)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_group_deleted(&mut self.ctx, tree, gid)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_group_deleted(&mut self.ctx, tree, gid)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_group_deleted(&mut self.ctx, tree, gid)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_group_deleted(&mut self.ctx, tree, gid)?;
-                        }
-                    }
-                }
-                Ok(())
-            })
-    }
-
-    pub fn on_group_renamed(&mut self, tree: &DeviceTree, group: &Group) -> Result<(), IglooError> {
-        self.subscribers
-            .group_renamed
-            .for_each(*group.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_group_renamed(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_group_renamed(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_group_renamed(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_group_renamed(&mut self.ctx, tree, group)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_group_renamed(&mut self.ctx, tree, group)?;
-                        }
-                    }
-                }
-                Ok(())
-            })
-    }
-
-    pub fn on_group_membership_changed(
+    pub fn on_group_created(
         &mut self,
+        cm: &mut ClientManager,
+        tree: &DeviceTree,
+        group: &Group,
+    ) -> Result<(), IglooError> {
+        let affected = self.subscribers.group_created.affected(group.id());
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn on_group_deleted(
+        &mut self,
+        cm: &mut ClientManager,
+        tree: &DeviceTree,
+        gid: &GroupID,
+    ) -> Result<(), IglooError> {
+        let affected = self.subscribers.group_deleted.affected(gid);
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn on_group_renamed(
+        &mut self,
+        cm: &mut ClientManager,
+        tree: &DeviceTree,
+        group: &Group,
+    ) -> Result<(), IglooError> {
+        let affected = self.subscribers.group_renamed.affected(group.id());
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn on_group_device_added(
+        &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
         group: &Group,
         device: &Device,
     ) -> Result<(), IglooError> {
-        self.subscribers
-            .group_membership_changed
-            .for_each(*group.id(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_group_membership_changed(&mut self.ctx, tree, group, device)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_group_membership_changed(&mut self.ctx, tree, group, device)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_group_membership_changed(&mut self.ctx, tree, group, device)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_group_membership_changed(&mut self.ctx, tree, group, device)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_group_membership_changed(&mut self.ctx, tree, group, device)?;
-                        }
+        let affected = self
+            .subscribers
+            .group_device_added
+            .affected(group.id(), device.id());
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_group_device_added(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_group_device_added(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_group_device_added(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_group_device_added(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_group_device_added(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
                     }
                 }
-                Ok(())
-            })
+            }
+        }
+        Ok(())
     }
 
-    pub fn on_floe_attached(&mut self, tree: &DeviceTree, floe: &Floe) -> Result<(), IglooError> {
-        self.subscribers
-            .floe_attached
-            .for_each(*floe.fref(), |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_floe_attached(&mut self.ctx, tree, floe)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_floe_attached(&mut self.ctx, tree, floe)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_floe_attached(&mut self.ctx, tree, floe)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_floe_attached(&mut self.ctx, tree, floe)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_floe_attached(&mut self.ctx, tree, floe)?;
-                        }
-                    }
-                }
-                Ok(())
-            })
-    }
-
-    pub fn on_floe_detached(
+    pub fn on_group_device_removed(
         &mut self,
+        cm: &mut ClientManager,
         tree: &DeviceTree,
-        fref: &FloeRef,
+        group: &Group,
+        device: &Device,
     ) -> Result<(), IglooError> {
-        self.subscribers
-            .floe_detached
-            .for_each(*fref, |observer_id| {
-                if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                    match observer {
-                        Observer::Devices(w) => {
-                            w.on_floe_detached(&mut self.ctx, tree, fref)?;
-                        }
-                        Observer::Entities(w) => {
-                            w.on_floe_detached(&mut self.ctx, tree, fref)?;
-                        }
-                        Observer::Components(w) => {
-                            w.on_floe_detached(&mut self.ctx, tree, fref)?;
-                        }
-                        Observer::Groups(w) => {
-                            w.on_floe_detached(&mut self.ctx, tree, fref)?;
-                        }
-                        Observer::Floes(w) => {
-                            w.on_floe_detached(&mut self.ctx, tree, fref)?;
-                        }
+        let affected = self
+            .subscribers
+            .group_device_removed
+            .affected(group.id(), device.id());
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_group_device_removed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_group_device_removed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_group_device_removed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_group_device_removed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_group_device_removed(
+                            cm,
+                            &mut self.ctx,
+                            &mut self.subscribers,
+                            tree,
+                            group,
+                            device,
+                        )?;
                     }
                 }
-                Ok(())
-            })
+            }
+        }
+        Ok(())
+    }
+
+    pub fn on_ext_attached(
+        &mut self,
+        cm: &mut ClientManager,
+        tree: &DeviceTree,
+        ext: &Extension,
+    ) -> Result<(), IglooError> {
+        let affected = self.subscribers.ext_attached.affected(ext);
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn on_ext_detached(
+        &mut self,
+        cm: &mut ClientManager,
+        tree: &DeviceTree,
+        ext: &Extension,
+    ) -> Result<(), IglooError> {
+        let affected = self.subscribers.ext_detached.affected(ext);
+        for observer_id in affected {
+            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
+                match observer {
+                    Observer::Devices(w) => {
+                        w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Entities(w) => {
+                        w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Components(w) => {
+                        w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Groups(w) => {
+                        w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                    Observer::Extensions(w) => {
+                        w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
 pub trait ObserverHandler {
     fn on_component_set(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         device: &Device,
-        entity_index: usize,
+        entity_index: EntityIndex,
         comp_type: ComponentType,
+        comp: &Component,
     ) -> Result<(), IglooError>;
 
     fn on_component_put(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         device: &Device,
-        entity_index: usize,
+        entity_index: EntityIndex,
         comp_type: ComponentType,
+        comp: &Component,
     ) -> Result<(), IglooError>;
 
     fn on_device_created(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError>;
 
     fn on_device_deleted(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError>;
 
     fn on_device_renamed(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError>;
 
     fn on_entity_registered(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         device: &Device,
-        entity_index: usize,
+        entity_index: EntityIndex,
     ) -> Result<(), IglooError>;
 
     fn on_group_created(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         group: &Group,
     ) -> Result<(), IglooError>;
 
     fn on_group_deleted(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         gid: &GroupID,
     ) -> Result<(), IglooError>;
 
     fn on_group_renamed(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         group: &Group,
     ) -> Result<(), IglooError>;
 
-    fn on_group_membership_changed(
+    fn on_group_device_added(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         group: &Group,
         device: &Device,
     ) -> Result<(), IglooError>;
 
-    fn on_floe_attached(
+    fn on_group_device_removed(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
-        floe: &Floe,
+        group: &Group,
+        device: &Device,
     ) -> Result<(), IglooError>;
 
-    fn on_floe_detached(
+    fn on_ext_attached(
         &mut self,
+        cm: &mut ClientManager,
         ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
         tree: &DeviceTree,
-        fref: &FloeRef,
+        ext: &Extension,
+    ) -> Result<(), IglooError>;
+
+    fn on_ext_detached(
+        &mut self,
+        cm: &mut ClientManager,
+        ctx: &mut QueryContext,
+        subs: &mut TreeSubscribers,
+        tree: &DeviceTree,
+        ext: &Extension,
     ) -> Result<(), IglooError>;
 }

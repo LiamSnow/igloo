@@ -46,7 +46,7 @@ pub struct ElementUpdate {
 
 #[derive(Debug, Clone, Encode, Decode, From)]
 pub struct GlobalSnapshot {
-    pub floes: Vec<ExtensionSnapshot>,
+    pub extensions: Vec<ExtensionSnapshot>,
     pub groups: Vec<GroupSnapshot>,
     pub devices: Vec<DeviceSnapshot>,
 }

@@ -2,8 +2,8 @@ use crate::tree::{DeviceTree, Group, arena::Entry};
 use igloo_interface::{id::GroupID, query::IDFilter};
 use std::ops::ControlFlow;
 
-pub fn estimate_group_count(tree: &DeviceTree, id: &IDFilter<GroupID>) -> usize {
-    match id {
+pub fn estimate_group_count(tree: &DeviceTree, gid: &IDFilter<GroupID>) -> usize {
+    match gid {
         IDFilter::Is(_) => 1,
         IDFilter::OneOf(ids) => ids.len(),
         IDFilter::Any => tree.groups().len(),
@@ -11,11 +11,11 @@ pub fn estimate_group_count(tree: &DeviceTree, id: &IDFilter<GroupID>) -> usize 
 }
 
 #[inline]
-pub fn for_each_group<F>(tree: &DeviceTree, id: &IDFilter<GroupID>, mut f: F) -> ControlFlow<()>
+pub fn for_each_group<F>(tree: &DeviceTree, gid: &IDFilter<GroupID>, mut f: F) -> ControlFlow<()>
 where
     F: FnMut(&Group) -> ControlFlow<()>,
 {
-    match id {
+    match gid {
         IDFilter::Is(id) => {
             if let Ok(group) = tree.group(id) {
                 return f(group);
