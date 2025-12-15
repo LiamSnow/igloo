@@ -227,7 +227,6 @@ element RGBCTLight(filters: Filter) {
     }
 }
 
-
 // this example uses more language features
 // all of this runs client-side
 dashboard "Complex Dashboard" {
@@ -254,13 +253,10 @@ dashboard "Complex Dashboard" {
         c += 1;        
         // ++ syntax is not supported
     }
+}
 
-    // functions can be scoped
-    fn square(num: int) -> int {
-        num * num
-    }
-
-    // note that custom types (struct, enums are not supported)
+fn square(num: int) -> int {
+    return num * num;
 }
 
 // enums dont store values, just a union
@@ -303,7 +299,7 @@ let my_tuple: (int, string) = (10, "Hello");
 
 // access
 my_tuple.0 = 50; // valid
-my_tupple.1 = 1.2; // invalid type
-my_tupple.1 = 1.2 as string; // valid because of cast
+my_tuple.1 = 1.2; // invalid type
+my_tuple.1 = 1.2 as string; // valid because of cast
 
 

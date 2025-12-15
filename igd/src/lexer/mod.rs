@@ -21,8 +21,9 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Spanned<Token<'a>, usize, LexicalError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.token_stream
-            .next()
-            .map(|(token, span)| Ok((span.start, token?, span.end)))
+        self.token_stream.next().map(|(token, span)| match token {
+            Ok(tok) => Ok((span.start, tok, span.end)),
+            Err(_) => Ok((span.start, Token::Error, span.end)),
+        })
     }
 }

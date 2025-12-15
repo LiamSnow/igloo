@@ -8,10 +8,14 @@ colored = "3.0.0"
 either = "1.15.0"
 lalrpop-util = { version = "0.22.2", features = ["lexer"] }
 rustc-hash = "2.1.1"
-logos = "0.15.0"
+logos = "0.16.0"
 rustc-literal-escaper = "0.0.2"
 litrs = "1.0.0"
 bumpalo = { version = "3.19.0", features = ["collections"] }
+thiserror = "2.0.17"
+miette = { version = "7.6.0", features = ["fancy"] }
+derive_more = { version = "2.1.0", features = ["display"] }
+strsim = "0.11.1"
 
 [build-dependencies]
 lalrpop = { version = "0.22.2", features = ["lexer"] }

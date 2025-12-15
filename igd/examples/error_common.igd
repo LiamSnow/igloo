@@ -1,0 +1,299 @@
+// Tests igd suggestions (error.rs get_mistaken_keyword_message + token.rs MistakenKeyword)
+
+fn test_var() {
+    var x = 5;
+}
+
+fn test_true_false() {
+    let x = True;
+    let y = False;
+}
+
+fn test_function() {
+    function helper() {
+        let x = 1;
+    }
+}
+
+fn test_func() {
+    func helper() {
+        let x = 1;
+    }
+}
+
+fn test_def() {
+    def helper() {
+        let x = 1;
+    }
+}
+
+fn test_elif() {
+    if x == 1 {
+        let a = 1;
+    } elif x == 2 {
+        let a = 2;
+    }
+}
+
+fn test_unless() {
+    unless condition {
+        do_something();
+    }
+}
+
+fn test_until() {
+    until finished {
+        work();
+    }
+}
+
+fn test_null() {
+    let x = null;
+}
+
+fn test_nil() {
+    let y = nil;
+}
+
+fn test_none() {
+    let z = None;
+}
+
+fn test_undefined() {
+    let w = undefined;
+}
+
+fn test_class() {
+    class MyClass {
+        let field = 1;
+    }
+}
+
+fn test_interface() {
+    interface MyInterface {
+        fn method();
+    }
+}
+
+fn test_extends() {
+    struct Child extends Parent {
+        let field = 1;
+    }
+}
+
+fn test_implements() {
+    struct Impl implements Interface {
+        let field = 1;
+    }
+}
+
+fn test_super() {
+    super.method();
+}
+
+fn test_void() {
+    void helper() {
+        let x = 1;
+    }
+}
+
+fn test_auto() {
+    auto x = 42;
+}
+
+fn test_any() {
+    let y: any = "test";
+}
+
+fn test_dynamic() {
+    let z: dynamic = get_value();
+}
+
+fn test_number() {
+    let n: number = 3.14;
+}
+
+fn test_str() {
+    let s: str = "hello";
+}
+
+fn test_self() {
+    let x = self.value;
+}
+
+fn test_this() {
+    let y = this.property;
+}
+
+fn test_mut() {
+    let mut counter = 0;
+}
+
+fn test_async() {
+    async fn fetch() {
+        let x = 1;
+    }
+}
+
+fn test_await() {
+    await fetch_data();
+}
+
+fn test_foreach() {
+    foreach item in items {
+        process(item);
+    }
+}
+
+fn test_do_while() {
+    do {
+        work();
+    } while condition;
+}
+
+fn test_loop() {
+    loop {
+        if done { break; }
+    }
+}
+
+fn test_repeat() {
+    repeat {
+        step();
+    } while condition;
+}
+
+fn test_public() {
+    public fn exposed() {
+        let x = 1;
+    }
+}
+
+fn test_private() {
+    private fn hidden() {
+        let x = 1;
+    }
+}
+
+fn test_protected() {
+    protected fn limited() {
+        let x = 1;
+    }
+}
+
+fn test_static() {
+    static let counter = 0;
+}
+
+fn test_try_catch() {
+    try {
+        risky();
+    } catch e {
+        handle(e);
+    }
+}
+
+fn test_finally() {
+    try {
+        risky();
+    } finally {
+        cleanup();
+    }
+}
+
+fn test_except() {
+    try {
+        risky();
+    } except ValueError {
+        recover();
+    }
+}
+
+fn test_throw() {
+    throw new Error("oops");
+}
+
+fn test_raise() {
+    raise Exception("problem");
+}
+
+fn test_switch() {
+    switch value {
+        1 => handle_one();
+    }
+}
+
+fn test_case() {
+    switch value {
+        case 1:
+            handle_one();
+    }
+}
+
+fn test_match() {
+    match value {
+        1 => handle_one();
+    }
+}
+
+fn test_and() {
+    if x and y {
+        do_both();
+    }
+}
+
+fn test_or() {
+    if a or b {
+        do_either();
+    }
+}
+
+fn test_not() {
+    if not ready {
+        wait();
+    }
+}
+
+fn test_is() {
+    if value is null {
+        initialize();
+    }
+}
+
+fn test_pass() {
+    pass;
+}
+
+fn test_new() {
+    let obj = new MyStruct();
+}
+
+fn test_import() {
+    import math;
+}
+
+fn test_require() {
+    require "./helper";
+}
+
+fn test_export() {
+    export fn utility() {
+        let x = 1;
+    }
+}
+
+fn test_namespace() {
+    namespace MyNamespace {
+        fn helper() {
+            let x = 1;
+        }
+    }
+}
+
+fn test_package() {
+    package com.example;
+}
+
+fn test_goto() {
+    goto label;
+}

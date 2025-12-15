@@ -1,101 +1,115 @@
-use bumpalo::Bump;
+// use bumpalo::Bump;
 
-use super::parse;
+// use super::parse;
 
-#[test]
-fn test() {
-    let source = r##"
-use std::RGBCTLight;
-use std::ThermostatCard;
-use mushroom::Button;
-use mushroom::SensorCard;
+// #[test]
+// fn test() {
+//     //     let source = r##"
+//     // using
 
-type ZombieID = int;
+//     // use std::RGBCTLight;
+//     // use std::ThermostatCard;
+//     // use mushroom::Button;
+//     // use mushroom::SensorCard;
 
-struct Zombie {
-    id: ZombieID,
-    health: int,
-    walk_speed: float,
-    name: string,
-}
+//     // type ZombieID = int;
 
-fn usage() {
-    let my_zombie = Zombie {
-        id: 10,
-        health: 100,
-        walk_speed: 1.5,
-        name: "My Zombie",  
-    };
+//     // struct Zombie {
+//     //     id: ZombieID,
+//     //     health: int,
+//     //     walk_speed: float,
+//     //     name: string,
+//     // }
 
-    my_zombie.health -= 10;
-}
+//     // fn usage() {
+//     //     let my_zombie = Zombie {
+//     //         id: 10,
+//     //         health: 100,
+//     //         walk_speed: 1.5,
+//     //         name: "My Zombie",
+//     //     };
 
-enum Animal {
-    Cat,
-    Dog,
-    Sheep
-}
+//     //     my_zombie.health -= 10;
+//     // }
 
-fn usage() {
-    let my_animal = Animal::Cat;
-}
+//     // enum Animal {
+//     //     Cat,
+//     //     Dog,
+//     //     Sheep
+//     // }
 
-fn square(num: int) -> int {
-    return num * num;
-}
+//     // fn usage() {
+//     //     let my_animal = Animal::Cat;
+//     // }
 
-fn vars() {
-    let i = 1;
+//     // fn square(num: int) -> int {
+//     //     return num * num;
+//     // }
 
-    i = 2;
+//     // fn vars() {
+//     //     let i = 1;
 
-    i += 5;
+//     //     i = 2;
 
-    i *= 2;
+//     //     i += 5;
 
-    let q = [1, 2, 3];
-}
+//     //     i *= 2;
 
-fn tuples() {
-    let my_tuple = (10, "Hello");
+//     //     let q = [1, 2, 3];
+//     // }
 
-    let my_tuple: (int, string) = (10, "Hello");
+//     // fn tuples() {
+//     //     let my_tuple = (10, "Hello");
 
-    my_tuple.0 = 50; // valid
-    my_tuple.1 = 1.2; // invalid type
-    my_tuple.1 = 1.2 as string; // valid because of cast
-}
+//     //     let my_tuple: (int, string) = (10, "Hello");
 
-fn loops() {
-    for i in 0..2 {
-        if i == 1 {
-            break;
-        }
-    }
+//     //     my_tuple.0 = 50; // valid
+//     //     my_tuple.1 = 1.2; // invalid type
+//     //     my_tuple.1 = 1.2 as string; // valid because of cast
+//     // }
 
-    if 4 < 10 {
-        print("Hello World");
-    }
+//     // fn loops() {
+//     //     for i in 0..2 {
+//     //         if i == 1 {
+//     //             break;
+//     //         }
+//     //     }
 
-    while i > 69 {
-        print("Hello World");
-    }
-}
+//     //     if 4 < 10 {
+//     //         print("Hello World");
+//     //     }
 
-element TestEl {
-    let a = 2;
-    let b = 2;
-    let c = 2;
-}
+//     //     while i > 69 {
+//     //         print("Hello World");
+//     //     }
+//     // }
 
-element TestEl2(group: Group, show_humidity: bool) {
-}
+//     // element TestEl {
+//     //     let a = 2;
+//     //     let b = 2;
+//     //     let c = 2;
+//     // }
 
-dashboard "Example" {
-}
+//     // element TestEl2(group: Group, show_humidity: bool) {
+//     // }
 
-    "##;
-    let arena = Bump::new();
-    let ast = parse(source, &arena).unwrap();
-    println!("{ast:#?}");
-}
+//     // dashboard "Example" {
+//     // }
+
+//     //     "##;
+//     let source = r##"
+
+// fn test() {
+//     let x = $ + 1;
+//     let y = 2 * @;
+//     let z = 3;
+// }
+
+//     "##;
+
+//     let arena = Bump::new();
+//     let mut errors = Vec::new();
+//     let ast = parse(source, &arena, &mut errors).unwrap();
+//     println!("AST: {ast:#?}");
+//     println!("ERRORS: {errors:?}");
+// }

@@ -1,12 +1,15 @@
-use rustc_hash::FxBuildHasher;
-use std::collections::HashMap;
 use either::Either;
 use crate::parser::ast::*;
 use crate::lexer::tokens::{Token, LexicalError};
 use litrs::{FloatLit, IntegerLit, StringLit};
 use bumpalo::Bump;
+use lalrpop_util::ErrorRecovery;
 
-grammar<'a>(source: &'a str, arena: &'a Bump);
+grammar<'a, 'err>(
+    source: &'a str,
+    arena: &'a Bump,
+    errors: &'err mut Vec<ErrorRecovery<usize, Token<'a>, LexicalError>>
+);
 
 pub Main: &'a [Statement<'a>] = {
     TopStatement* => arena.alloc_slice_clone(&<>)
@@ -16,7 +19,6 @@ pub Main: &'a [Statement<'a>] = {
 TopStatement: Statement<'a> = {
     Mod,
     Use,
-    Var,
     Const,
    
     FnDefn,
@@ -26,6 +28,8 @@ TopStatement: Statement<'a> = {
 
     DashboardDefn,
     ElementDefn,
+
+    ErrorStatement,
 }
 
 // statements allowed in functions
@@ -38,10 +42,35 @@ FnStatement: Statement<'a> = {
     Loop<FnStatement>,
     ControlFlow,
     Return,
+
+    ErrorSemiColonStatement,
 }
 
-// statements allowed in elements
+// statements allowed in elements after `return XX`
 ElementStatement: Statement<'a> = {
+    Use,
+    Const,
+    Var,
+    If<ElementStatement>,
+    Loop<ElementStatement>,
+    ControlFlow,
+    ElementInst,
+
+    ErrorStatement,
+}
+
+ErrorSemiColonStatement: Statement<'a> = {
+    <!> ";" => {
+        errors.push(<>);
+        Statement::Error
+    },
+}
+
+ErrorStatement: Statement<'a> = {
+    <!> => {
+        errors.push(<>);
+        Statement::Error
+    },
 }
 
 FnCallStatement: Statement<'a> = {
@@ -59,8 +88,11 @@ Return: Statement<'a> = {
 }
 
 Mod: Statement<'a> = {
-    "mod" <name:Ident> "{" <body:TopStatement*> "}" => {
-        Statement::Module(name, arena.alloc_slice_clone(&body))
+    "mod" <name:Ident> <body:Block<TopStatement>> => {
+        Statement::Module {
+            name,
+            body
+        }
     }
 }
 
@@ -74,22 +106,27 @@ Use: Statement<'a> = {
 }
 
 Const: Statement<'a> = {
-    "const" <name:Ident> ":" <typ:Type> "=" <expr:AnyExpr> ";" => Statement::Const(name, typ, expr),
+    "const" <name:Ident> ":" <r#type:Type> "=" <value:AnyExpr> ";"
+        => Statement::Const { name, r#type, value },
 }
 
 Var: Statement<'a> = {
-    "let" <name:Ident> ":" <typ:Type> "=" <expr:AnyExpr> ";" => Statement::LetVar(name, Some(typ), expr),
-    "let" <name:Ident> "=" <expr:AnyExpr> ";" => Statement::LetVar(name, None, expr),
-    <var:VarAccess> "=" <expr:AnyExpr> ";" => Statement::SetVar(var, expr),
-    <var:VarAccess> <op:ModOp> <expr:AnyExpr> ";" => Statement::ModVar(var, op, expr),
+    "let" <name:Ident> ":" <typ:Type> "=" <value:AnyExpr> ";"
+        => Statement::Let { name, r#type: Some(typ), value },
+    "let" <name:Ident> "=" <value:AnyExpr> ";"
+        => Statement::Let { name, r#type: None, value },
+    <var:VarAccess> "=" <value:AnyExpr> ";"
+        => Statement::Assign { var, value },
+    <var:VarAccess> <op:ModOp> <value:AnyExpr> ";"
+        => Statement::CompoundAssign { var, op, value },
 }
 
 AnyExpr: Expr<'a> = {
     #[precedence(level="0")]
     Ternary,
-    #[precedence(level="2")] #[assoc(side="left")]
+    #[precedence(level="1")] #[assoc(side="left")]
     CurlyCompound => Expr::Compound(<>),
-    #[precedence(level="3")] #[assoc(side="left")]
+    #[precedence(level="2")] #[assoc(side="left")]
     NonCurlyExpr,
 }
 
@@ -98,48 +135,52 @@ NonCurlyExpr: Expr<'a> = {
     Primitive => Expr::Primitive(<>),
     NonCurlyCompound => Expr::Compound(<>),
     VarAccess => Expr::Var(<>),
-    FnCall => Expr::FnCall(<>.0, <>.1),
+    FnCall => Expr::FnCall { name: <>.0, params: <>.1 },
     "(" <AnyExpr> ")",
+    ! => {
+        errors.push(<>);
+        Expr::Error
+    },
 
-    #[precedence(level="2")] #[assoc(side="right")]
+    #[precedence(level="1")] #[assoc(side="right")]
     "!" <NonCurlyExpr> => Expr::LogicalNot(arena.alloc(<>)),
     "-" <NonCurlyExpr> => Expr::Neg(arena.alloc(<>)),
 
-    #[precedence(level="3")] #[assoc(side="right")]
+    #[precedence(level="2")] #[assoc(side="right")]
     <l:NonCurlyExpr> "**" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Pow, arena.alloc(r)),
 
-    #[precedence(level="4")] #[assoc(side="left")]
+    #[precedence(level="3")] #[assoc(side="left")]
     <l:NonCurlyExpr> "*" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Mul, arena.alloc(r)),
     <l:NonCurlyExpr> "/" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Div, arena.alloc(r)),
     <l:NonCurlyExpr> "%" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Mod, arena.alloc(r)),
 
-    #[precedence(level="5")] #[assoc(side="left")]
+    #[precedence(level="4")] #[assoc(side="left")]
     <l:NonCurlyExpr> "+" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Add, arena.alloc(r)),
     <l:NonCurlyExpr> "-" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Sub, arena.alloc(r)),
 
-    #[precedence(level="6")] #[assoc(side="left")]
+    #[precedence(level="5")] #[assoc(side="left")]
     <l:NonCurlyExpr> <op:ShiftOp> <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), op, arena.alloc(r)),
 
-    #[precedence(level="7")] #[assoc(side="left")]
+    #[precedence(level="6")] #[assoc(side="left")]
     <l:NonCurlyExpr> <op:CompOp> <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), op, arena.alloc(r)),
 
-    #[precedence(level="8")] #[assoc(side="left")]
+    #[precedence(level="7")] #[assoc(side="left")]
     <l:NonCurlyExpr> "&" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::And, arena.alloc(r)),
 
-    #[precedence(level="9")] #[assoc(side="left")]
+    #[precedence(level="8")] #[assoc(side="left")]
     <l:NonCurlyExpr> "^" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Xor, arena.alloc(r)),
 
-    #[precedence(level="10")] #[assoc(side="left")]
+    #[precedence(level="9")] #[assoc(side="left")]
     <l:NonCurlyExpr> "|" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::Or, arena.alloc(r)),
 
-    #[precedence(level="11")] #[assoc(side="left")]
+    #[precedence(level="10")] #[assoc(side="left")]
     <l:NonCurlyExpr> "&&" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::AndAnd, arena.alloc(r)),
 
-    #[precedence(level="12")] #[assoc(side="left")]
+    #[precedence(level="11")] #[assoc(side="left")]
     <l:NonCurlyExpr> "||" <r:NonCurlyExpr> => Expr::Op(arena.alloc(l), Opcode::OrOr, arena.alloc(r)),
 
-    #[precedence(level="14")] #[assoc(side="left")]
-    <e:NonCurlyExpr> "as" <t:Type> => Expr::Cast(arena.alloc(e), t),
+    #[precedence(level="12")] #[assoc(side="left")]
+    <e:NonCurlyExpr> "as" <to:Type> => Expr::Cast { value: arena.alloc(e), to },
 }
 
 ShiftOp: Opcode = {
@@ -163,8 +204,8 @@ ModOp: Opcode = {
     "/=" => Opcode::Div,
     "%=" => Opcode::Mod,
     "**=" => Opcode::Pow,
-    "^=" => Opcode::Pow,
-    "&=" => Opcode::Pow,
+    "^=" => Opcode::Xor,
+    "&=" => Opcode::And,
     "|=" => Opcode::Or,
     "<<=" => Opcode::Shl,
     ">>=" => Opcode::Shr,
@@ -203,9 +244,8 @@ ListType: Type<'a> = {
 }
 
 TupleType: Type<'a> = {
-    "(" <mut t:(<Type> ",")+> <l:Type> ")" => {
-        t.push(l);
-        Type::Tuple(arena.alloc_slice_clone(&t))
+    "(" <types:Comma2<Type>> ")" => {
+        Type::Tuple(types)
     },
 }
 
@@ -219,47 +259,34 @@ Ternary: Expr<'a> = {
 }
 
 FnCall: (VarAccess<'a>, &'a [Expr<'a>]) = {
-    <name:VarAccess> "(" <mut params:(<AnyExpr> ",")*> <last:AnyExpr?> ")" => {
-        if let Some(last) = last {
-            params.push(last);
-        }
-        (name, arena.alloc_slice_clone(&params))
+    <name:VarAccess> "(" <params:Comma<AnyExpr>> ")" => {
+        (name, params)
     }
 }
 
 Struct: Compound<'a> = {
-    <name:NamespacePath> "{" <mut fields:(<StructStatement> ",")*> <last:StructStatement?> "}" => {
-        if let Some(last) = last {
-            fields.push(last);
+    <name:NamespacePath> "{" <fields:Comma<FieldInst>> "}" => {
+        Compound::Struct {
+            name,
+            fields
         }
-        Compound::Struct(name, arena.alloc_slice_clone(&fields))
     },
 }
 
-StructStatement: (&'a str, Option<Expr<'a>>) = {
-    <field:Ident> ":" <val:AnyExpr> => (field, Some(val)),
-    <field:Ident> => (field, None)
+FieldInst: FieldInst<'a> = {
+    <name:Ident> ":" <value:AnyExpr> => FieldInst { name, value: Some(value) },
+    <name:Ident> => FieldInst { name, value: None }
 }
 
 Tuple: Compound<'a> = {
-    "(" <mut body:(<AnyExpr> ",")+> <end:AnyExpr> ","? ")" => {
-        body.push(end);
-        Compound::Tuple(arena.alloc_slice_clone(&body))
+    "(" <items:Comma2<AnyExpr>> ")" => {
+        Compound::Tuple(items)
     }
 }
 
 List: Compound<'a> = {
-    "[" "]" => {
-        Compound::List(&[])
-    },
-
-    "[" <e:AnyExpr> "," "]" => {
-        Compound::List(arena.alloc([e]))
-    },
-
-    "[" <mut body:(<AnyExpr> ",")+> <end:AnyExpr> ","? "]" => {
-        body.push(end);
-        Compound::List(arena.alloc_slice_clone(&body))
+    "[" <items:Comma<AnyExpr>> "]" => {
+        Compound::List(items)
     }
 }
 
@@ -311,161 +338,196 @@ CompoundPart: CompoundPart<'a> = {
 }
 
 If<T>: Statement<'a> = {
-    "if" <cond:NonCurlyExpr> "{" <body:T*> "}" => {
+    "if" <cond:NonCurlyExpr> <body:Block<T>> => {
         Statement::If {
             cond,
-            body: arena.alloc_slice_clone(&body),
+            body,
             r#else: None
         }
     },
 
-    "if" <cond:NonCurlyExpr> "{" <body:T*> "}" <next:Else<T>> => {
+    "if" <cond:NonCurlyExpr> <body:Block<T>> <next:Else<T>> => {
         Statement::If {
             cond,
-            body: arena.alloc_slice_clone(&body),
+            body,
             r#else: Some(arena.alloc(next))
         }
     }
 }
 
 Else<T>: Else<'a> = {
-    "else" "if" <cond:NonCurlyExpr> "{" <body:T*> "}" => {
+    "else" "if" <cond:NonCurlyExpr> <body:Block<T>> => {
         Else::If {
             cond,
-            body: arena.alloc_slice_clone(&body),
+            body,
             r#else: None
         }
     },
 
-    "else" "if" <cond:NonCurlyExpr> "{" <body:T*> "}" <r#else:Else<T>> => {
+    "else" "if" <cond:NonCurlyExpr> <body:Block<T>> <r#else:Else<T>> => {
         Else::If {
             cond,
-            body: arena.alloc_slice_clone(&body),
+            body,
             r#else: Some(arena.alloc(r#else))
         }
     },
 
-    "else" "{" <body:T*> "}" => {
-        Else::Else(arena.alloc_slice_clone(&body))
+    "else" <body:Block<T>> => {
+        Else::Else(body)
     }
 }
 
 DashboardDefn: Statement<'a> = {
-    "dashboard" <name:String> "{"
-        <mut body:FnStatement*>
-        <el:ElementStatement*>
-    "}" => {
-        body.extend_from_slice(&el);
+    "dashboard" <name:String> <body:Block<ElementStatement>> => {
         Statement::DashboardDefn {
             name,
-            body: arena.alloc_slice_clone(&body)
+            body
         }
     }
 }
 
 ElementDefn: Statement<'a> = {
-    "element" <name:Ident> <params:FnDefnParams> "{"
-        <mut body:FnStatement*>
-        <el:ElementStatement*>
-    "}" => {
-        body.extend_from_slice(&el);
+    "element" <name:Ident> <params:ParameterDefns> <body:Block<ElementStatement>> => {
         Statement::ElementDefn {
             name,
             params,
-            body: arena.alloc_slice_clone(&body)
+            body
         }
     },
 
-    "element" <name:Ident> "{"
-        <mut body:FnStatement*>
-        <el:ElementStatement*>
-    "}" => {
-        body.extend_from_slice(&el);
+    "element" <name:Ident> <body:Block<ElementStatement>> => {
         Statement::ElementDefn {
             name,
             params: &[],
-            body: arena.alloc_slice_clone(&body)
+            body
         }
     }
+}
+
+ElementInst: Statement<'a> = {
+    <name:Ident> <body:Block<ElementStatement>> => {
+        Statement::ElementInst { name, params: &[], body }  
+    },
+
+    <name:Ident> "(" <params:Comma<NamedParameterInst>> ")" => {
+        Statement::ElementInst { name, params, body: &[] }  
+    },
+
+    <name:Ident> "(" <params:Comma<NamedParameterInst>> ")" <body:Block<ElementStatement>> => {
+        Statement::ElementInst { name, params, body }  
+    },
+}
+
+NamedParameterInst: NamedParameterInst<'a> = {
+    <value:NonCurlyExpr>
+        => NamedParameterInst { name: None, value },
+    <name:Ident> ":" <value:NonCurlyExpr>
+        => NamedParameterInst { name: Some(name), value }
 }
 
 FnDefn: Statement<'a> = {
-    "fn" <name:Ident> <params:FnDefnParams> <result:("->" <Type>)?> "{" <body:FnStatement*> "}" => {
+    "fn" <name:Ident> <params:ParameterDefns> <return_type:("->" <Type>)?> <body:Block<FnStatement>>
+    => {
         Statement::FnDefn {
             name,
             params,
-            result,
-            body: arena.alloc_slice_clone(&body)
+            return_type,
+            body
         }
     }
 }
 
-FnDefnParams: &'a [(&'a str, Type<'a>)] = {
-    "(" <mut params:(<FnDefnParam> ",")*> <last:FnDefnParam?> ")" => {
-        if let Some(last) = last {
-            params.push(last);
-        }
-        arena.alloc_slice_clone(&params)
-    }
+ParameterDefns: &'a [ParameterDefn<'a>] = {
+    "(" <Comma<ParameterDefn>> ")" => <>
 }
 
-FnDefnParam: (&'a str, Type<'a>) = {
-    <name:Ident> ":" <typ:Type> => (name, typ)
+ParameterDefn: ParameterDefn<'a> = {
+    <name:Ident> ":" <r#type:Type> => ParameterDefn { name, r#type }
 }
 
 StructDefn: Statement<'a> = {
-    "struct" <name:Ident> "{" <mut params:(<StructDefnParam> ",")*> <last:StructDefnParam> ","? "}" => {
-        params.push(last);
-        let mut param_map = HashMap::with_capacity_and_hasher(params.len(), FxBuildHasher);
-        for (n, t) in params {
-            param_map.insert(n, t);
+    "struct" <name:Ident> "{" <fields:Comma<StructDefnField>> "}" => {
+        Statement::StructDefn {
+            name,
+            fields
         }
-        Statement::StructDefn { name, params: param_map }
     }
 }
 
-StructDefnParam: (&'a str, Type<'a>) = {
-    <name:Ident> ":" <typ:Type> => (name, typ)
+StructDefnField: FieldDefn<'a> = {
+    <name:Ident> ":" <r#type:Type> => FieldDefn { name, r#type }
 }
 
 EnumDefn: Statement<'a> = {
-    "enum" <name:Ident> "{" <mut variants:(<Ident> ",")*> <last:Ident> ","? "}" => {
-        variants.push(last);
+    "enum" <name:Ident> "{" <variants:Comma<Ident>> "}" => {
         Statement::EnumDefn {
             name,
-            variants: arena.alloc_slice_clone(&variants)
+            variants
         }
     }
 }
 
 TypeDefn: Statement<'a> = {
-    "type" <name:Ident> "=" <typ:Type> ";" => {
-        Statement::TypeDefn(name, typ)
+    "type" <name:Ident> "=" <value:Type> ";" => {
+        Statement::TypeDefn {
+            name,
+            value
+        }
     }
 }
 
 Loop<T>: Statement<'a> = {
-    "while" <cond:NonCurlyExpr> "{" <body:T*> "}" => {
+    "while" <cond:NonCurlyExpr> <body:Block<T>> => {
         Statement::While {
             cond,
-            body: arena.alloc_slice_clone(&body)
+            body
         }
     },
-    "for" <var:Ident> "in" <of:Range> "{" <body:T*> "}" => {
+    "for" <var:Ident> "in" <iter:Range> <body:Block<T>> => {
         Statement::For {
             var,
-            of: Either::Left(of),
-            body: arena.alloc_slice_clone(&body)
+            iter: Either::Left(iter),
+            body
         }
     },
-    "for" <var:Ident> "in" <of:VarAccess> "{" <body:T*> "}" => {
+    "for" <var:Ident> "in" <iter:VarAccess> <body:Block<T>> => {
         Statement::For {
             var,
-            of: Either::Right(of),
-            body: arena.alloc_slice_clone(&body)
+            iter: Either::Right(iter),
+            body
         }
     }
 }
+
+
+
+
+// UTIL ---------------
+
+Block<T>: &'a [T] = {
+    "{" <statements:T*> "}" => {
+        arena.alloc_slice_clone(&statements)
+    }  
+};
+
+Comma<T>: &'a [T] = {
+    <mut v:(<T> ",")*> <e:T?> => {
+        if let Some(e) = e { v.push(e); }
+        arena.alloc_slice_clone(&v)
+    }
+};
+
+// >=2 items
+Comma2<T>: &'a [T] = {
+    <mut v:(<T> ",")+> <e:T> ","? => {
+        v.push(e);
+        arena.alloc_slice_clone(&v)
+    }
+};
+
+
+
+// TOKENS ----------------------------
 
 extern {
     type Location = usize;
@@ -559,5 +621,8 @@ extern {
         ".." => Token::DotDot,
         "..=" => Token::DotDotEq,
         "~" => Token::Tilde,
+
+        "mistake" => Token::MistakenKeyword(<&'a str>),
+        "error" => Token::Error,
     }
 }

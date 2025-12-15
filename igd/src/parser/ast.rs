@@ -1,6 +1,5 @@
 use either::Either;
 use litrs::{FloatLit, IntegerLit, StringLit};
-use rustc_hash::FxHashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Statement<'a> {
@@ -8,29 +7,49 @@ pub enum Statement<'a> {
         path: NamespacePath<'a>,
         r#as: Option<&'a str>,
     },
-    Module(&'a str, &'a [Statement<'a>]),
+    Module {
+        name: &'a str,
+        body: &'a [Statement<'a>],
+    },
 
-    Const(&'a str, Type<'a>, Expr<'a>),
-    LetVar(&'a str, Option<Type<'a>>, Expr<'a>),
-    SetVar(VarAccess<'a>, Expr<'a>),
-    ModVar(VarAccess<'a>, Opcode, Expr<'a>),
+    Const {
+        name: &'a str,
+        r#type: Type<'a>,
+        value: Expr<'a>,
+    },
+    Let {
+        name: &'a str,
+        r#type: Option<Type<'a>>,
+        value: Expr<'a>,
+    },
+    Assign {
+        var: VarAccess<'a>,
+        value: Expr<'a>,
+    },
+    CompoundAssign {
+        var: VarAccess<'a>,
+        op: Opcode,
+        value: Expr<'a>,
+    },
 
     FnDefn {
         name: &'a str,
-        params: &'a [(&'a str, Type<'a>)],
-        result: Option<Type<'a>>,
+        params: &'a [ParameterDefn<'a>],
+        return_type: Option<Type<'a>>,
         body: &'a [Statement<'a>],
     },
     StructDefn {
         name: &'a str,
-        /// TODO bumpalo type?
-        params: FxHashMap<&'a str, Type<'a>>,
+        fields: &'a [FieldDefn<'a>],
     },
     EnumDefn {
         name: &'a str,
         variants: &'a [&'a str],
     },
-    TypeDefn(&'a str, Type<'a>),
+    TypeDefn {
+        name: &'a str,
+        value: Type<'a>,
+    },
 
     DashboardDefn {
         name: StringLit<&'a str>,
@@ -38,7 +57,7 @@ pub enum Statement<'a> {
     },
     ElementDefn {
         name: &'a str,
-        params: &'a [(&'a str, Type<'a>)],
+        params: &'a [ParameterDefn<'a>],
         body: &'a [Statement<'a>],
     },
 
@@ -49,9 +68,9 @@ pub enum Statement<'a> {
         params: &'a [Expr<'a>],
     },
     /// element construction
-    Element {
+    ElementInst {
         name: &'a str,
-        params: &'a [(Option<&'a str>, Type<'a>)],
+        params: &'a [NamedParameterInst<'a>],
         body: &'a [Statement<'a>],
     },
 
@@ -62,7 +81,7 @@ pub enum Statement<'a> {
     },
     For {
         var: &'a str,
-        of: Either<Range<'a>, VarAccess<'a>>,
+        iter: Either<Range<'a>, VarAccess<'a>>,
         body: &'a [Statement<'a>],
     },
     While {
@@ -73,6 +92,8 @@ pub enum Statement<'a> {
     Return(Option<Expr<'a>>),
     Break,
     Continue,
+
+    Error,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -83,6 +104,31 @@ pub enum Else<'a> {
         r#else: Option<&'a Else<'a>>,
     },
     Else(&'a [Statement<'a>]),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ParameterDefn<'a> {
+    pub name: &'a str,
+    pub r#type: Type<'a>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldDefn<'a> {
+    pub name: &'a str,
+    pub r#type: Type<'a>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NamedParameterInst<'a> {
+    pub name: Option<&'a str>,
+    pub value: Expr<'a>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldInst<'a> {
+    pub name: &'a str,
+    // None for shorthand
+    pub value: Option<Expr<'a>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,7 +145,10 @@ pub enum Compound<'a> {
     List(&'a [Expr<'a>]),
     Tuple(&'a [Expr<'a>]),
     // Enum is processed as a Var
-    Struct(NamespacePath<'a>, &'a [(&'a str, Option<Expr<'a>>)]),
+    Struct {
+        name: NamespacePath<'a>,
+        fields: &'a [FieldInst<'a>],
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -108,13 +157,19 @@ pub enum Expr<'a> {
     Compound(Compound<'a>),
 
     Var(VarAccess<'a>),
-    FnCall(VarAccess<'a>, &'a [Expr<'a>]),
+    FnCall {
+        name: VarAccess<'a>,
+        params: &'a [Expr<'a>],
+    },
 
     Op(&'a Expr<'a>, Opcode, &'a Expr<'a>),
     LogicalNot(&'a Expr<'a>),
     Neg(&'a Expr<'a>),
 
-    Cast(&'a Expr<'a>, Type<'a>),
+    Cast {
+        value: &'a Expr<'a>,
+        to: Type<'a>,
+    },
 
     Ternary {
         cond: &'a Expr<'a>,
@@ -124,11 +179,12 @@ pub enum Expr<'a> {
 
     Query {
         qtype: QueryType,
-        comp_type: Option<String>,
-        /// TODO bumpalo type?
-        params: FxHashMap<String, Expr<'a>>,
+        comp_type: Option<&'a str>,
+        params: &'a [(&'a str, Expr<'a>)],
         r#where: &'a [Expr<'a>],
     },
+
+    Error,
 }
 
 #[derive(Clone, Debug, PartialEq)]
