@@ -1,5 +1,4 @@
 use either::Either;
-use litrs::{FloatLit, IntegerLit, StringLit};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Statement<'a> {
@@ -52,7 +51,7 @@ pub enum Statement<'a> {
     },
 
     DashboardDefn {
-        name: StringLit<&'a str>,
+        name: &'a str,
         body: &'a [Statement<'a>],
     },
     ElementDefn {
@@ -132,11 +131,11 @@ pub struct FieldInst<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Primitive<'a> {
-    Int(IntegerLit<&'a str>),
-    Float(FloatLit<&'a str>),
+pub enum Literal<'a> {
+    Int(i64),
+    Float(f64),
     Bool(bool),
-    String(StringLit<&'a str>),
+    String(&'a str),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -152,7 +151,7 @@ pub enum Compound<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
-    Primitive(Primitive<'a>),
+    Literal(Literal<'a>),
     Compound(Compound<'a>),
 
     Var(VarAccess<'a>),
@@ -201,7 +200,7 @@ pub struct QueryParam<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryParamValue<'a> {
-    Primitive(Primitive<'a>),
+    Literal(Literal<'a>),
     Ident(&'a str),
 }
 
@@ -282,7 +281,7 @@ pub enum CompoundPart<'a> {
     // map["key"] or list[0]
     Bracket(Expr<'a>),
     // tup.2
-    Tuple(IntegerLit<&'a str>),
+    Tuple(i64),
     // struct.field | cfg.field
     Field(&'a str),
 }

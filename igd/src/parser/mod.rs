@@ -12,7 +12,7 @@ use ast::Statement;
 use grammar::MainParser;
 
 pub fn parse<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a [Statement<'a>], IgdError> {
-    let lexer = Lexer::new(source);
+    let lexer = Lexer::new(source, arena);
     let parser = MainParser::new();
     let mut errors = Vec::new();
 

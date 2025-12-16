@@ -1,9 +1,8 @@
 use either::Either;
 use crate::parser::ast::*;
-use crate::lexer::tokens::{Token, LexicalError};
-use litrs::{FloatLit, IntegerLit, StringLit};
+use crate::lexer::tokens::{Token, LexicalError, Number};
 use bumpalo::Bump;
-use lalrpop_util::ErrorRecovery;
+use lalrpop_util::{ErrorRecovery, ParseError};
 
 grammar<'a, 'err>(
     source: &'a str,
@@ -133,7 +132,7 @@ AnyExpr: Expr<'a> = {
 NonCurlyExpr: Expr<'a> = {
     #[precedence(level="0")]
     // TODO F-String
-    Primitive => Expr::Primitive(<>),
+    Literal => Expr::Literal(<>),
     NonCurlyCompound => Expr::Compound(<>),
     VarAccess => Expr::Var(<>),
     FnCall => Expr::FnCall { name: <>.0, params: <>.1 },
@@ -213,11 +212,13 @@ ModOp: Opcode = {
     ">>=" => Opcode::Shr,
 }
 
-Primitive: Primitive<'a> = {
-    Int => Primitive::Int(<>),
-    Float => Primitive::Float(<>),
-    Bool => Primitive::Bool(<>),
-    String => Primitive::String(<>),
+Literal: Literal<'a> = {
+    Number => match <> {
+        Number::Int(n) => Literal::Int(n),
+        Number::Float(n) => Literal::Float(n),
+    },
+    Bool => Literal::Bool(<>),
+    String => Literal::String(<>),
 }
 
 NonCurlyCompound: Compound<'a> = {
@@ -270,8 +271,8 @@ Query: Expr<'a> = {
 }
 
 QueryParam: QueryParam<'a> = {
-    <name:Ident> ":" <value:Primitive>
-        => QueryParam { name, value: QueryParamValue::Primitive(value) },
+    <name:Ident> ":" <value:Literal>
+        => QueryParam { name, value: QueryParamValue::Literal(value) },
     <name:Ident> ":" <value:Ident>
         => QueryParam { name, value: QueryParamValue::Ident(value) },
 }
@@ -339,7 +340,11 @@ Range: Range<'a> = {
 }
 
 RangePart: Expr<'a> = {
-    Int => Expr::Primitive(Primitive::Int(<>)),
+    <n:Number> =>? match n {
+        Number::Int(i) => Ok(Expr::Literal(Literal::Int(i))),
+        Number::Float(_) => Err(ParseError::User { error: LexicalError::InvalidToken }),
+    },
+    
     VarAccess => Expr::Var(<>),
     "(" <NonCurlyExpr> ")"
 }
@@ -365,7 +370,12 @@ VarAccess: VarAccess<'a> = {
 
 CompoundPart: CompoundPart<'a> = {
    "[" <NonCurlyExpr> "]" => CompoundPart::Bracket(<>),
-    "." <Int> => CompoundPart::Tuple(<>),
+
+    "." <n:Number> =>? match n {
+        Number::Int(i) => Ok(CompoundPart::Tuple(i)),
+        Number::Float(_) => Err(ParseError::User { error: LexicalError::InvalidToken }),
+    },    
+
     "." <Ident> => CompoundPart::Field(<>),
 }
 
@@ -567,10 +577,9 @@ extern {
 
     enum Token<'a> {
         Ident => Token::Ident(<&'a str>),
-        Int => Token::Int(<IntegerLit<&'a str>>),
-        Float => Token::Float(<FloatLit<&'a str>>),
+        Number => Token::Number(<Number>),
         Bool => Token::Bool(<bool>),
-        String => Token::String(<StringLit<&'a str>>),
+        String => Token::String(<&'a str>),
 
         "let" => Token::Let,
         "const" => Token::Const,
@@ -657,7 +666,6 @@ extern {
         "=>" => Token::FatArrow,
         ".." => Token::DotDot,
         "..=" => Token::DotDotEq,
-        "~" => Token::Tilde,
 
         "mistake" => Token::MistakenKeyword(<&'a str>),
         "error" => Token::Error,
