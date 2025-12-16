@@ -122,6 +122,19 @@ pub enum Token<'a> {
     #[token("continue")]
     Continue,
 
+    #[display("'Bind'")]
+    #[token("Bind")]
+    Bind,
+    #[display("'Observe'")]
+    #[token("Observe")]
+    Observe,
+    #[display("'FilterSet'")]
+    #[token("FilterSet")]
+    FilterSet,
+    #[display("'where'")]
+    #[token("where")]
+    Where,
+
     #[display("'='")]
     #[token("=")]
     Eq,
@@ -339,7 +352,7 @@ pub enum Token<'a> {
     Tilde,
 
     #[display("mistaken keyword '{_0}'")]
-    #[regex(r"(var|function|func|def|elif|class|interface|null|nil|None|undefined|void|self|this|mut|async|await|pass|unless|switch|match|case|True|False|foreach|do|loop|until|repeat|auto|any|dynamic|number|str|public|private|protected|pub|static|try|catch|finally|except|throw|raise|and|or|not|is|new|import|require|export|namespace|package|goto|super|extends|implements)")]
+    #[regex(r"(var|function|func|def|elif|class|interface|null|nil|None|undefined|void|self|this|mut|async|await|pass|unless|switch|match|case|True|False|foreach|do|loop|until|repeat|auto|dynamic|number|str|public|private|protected|pub|static|try|catch|finally|except|throw|raise|and|or|not|is|new|import|require|export|namespace|package|goto|super|extends|implements)")]
     MistakenKeyword(&'a str),
 
     #[display("invalid character")]

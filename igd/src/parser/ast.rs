@@ -137,7 +137,6 @@ pub enum Primitive<'a> {
     Float(FloatLit<&'a str>),
     Bool(bool),
     String(StringLit<&'a str>),
-    FString(&'a [Expr<'a>]),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -161,6 +160,7 @@ pub enum Expr<'a> {
         name: VarAccess<'a>,
         params: &'a [Expr<'a>],
     },
+    FString(&'a [Expr<'a>]),
 
     Op(&'a Expr<'a>, Opcode, &'a Expr<'a>),
     LogicalNot(&'a Expr<'a>),
@@ -178,13 +178,31 @@ pub enum Expr<'a> {
     },
 
     Query {
-        qtype: QueryType,
-        comp_type: Option<&'a str>,
-        params: &'a [(&'a str, Expr<'a>)],
-        r#where: &'a [Expr<'a>],
+        query_type: QueryType,
+        /// Can bind component name (for component ObserveValue)
+        /// or a subset of observe queries:
+        ///  1. DeviceName, DeviceAttached
+        ///  2. EntityRegistered
+        ///  3. ExtensionAttached
+        ///  4. GroupName
+        target: &'a str,
+        params: &'a [QueryParam<'a>],
+        r#where: Option<&'a Expr<'a>>,
     },
 
     Error,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryParam<'a> {
+    pub name: &'a str,
+    pub value: QueryParamValue<'a>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum QueryParamValue<'a> {
+    Primitive(Primitive<'a>),
+    Ident(&'a str),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -209,8 +227,8 @@ pub enum Type<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QueryType {
-    Observe,
     Bind,
+    Observe,
     FilterSet,
 }
 

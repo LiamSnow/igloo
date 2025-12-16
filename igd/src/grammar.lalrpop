@@ -132,10 +132,12 @@ AnyExpr: Expr<'a> = {
 
 NonCurlyExpr: Expr<'a> = {
     #[precedence(level="0")]
+    // TODO F-String
     Primitive => Expr::Primitive(<>),
     NonCurlyCompound => Expr::Compound(<>),
     VarAccess => Expr::Var(<>),
     FnCall => Expr::FnCall { name: <>.0, params: <>.1 },
+    Query,
     "(" <AnyExpr> ")",
     ! => {
         errors.push(<>);
@@ -216,7 +218,6 @@ Primitive: Primitive<'a> = {
     Float => Primitive::Float(<>),
     Bool => Primitive::Bool(<>),
     String => Primitive::String(<>),
-    // TODO F-String
 }
 
 NonCurlyCompound: Compound<'a> = {
@@ -249,6 +250,37 @@ TupleType: Type<'a> = {
     },
 }
 
+Query: Expr<'a> = {
+    <query_type:QueryType> "<"
+        <target:Ident>
+        <params:("," <QueryParam>)*>
+        <r#where:("," "where" "{" <AnyExpr> "}")?>
+        ","?
+    ">" => {
+        Expr::Query {
+            query_type,
+            target,
+            params: arena.alloc_slice_clone(&params),
+            r#where: match r#where {
+                Some(w) => Some(arena.alloc(w)),
+                None => None
+            }
+        }
+    }, 
+}
+
+QueryParam: QueryParam<'a> = {
+    <name:Ident> ":" <value:Primitive>
+        => QueryParam { name, value: QueryParamValue::Primitive(value) },
+    <name:Ident> ":" <value:Ident>
+        => QueryParam { name, value: QueryParamValue::Ident(value) },
+}
+
+QueryType: QueryType = {
+    "Bind" => QueryType::Bind,
+    "Observe" => QueryType::Observe,
+    "FilterSet" => QueryType::FilterSet,
+}
 
 Ternary: Expr<'a> = {
     <cond:NonCurlyExpr> "?" <a:AnyExpr> ":" <b:AnyExpr> => Expr::Ternary {
@@ -558,6 +590,11 @@ extern {
         "return" => Token::Return,
         "break" => Token::Break,
         "continue" => Token::Continue,
+
+        "Bind" => Token::Bind,
+        "Observe" => Token::Observe,
+        "FilterSet" => Token::FilterSet,
+        "where" => Token::Where,
 
         "=" => Token::Eq,
 

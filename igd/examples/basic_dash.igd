@@ -3,11 +3,20 @@ dashboard "Home Overview" {
 
 	// Observe, FilterSet, Bind
 
-	let all_lights_on = Observe<Switch,
-		aggregate: any,
-	>;
+    let all_lights_on = Observe<
+		Switch,
+        aggregate: any,
+    >;
 
-	VStack {
+    let dimmer = Bind<
+		Dimmer,
+        aggregate: mean,
+        where {
+            with(Light)
+        }
+    >;
+
+    VStack {
 		HStack (justify: center) {
 			Text("Hi", size: 10)
 
@@ -17,5 +26,5 @@ dashboard "Home Overview" {
 				Text("10 is not greater than 2")
 			}
 		}
-	}
+    }
 }

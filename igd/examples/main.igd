@@ -201,7 +201,7 @@ element RGBCTLight(filters: Filter) {
         apply: filters,
         aggregate: mean,
         where {
-            with: Light
+            with(Light)
         }
     >;
 
@@ -209,7 +209,7 @@ element RGBCTLight(filters: Filter) {
         apply: filters,
         aggregate: mean,
         where {
-            with: Light
+            with(Light)
         }
     >;
 
@@ -217,7 +217,7 @@ element RGBCTLight(filters: Filter) {
         apply: filters,
         aggregate: mean,
         where {
-            with: Light
+            with(Light)
         }
     >;
 
