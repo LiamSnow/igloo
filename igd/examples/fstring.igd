@@ -1,0 +1,4 @@
+fn test() {
+	let cat = 10;
+	let a = f"cat: {cat}";	
+}

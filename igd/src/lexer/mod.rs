@@ -1,7 +1,12 @@
+use bumpalo::Bump;
 use logos::{Logos, SpannedIter};
 
+pub mod fstring;
+pub mod number;
+pub mod string;
 pub mod tokens;
-use tokens::{LexicalError, Token};
+
+use tokens::{LexerExtras, LexicalError, Token};
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
@@ -10,9 +15,12 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(a: &'a str) -> Self {
+    pub fn new(input: &'a str, arena: &'a Bump) -> Self {
+        let mut logos_lexer = Token::lexer(input);
+        logos_lexer.extras = LexerExtras { arena: Some(arena) };
+
         Self {
-            token_stream: Token::lexer(a).spanned(),
+            token_stream: logos_lexer.spanned(),
         }
     }
 }
