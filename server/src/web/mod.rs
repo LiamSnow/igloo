@@ -1,6 +1,5 @@
 use axum::{
     Router,
-    body::Bytes,
     extract::{
         State, WebSocketUpgrade,
         ws::{Message, WebSocket},
@@ -10,16 +9,49 @@ use axum::{
 };
 use axum_extra::{TypedHeader, headers::Cookie};
 use futures_util::StreamExt;
-use igloo_interface::web::ws::{ClientMessage, ClientPage, DashboardMeta, ServerMessage};
 use std::error::Error;
 use tokio::net::TcpListener;
 
-use crate::{DashboardRequest, GlobalState};
+use crate::core::IglooRequest;
 
-mod test_dashes;
-mod watch;
+#[derive(Clone)]
+struct WState;
 
-pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
+/*
+
+Core Idea: lazy observer registration
+ - Client navigates to page X
+ - Backend ships them the dashboard JSON
+ - SolidJS loads all requires elements (and JS from packages as needed)
+ - Elements can subscribe to observer
+    1. Server registers observer if it doesn't exist
+    2. Sends current state
+ - Upon navigation to another page, client requests to unsub from all
+
+==================
+
+MVP Requires:
+ 1. Change QueryEngine for new observer setup
+     - Upon registering a observer, checks for duplicates, and can join existing
+     - Handle garbage collection (remove observers when no subs)
+     - Potentially add lifetime to observers (IE only remove when no subs + time)
+     - Add ObserveMeta (includes: dashboard meta, devices meta, group meta, ext meta)
+ 2.
+
+-------------------
+
+MVP Should:
+ 1. Host SolidJS website
+ 2. Handle websockets
+     - Each should register their own client with the QueryEngine
+     - Proxy queries
+     - Unregister from QueryEngine on drop
+
+*/
+
+pub async fn run(_req_tx: kanal::Sender<IglooRequest>) -> Result<(), Box<dyn Error>> {
+    let state = WState;
+
     let app = Router::new()
         // .route("/", get(d))
         .route("/ws", any(ws_handler))
@@ -32,7 +64,7 @@ pub async fn run(state: GlobalState) -> Result<(), Box<dyn Error>> {
 }
 
 async fn ws_handler(
-    State(state): State<GlobalState>,
+    State(state): State<WState>,
     cookies: Option<TypedHeader<Cookie>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
@@ -41,115 +73,19 @@ async fn ws_handler(
 
 async fn handle_socket(
     _cookies: Option<TypedHeader<Cookie>>,
-    state: GlobalState,
+    _state: WState,
     mut socket: WebSocket,
 ) {
-    // test_dashes::make(&state).await.unwrap();
-
-    let mut cast_rx = state.cast.subscribe();
-    let mut cur_dash_idx = u16::MAX;
-    loop {
-        tokio::select! {
-            Ok((dash_idx, msg)) = cast_rx.recv() => {
-                if dash_idx != cur_dash_idx {
-                    continue;
-                }
-
-                socket.send(msg).await.unwrap();
+    while let Some(Ok(msg)) = socket.next().await {
+        match msg {
+            Message::Text(bytes) => {
+                println!("Got message: {bytes:?}");
             }
-
-            Some(Ok(msg)) = socket.next() => {
-                match msg {
-                    Message::Binary(bytes) => {
-                        let res = handle_client_msg(
-                            &state,
-                            &mut socket,
-                            &mut cur_dash_idx,
-                            bytes
-                        ).await;
-
-                        if let Err(e) = res {
-                            eprintln!("Error handling client message: {e}");
-                        }
-                    }
-                    Message::Close(_) => {
-                        return;
-                    }
-                    _ => {}
-                }
+            Message::Close(_) => {
+                println!("Socket closed.");
+                return;
             }
+            _ => {}
         }
     }
-}
-
-async fn handle_client_msg(
-    state: &GlobalState,
-    socket: &mut WebSocket,
-    cur_dash_idx: &mut u16,
-    bytes: Bytes,
-) -> Result<(), Box<dyn Error>> {
-    let msg: ClientMessage = borsh::from_slice(&bytes)?;
-
-    match msg {
-        // ClientMessage::ExecSetQuery(q) => state.query_tx.send(q.into()).await.unwrap(),
-        ClientMessage::Init => {
-            let dashs = state.dashs.read().await;
-            let mut metas = Vec::with_capacity(dashs.len());
-            for (id, dash) in dashs.clone().into_iter() {
-                metas.push(DashboardMeta {
-                    is_default: id == "main", // FIXME use user pref
-                    id,
-                    display_name: dash.display_name,
-                });
-            }
-            drop(dashs);
-            let msg: ServerMessage = metas.into();
-            let bytes = borsh::to_vec(&msg)?;
-            socket.send(Message::Binary(bytes.into())).await?;
-        }
-        ClientMessage::GetPageData(ClientPage::Dashboard(dash_id)) => {
-            let Some(dash_id) = dash_id else {
-                *cur_dash_idx = u16::MAX;
-                return Ok(());
-            };
-
-            let dash = state
-                .dashs
-                .read()
-                .await
-                .get(&dash_id)
-                .ok_or("invalid dashboard ID")?
-                .clone();
-
-            *cur_dash_idx = dash.idx.unwrap(); // always init
-            let msg: ServerMessage = (Some(dash_id), Box::new(dash)).into();
-            let bytes = borsh::to_vec(&msg)?;
-
-            socket.send(Message::Binary(bytes.into())).await?;
-
-            state
-                .dash_tx
-                .send((*cur_dash_idx, DashboardRequest::DumpData))?;
-        }
-        ClientMessage::GetPageData(ClientPage::Tree) => {
-            *cur_dash_idx = u16::MAX;
-            todo!()
-            // let (response_tx, response_rx) = oneshot::channel();
-            // state
-            //     .query_tx
-            //     .send(Query::Snapshot(SnapshotQuery { response_tx }))
-            //     .await?;
-            // let msg: ServerMessage = Box::new(response_rx.await?).into();
-            // let bytes = borsh::to_vec(&msg)?;
-            // socket.send(Message::Binary(bytes.into())).await?;
-        }
-        ClientMessage::GetPageData(ClientPage::Settings) => {
-            *cur_dash_idx = u16::MAX;
-        }
-        ClientMessage::GetPageData(ClientPage::Penguin) => {
-            *cur_dash_idx = u16::MAX;
-        }
-    }
-
-    Ok(())
 }
