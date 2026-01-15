@@ -258,6 +258,8 @@ pub enum QueryResultType {
 
     Count,
 
+    /// Indicates Query will not immediately resolve
+    /// and instead of send ObserveUpdate periodically
     Observer(ObserverUpdateType),
 }
 

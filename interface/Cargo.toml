@@ -6,7 +6,6 @@ build = "build/main.rs"
 
 [features]
 default = []
-web = []
 penguin = ["serde"]
 ipc = ["bytes", "tokio", "tokio-util", "futures-core", "futures-sink"]
 
