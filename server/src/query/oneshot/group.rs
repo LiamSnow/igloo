@@ -63,7 +63,7 @@ impl QueryEngine {
                 R::GroupSnapshot(snapshots)
             }
 
-            A::ObserveRename | A::ObserveMembershipChanged => {
+            A::ObserveName | A::ObserveMembership => {
                 panic!("Observe should have been dispatched differently")
             }
             A::Inherit => return Ok(Err(QueryError::Inherit)),
