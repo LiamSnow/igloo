@@ -12,8 +12,6 @@ use std::marker::PhantomData;
 
 #[derive(thiserror::Error, Debug)]
 pub enum InsertAtError {
-    #[error("Index {0} out of bounds (capacity: {1})")]
-    OutOfBounds(usize, usize),
     #[error("Slot {0} already occupied")]
     SlotOccupied(usize),
 }
@@ -123,7 +121,6 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
         }
     }
 
-    /// Rebuild free list from scratch by scanning all entries
     fn rebuild_free_list(&mut self) {
         let mut new_head = None;
 
@@ -141,12 +138,30 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
 
     /// Insert at a specific index with a specific generation
     /// Used during load to restore persisted state
+    /// Will automatically expand the arena if needed
     pub fn insert_at(&mut self, id: ID, value: T) -> Result<(), InsertAtError> {
         let index = id.index() as usize;
         let generation = id.generation();
 
+        // auto-expand
         if index >= self.items.len() {
-            return Err(InsertAtError::OutOfBounds(index, self.items.len()));
+            let start = self.items.len();
+            let old_head = self.free_list_head;
+
+            self.items.reserve_exact(index - start + 1);
+            self.items.extend((start..=index).map(|i| {
+                if i == index {
+                    Entry::Free {
+                        next_free: old_head,
+                    }
+                } else {
+                    Entry::Free {
+                        next_free: Some(i + 1),
+                    }
+                }
+            }));
+
+            self.free_list_head = Some(start);
         }
 
         match &self.items[index] {

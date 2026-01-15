@@ -4,23 +4,24 @@ use igloo_interface::{
     ipc::IWriter,
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot, TypeFilter},
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use std::time::Instant;
+use std::{collections::HashMap, fs::File, time::Instant};
 use tokio::task::JoinHandle;
 
-use crate::tree::arena::Arena;
+use crate::tree::{arena::Arena, persist::IniWriter};
 
 pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
 
 /// Root
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
-#[derive(Debug)]
 pub struct DeviceTree {
     pub(super) groups: Arena<GroupID, Group>,
     pub(super) attached_exts: Vec<Option<Extension>>,
     pub(super) ext_ref_lut: FxHashMap<ExtensionID, ExtensionIndex>,
     pub(super) devices: Arena<DeviceID, Device>,
+    pub(super) groups_writer: IniWriter,
+    pub(super) devices_writer: IniWriter,
 }
 
 /// Connected Extension
@@ -54,6 +55,7 @@ pub struct Device {
     pub(super) owner_ref: Option<ExtensionIndex>,
     pub(super) groups: FxHashSet<GroupID>,
     /// Bitset of which component types exist on any of its entity
+    // TODO FIXME now that we have comp_to_entity, I think this is useless
     pub(super) presense: Presense,
     /// ComponentType -> Entity Indexes
     pub(super) comp_to_entity: [SmallVec<[EntityIndex; 4]>; COMP_TYPE_ARR_LEN],
@@ -283,6 +285,21 @@ impl Entity {
 }
 
 impl Device {
+    pub fn new(id: DeviceID, name: String, owner: ExtensionID) -> Self {
+        Device {
+            id,
+            name,
+            owner,
+            owner_ref: None,
+            groups: FxHashSet::with_capacity_and_hasher(10, FxBuildHasher),
+            presense: Presense::default(),
+            entities: SmallVec::default(),
+            entity_index_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
+            last_updated: Instant::now(),
+            comp_to_entity: [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN],
+        }
+    }
+
     #[inline]
     pub fn id(&self) -> &DeviceID {
         &self.id
