@@ -1,5 +1,7 @@
 # Igloo Penguin
 
+![](./screenshot.png)
+
 ## TODO
 - [x] box selection
 - [x] deleting
