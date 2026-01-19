@@ -1,11 +1,11 @@
-//! Each different Observers subscribes to a series of
+//! Each different Watchers subscribes to a series of
 //! events depending on the exact query.
 //!
 //! [TreeSubscribers] keeps track of these subscriptions and is used by
 //! [dispatcher.rs] to dispatch events accordingly.
 
 use crate::{
-    query::observer::{ObserverID, ObserverList},
+    query::watch::{WatcherID, WatcherList},
     tree::Extension,
 };
 use igloo_interface::{
@@ -34,80 +34,80 @@ pub struct TreeSubscribers {
 }
 
 impl TreeSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
-        self.component_set.unsubscribe(observer_id);
-        self.component_put.unsubscribe(observer_id);
-        self.device_created.unsubscribe(observer_id);
-        self.device_renamed.unsubscribe(observer_id);
-        self.device_deleted.unsubscribe(observer_id);
-        self.entity_registered.unsubscribe(observer_id);
-        self.group_created.unsubscribe(observer_id);
-        self.group_renamed.unsubscribe(observer_id);
-        self.group_deleted.unsubscribe(observer_id);
-        self.group_device_removed.unsubscribe(observer_id);
-        self.group_device_added.unsubscribe(observer_id);
-        self.ext_attached.unsubscribe(observer_id);
-        self.ext_detached.unsubscribe(observer_id);
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
+        self.component_set.unsubscribe(watcher_id);
+        self.component_put.unsubscribe(watcher_id);
+        self.device_created.unsubscribe(watcher_id);
+        self.device_renamed.unsubscribe(watcher_id);
+        self.device_deleted.unsubscribe(watcher_id);
+        self.entity_registered.unsubscribe(watcher_id);
+        self.group_created.unsubscribe(watcher_id);
+        self.group_renamed.unsubscribe(watcher_id);
+        self.group_deleted.unsubscribe(watcher_id);
+        self.group_device_removed.unsubscribe(watcher_id);
+        self.group_device_added.unsubscribe(watcher_id);
+        self.ext_attached.unsubscribe(watcher_id);
+        self.ext_detached.unsubscribe(watcher_id);
     }
 }
 
 pub struct GroupEventSubscribers {
     /// sub to group
-    pub by_gid: FxHashMap<GroupID, ObserverList>,
+    pub by_gid: FxHashMap<GroupID, WatcherList>,
     /// sub to all groups
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 pub struct GroupDeviceEventSubscribers {
     /// sub to events from this group
     pub by_gid: FxHashMap<GroupID, GroupDeviceEventGroupSubscribers>,
     /// sub to any device added/removed from any group
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 pub struct GroupDeviceEventGroupSubscribers {
     /// sub to this device's added/removed from this group
-    pub by_did: FxHashMap<DeviceID, ObserverList>,
+    pub by_did: FxHashMap<DeviceID, WatcherList>,
     /// sub to any device added/removed from this group
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 pub struct ExtensionEventSubscribers {
     /// sub to ext
-    pub by_xid: FxHashMap<ExtensionID, ObserverList>,
+    pub by_xid: FxHashMap<ExtensionID, WatcherList>,
     /// sub to ext
-    pub by_xindex: FxHashMap<ExtensionIndex, ObserverList>,
+    pub by_xindex: FxHashMap<ExtensionIndex, WatcherList>,
     /// sub to ext containing this device
-    pub by_did: FxHashMap<DeviceID, ObserverList>,
+    pub by_did: FxHashMap<DeviceID, WatcherList>,
     /// sub to all exts
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 pub struct DeviceEventSubscribers {
     /// sub to device
-    pub by_did: FxHashMap<DeviceID, ObserverList>,
+    pub by_did: FxHashMap<DeviceID, WatcherList>,
     /// sub to all devices
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 pub struct EntityEventSubscribers {
     /// sub to entity events on specific device
-    pub by_did: FxHashMap<DeviceID, ObserverList>,
+    pub by_did: FxHashMap<DeviceID, WatcherList>,
     /// sub to entity events on all devices
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 pub struct ComponentSetEventSubscribers(
-    pub FxHashMap<(DeviceID, EntityIndex, ComponentType), ObserverList>,
+    pub FxHashMap<(DeviceID, EntityIndex, ComponentType), WatcherList>,
 );
 
 pub struct ComponentPutEventSubscribers {
     /// sub to component events on specific device
     pub by_did: FxHashMap<DeviceID, ComponentPutEventDeviceSubscribers>,
     /// sub to this component event on any device/entity
-    pub by_comp_type: FxHashMap<ComponentType, ObserverList>,
+    pub by_comp_type: FxHashMap<ComponentType, WatcherList>,
     /// sub to all component events on all devices/entities
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 #[derive(Clone)]
@@ -115,17 +115,17 @@ pub struct ComponentPutEventDeviceSubscribers {
     /// sub to component events to specific entity
     pub by_eindex: FxHashMap<EntityIndex, ComponentPutEventEntitySubscribers>,
     /// sub to this component event on any entity in this device
-    pub by_comp_type: FxHashMap<ComponentType, ObserverList>,
+    pub by_comp_type: FxHashMap<ComponentType, WatcherList>,
     /// sub to all components events on this device
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 #[derive(Clone)]
 pub struct ComponentPutEventEntitySubscribers {
     /// sub to this component event in this entity
-    pub by_comp_type: FxHashMap<ComponentType, ObserverList>,
+    pub by_comp_type: FxHashMap<ComponentType, WatcherList>,
     /// sub to all component events on this entity
-    pub all: ObserverList,
+    pub all: WatcherList,
 }
 
 impl Default for GroupEventSubscribers {
@@ -220,16 +220,16 @@ impl Default for ComponentPutEventEntitySubscribers {
 }
 
 impl GroupEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_gid.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     #[inline]
-    pub fn affected(&self, group: &GroupID) -> Vec<ObserverID> {
+    pub fn affected(&self, group: &GroupID) -> Vec<WatcherID> {
         let capacity = self.all.len() + self.by_gid.get(group).map_or(0, |list| list.len());
 
         let mut result = Vec::with_capacity(capacity);
@@ -244,16 +244,16 @@ impl GroupEventSubscribers {
 }
 
 impl GroupDeviceEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_gid.retain(|_, group_sub| {
-            group_sub.unsubscribe(observer_id);
+            group_sub.unsubscribe(watcher_id);
             !group_sub.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     #[inline]
-    pub fn affected(&self, group: &GroupID, device: &DeviceID) -> Vec<ObserverID> {
+    pub fn affected(&self, group: &GroupID, device: &DeviceID) -> Vec<WatcherID> {
         let group_sub = self.by_gid.get(group);
 
         let capacity = self.all.len()
@@ -276,12 +276,12 @@ impl GroupDeviceEventSubscribers {
 }
 
 impl GroupDeviceEventGroupSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -290,20 +290,20 @@ impl GroupDeviceEventGroupSubscribers {
 }
 
 impl ExtensionEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_xid.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
         self.by_xindex.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     #[inline]
-    pub fn affected(&self, ext: &Extension) -> Vec<ObserverID> {
+    pub fn affected(&self, ext: &Extension) -> Vec<WatcherID> {
         let capacity = self.all.len()
             + self.by_xindex.get(ext.index()).map_or(0, |list| list.len())
             + self.by_xid.get(ext.id()).map_or(0, |list| list.len())
@@ -333,16 +333,16 @@ impl ExtensionEventSubscribers {
 }
 
 impl DeviceEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     #[inline]
-    pub fn affected(&self, did: &DeviceID) -> Vec<ObserverID> {
+    pub fn affected(&self, did: &DeviceID) -> Vec<WatcherID> {
         let capacity = self.all.len() + self.by_did.get(did).map_or(0, |list| list.len());
 
         let mut result = Vec::with_capacity(capacity);
@@ -357,16 +357,16 @@ impl DeviceEventSubscribers {
 }
 
 impl EntityEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     #[inline]
-    pub fn affected(&self, did: &DeviceID) -> Vec<ObserverID> {
+    pub fn affected(&self, did: &DeviceID) -> Vec<WatcherID> {
         let capacity = self.all.len() + self.by_did.get(did).map_or(0, |list| list.len());
 
         let mut result = Vec::with_capacity(capacity);
@@ -381,9 +381,9 @@ impl EntityEventSubscribers {
 }
 
 impl ComponentSetEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.0.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
     }
@@ -394,7 +394,7 @@ impl ComponentSetEventSubscribers {
         did: DeviceID,
         eindex: EntityIndex,
         comp_type: ComponentType,
-    ) -> Vec<ObserverID> {
+    ) -> Vec<WatcherID> {
         match self.0.get(&(did, eindex, comp_type)) {
             Some(list) => list.to_vec(),
             None => vec![],
@@ -403,16 +403,16 @@ impl ComponentSetEventSubscribers {
 }
 
 impl ComponentPutEventSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, device_sub| {
-            device_sub.unsubscribe(observer_id);
+            device_sub.unsubscribe(watcher_id);
             !device_sub.is_empty()
         });
         self.by_comp_type.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     #[inline]
@@ -421,7 +421,7 @@ impl ComponentPutEventSubscribers {
         did: &DeviceID,
         eindex: &EntityIndex,
         comp_type: &ComponentType,
-    ) -> Vec<ObserverID> {
+    ) -> Vec<WatcherID> {
         let device_sub = self.by_did.get(did);
 
         let capacity = self.all.len()
@@ -473,16 +473,16 @@ impl ComponentPutEventSubscribers {
 }
 
 impl ComponentPutEventDeviceSubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_eindex.retain(|_, entity_sub| {
-            entity_sub.unsubscribe(observer_id);
+            entity_sub.unsubscribe(watcher_id);
             !entity_sub.is_empty()
         });
         self.by_comp_type.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -491,12 +491,12 @@ impl ComponentPutEventDeviceSubscribers {
 }
 
 impl ComponentPutEventEntitySubscribers {
-    pub fn unsubscribe(&mut self, observer_id: ObserverID) {
+    pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_comp_type.retain(|_, list| {
-            list.retain(|&id| id != observer_id);
+            list.retain(|&id| id != watcher_id);
             !list.is_empty()
         });
-        self.all.retain(|&id| id != observer_id);
+        self.all.retain(|&id| id != watcher_id);
     }
 
     pub fn is_empty(&self) -> bool {

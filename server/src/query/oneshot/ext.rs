@@ -85,7 +85,7 @@ impl QueryEngine {
                 }
             },
 
-            A::ObserveAttached => panic!("Observe should have been dispatched differently"),
+            A::WatchAttached => panic!("Observe should have been dispatched differently"),
             A::Inherit => return Ok(Err(QueryError::Inherit)),
         };
 

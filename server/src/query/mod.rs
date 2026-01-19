@@ -2,7 +2,7 @@ use crate::{
     core::{ClientManager, IglooError, IglooResponse},
     query::{
         ctx::QueryContext,
-        observer::{Observer, ObserverID, subscriber::TreeSubscribers},
+        watch::{Watcher, WatcherID, subscriber::TreeSubscribers},
     },
     tree::DeviceTree,
 };
@@ -10,13 +10,13 @@ use igloo_interface::query::Query;
 
 mod ctx;
 mod iter;
-pub mod observer;
 mod oneshot;
+pub mod watch;
 
 pub struct QueryEngine {
     pub(self) ctx: QueryContext,
     pub(self) subscribers: TreeSubscribers,
-    pub(self) observers: Vec<Option<Observer>>,
+    pub(self) watchers: Vec<Option<Watcher>>,
 }
 
 impl Default for QueryEngine {
@@ -24,7 +24,7 @@ impl Default for QueryEngine {
         Self {
             ctx: QueryContext::default(),
             subscribers: TreeSubscribers::default(),
-            observers: Vec::with_capacity(50),
+            watchers: Vec::with_capacity(50),
         }
     }
 }
@@ -43,8 +43,8 @@ impl QueryEngine {
 
         query.optimize();
 
-        if query.is_observer() {
-            return match self.register_observer(tree, cm, client_id, query_id, query)? {
+        if query.is_watcher() {
+            return match self.register_watcher(tree, cm, client_id, query_id, query)? {
                 Err(e) => cm.send(
                     client_id,
                     IglooResponse::QueryResult {
@@ -52,7 +52,7 @@ impl QueryEngine {
                         result: Err(e),
                     },
                 ),
-                // observer registered successfully, no response
+                // watcher registered successfully, no response
                 // will be given until an event occurs
                 Ok(()) => Ok(()),
             };
@@ -69,10 +69,10 @@ impl QueryEngine {
         cm.send(client_id, IglooResponse::QueryResult { query_id, result })
     }
 
-    pub fn drop_observers(&mut self, observers: Vec<ObserverID>) {
-        for observer in observers {
-            self.subscribers.unsubscribe(observer);
-            self.observers[observer] = None;
+    pub fn drop_watchers(&mut self, watchers: Vec<WatcherID>) {
+        for watcher in watchers {
+            self.subscribers.unsubscribe(watcher);
+            self.watchers[watcher] = None;
         }
     }
 }

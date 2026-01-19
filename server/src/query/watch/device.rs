@@ -1,4 +1,4 @@
-//! Observers either if a Device is attached or if it's renamed.
+//! Watches either if a Device is attached or if it's renamed.
 //! While this does have more complex filters than simply ID
 //! and can have IDFilter::Any, it still makes sense NOT to have an
 //! expansion/contraction system.
@@ -14,7 +14,7 @@ use crate::{
             passes_device_last_update, passes_entity_count, passes_group_filter, passes_id_filter,
             passes_owner_filter,
         },
-        observer::{dispatch::ObserverHandler, subscriber::TreeSubscribers},
+        watch::{dispatch::WatchHandler, subscriber::TreeSubscribers},
     },
     tree::{Device, DeviceTree, Extension, Group},
 };
@@ -22,19 +22,19 @@ use igloo_interface::{
     Component, ComponentType,
     id::{DeviceID, EntityIndex, GroupID},
     query::{
-        DeviceAction, DeviceFilter, DeviceQuery, IDFilter, ObserverUpdate as U, check::QueryError,
+        DeviceAction, DeviceFilter, DeviceQuery, IDFilter, WatchUpdate as U, check::QueryError,
     },
 };
 use std::time::Instant;
 
-pub struct DeviceObserver {
+pub struct DeviceWatcher {
     pub client_id: usize,
     pub query_id: usize,
     pub query: DeviceQuery,
-    observer_id: usize,
+    watcher_id: usize,
 }
 
-impl DeviceObserver {
+impl DeviceWatcher {
     /// Subscriptions are registered here
     /// Then the subsequent `on_*` below will trigger
     pub fn register(
@@ -42,24 +42,24 @@ impl DeviceObserver {
         subs: &mut TreeSubscribers,
         _: &DeviceTree,
         query_id: usize,
-        observer_id: usize,
+        watcher_id: usize,
         client_id: usize,
         query: DeviceQuery,
     ) -> Result<Self, QueryError> {
         if query.limit.is_some() {
-            return Err(QueryError::LimitOnObserver);
+            return Err(QueryError::LimitOnWatcher);
         }
 
         match &query.filter.id {
             IDFilter::Any => {
-                subscribe_to_all_devices(subs, observer_id, &query.action);
+                subscribe_to_all_devices(subs, watcher_id, &query.action);
             }
             IDFilter::Is(gid) => {
-                subscribe_to_device(subs, *gid, observer_id, &query.action);
+                subscribe_to_device(subs, *gid, watcher_id, &query.action);
             }
             IDFilter::OneOf(gids) => {
                 for gid in gids {
-                    subscribe_to_device(subs, *gid, observer_id, &query.action);
+                    subscribe_to_device(subs, *gid, watcher_id, &query.action);
                 }
             }
         }
@@ -67,7 +67,7 @@ impl DeviceObserver {
         Ok(Self {
             client_id,
             query_id,
-            observer_id,
+            watcher_id,
             query,
         })
     }
@@ -75,29 +75,29 @@ impl DeviceObserver {
     pub fn cleanup(&mut self, subs: &mut TreeSubscribers) {
         match &self.query.filter.id {
             IDFilter::Any => {
-                unsubscribe_from_all_devices(subs, self.observer_id, &self.query.action);
+                unsubscribe_from_all_devices(subs, self.watcher_id, &self.query.action);
             }
             IDFilter::Is(gid) => {
-                unsubscribe_from_device(subs, *gid, self.observer_id, &self.query.action);
+                unsubscribe_from_device(subs, *gid, self.watcher_id, &self.query.action);
             }
             IDFilter::OneOf(gids) => {
                 for gid in gids {
-                    unsubscribe_from_device(subs, *gid, self.observer_id, &self.query.action);
+                    unsubscribe_from_device(subs, *gid, self.watcher_id, &self.query.action);
                 }
             }
         }
     }
 }
 
-fn subscribe_to_all_devices(subs: &mut TreeSubscribers, observer_id: usize, action: &DeviceAction) {
+fn subscribe_to_all_devices(subs: &mut TreeSubscribers, watcher_id: usize, action: &DeviceAction) {
     match action {
-        DeviceAction::ObserveAttached => {
-            subs.ext_attached.all.push(observer_id);
-            subs.ext_detached.all.push(observer_id);
-            subs.device_deleted.all.push(observer_id);
+        DeviceAction::WatchAttached => {
+            subs.ext_attached.all.push(watcher_id);
+            subs.ext_detached.all.push(watcher_id);
+            subs.device_deleted.all.push(watcher_id);
         }
-        DeviceAction::ObserveName => {
-            subs.device_renamed.all.push(observer_id);
+        DeviceAction::WatchName => {
+            subs.device_renamed.all.push(watcher_id);
         }
         _ => {}
     }
@@ -105,17 +105,17 @@ fn subscribe_to_all_devices(subs: &mut TreeSubscribers, observer_id: usize, acti
 
 fn unsubscribe_from_all_devices(
     subs: &mut TreeSubscribers,
-    observer_id: usize,
+    watcher_id: usize,
     action: &DeviceAction,
 ) {
     match action {
-        DeviceAction::ObserveAttached => {
-            subs.ext_attached.all.retain(|o| *o != observer_id);
-            subs.ext_detached.all.retain(|o| *o != observer_id);
-            subs.device_deleted.all.retain(|o| *o != observer_id);
+        DeviceAction::WatchAttached => {
+            subs.ext_attached.all.retain(|o| *o != watcher_id);
+            subs.ext_detached.all.retain(|o| *o != watcher_id);
+            subs.device_deleted.all.retain(|o| *o != watcher_id);
         }
-        DeviceAction::ObserveName => {
-            subs.device_renamed.all.retain(|o| *o != observer_id);
+        DeviceAction::WatchName => {
+            subs.device_renamed.all.retain(|o| *o != watcher_id);
         }
         _ => {}
     }
@@ -124,33 +124,33 @@ fn unsubscribe_from_all_devices(
 fn subscribe_to_device(
     subs: &mut TreeSubscribers,
     did: DeviceID,
-    observer_id: usize,
+    watcher_id: usize,
     action: &DeviceAction,
 ) {
     match action {
-        DeviceAction::ObserveAttached => {
+        DeviceAction::WatchAttached => {
             subs.ext_attached
                 .by_did
                 .entry(did)
                 .or_insert_with(|| Vec::with_capacity(2))
-                .push(observer_id);
+                .push(watcher_id);
             subs.ext_detached
                 .by_did
                 .entry(did)
                 .or_insert_with(|| Vec::with_capacity(2))
-                .push(observer_id);
+                .push(watcher_id);
             subs.device_deleted
                 .by_did
                 .entry(did)
                 .or_insert_with(|| Vec::with_capacity(2))
-                .push(observer_id);
+                .push(watcher_id);
         }
-        DeviceAction::ObserveName => {
+        DeviceAction::WatchName => {
             subs.device_renamed
                 .by_did
                 .entry(did)
                 .or_insert_with(|| Vec::with_capacity(2))
-                .push(observer_id);
+                .push(watcher_id);
         }
         _ => {}
     }
@@ -159,24 +159,24 @@ fn subscribe_to_device(
 fn unsubscribe_from_device(
     subs: &mut TreeSubscribers,
     did: DeviceID,
-    observer_id: usize,
+    watcher_id: usize,
     action: &DeviceAction,
 ) {
     match action {
-        DeviceAction::ObserveAttached => {
+        DeviceAction::WatchAttached => {
             if let Some(subs) = subs.ext_attached.by_did.get_mut(&did) {
-                subs.retain(|o| *o != observer_id);
+                subs.retain(|o| *o != watcher_id);
             }
             if let Some(subs) = subs.ext_detached.by_did.get_mut(&did) {
-                subs.retain(|o| *o != observer_id);
+                subs.retain(|o| *o != watcher_id);
             }
             if let Some(subs) = subs.device_deleted.by_did.get_mut(&did) {
-                subs.retain(|o| *o != observer_id);
+                subs.retain(|o| *o != watcher_id);
             }
         }
-        DeviceAction::ObserveName => {
+        DeviceAction::WatchName => {
             if let Some(subs) = subs.device_renamed.by_did.get_mut(&did) {
-                subs.retain(|o| *o != observer_id);
+                subs.retain(|o| *o != watcher_id);
             }
         }
         _ => {}
@@ -191,7 +191,7 @@ fn passes_all_filters(tree: &DeviceTree, device: &Device, filter: &DeviceFilter)
         && passes_owner_filter(device, &filter.owner)
 }
 
-impl ObserverHandler for DeviceObserver {
+impl WatchHandler for DeviceWatcher {
     fn on_device_deleted(
         &mut self,
         cm: &mut ClientManager,
@@ -200,12 +200,12 @@ impl ObserverHandler for DeviceObserver {
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, DeviceAction::ObserveAttached));
+        debug_assert!(matches!(self.query.action, DeviceAction::WatchAttached));
 
         if passes_all_filters(tree, device, &self.query.filter) {
             cm.send(
                 self.client_id,
-                IglooResponse::ObserverUpdate {
+                IglooResponse::WatchUpdate {
                     query_id: self.query_id,
                     result: U::DeviceAttached(*device.id(), false),
                 },
@@ -223,12 +223,12 @@ impl ObserverHandler for DeviceObserver {
         tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, DeviceAction::ObserveName));
+        debug_assert!(matches!(self.query.action, DeviceAction::WatchName));
 
         if passes_all_filters(tree, device, &self.query.filter) {
             cm.send(
                 self.client_id,
-                IglooResponse::ObserverUpdate {
+                IglooResponse::WatchUpdate {
                     query_id: self.query_id,
                     result: U::DeviceRenamed(*device.id(), device.name().to_string()),
                 },
@@ -246,7 +246,7 @@ impl ObserverHandler for DeviceObserver {
         tree: &DeviceTree,
         ext: &Extension,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, DeviceAction::ObserveAttached));
+        debug_assert!(matches!(self.query.action, DeviceAction::WatchAttached));
 
         for did in ext.devices() {
             if let Ok(device) = tree.device(did)
@@ -254,7 +254,7 @@ impl ObserverHandler for DeviceObserver {
             {
                 cm.send(
                     self.client_id,
-                    IglooResponse::ObserverUpdate {
+                    IglooResponse::WatchUpdate {
                         query_id: self.query_id,
                         result: U::DeviceAttached(*device.id(), true),
                     },
@@ -273,7 +273,7 @@ impl ObserverHandler for DeviceObserver {
         tree: &DeviceTree,
         ext: &Extension,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, DeviceAction::ObserveAttached));
+        debug_assert!(matches!(self.query.action, DeviceAction::WatchAttached));
 
         for did in ext.devices() {
             if let Ok(device) = tree.device(did)
@@ -281,7 +281,7 @@ impl ObserverHandler for DeviceObserver {
             {
                 cm.send(
                     self.client_id,
-                    IglooResponse::ObserverUpdate {
+                    IglooResponse::WatchUpdate {
                         query_id: self.query_id,
                         result: U::DeviceAttached(*device.id(), false),
                     },
@@ -303,7 +303,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive group_device_added events"
+            "DeviceWatcher should never receive group_device_added events"
         );
         Ok(())
     }
@@ -319,7 +319,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive group_device_removed events"
+            "DeviceWatcher should never receive group_device_removed events"
         );
         Ok(())
     }
@@ -334,7 +334,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive group_deleted events"
+            "DeviceWatcher should never receive group_deleted events"
         );
         Ok(())
     }
@@ -349,7 +349,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive device_created events"
+            "DeviceWatcher should never receive device_created events"
         );
         Ok(())
     }
@@ -365,7 +365,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive entity_registered events"
+            "DeviceWatcher should never receive entity_registered events"
         );
         Ok(())
     }
@@ -383,7 +383,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive component_set events"
+            "DeviceWatcher should never receive component_set events"
         );
         Ok(())
     }
@@ -401,7 +401,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive component_put events"
+            "DeviceWatcher should never receive component_put events"
         );
         Ok(())
     }
@@ -416,7 +416,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive group_created events"
+            "DeviceWatcher should never receive group_created events"
         );
         Ok(())
     }
@@ -431,7 +431,7 @@ impl ObserverHandler for DeviceObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "DeviceObserver should never receive group_renamed events"
+            "DeviceWatcher should never receive group_renamed events"
         );
         Ok(())
     }

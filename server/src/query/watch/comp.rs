@@ -1,4 +1,4 @@
-//! Observes the values of components
+//! Watches the values of components
 //!
 //! # Core Idea
 //! Keep track of a matched set, check very minimal things on component_set (hot-path)
@@ -32,16 +32,14 @@ use crate::{
             passes_entity_id_filter, passes_entity_last_update, passes_group_filter,
             passes_id_filter, passes_owner_filter, passes_value_filter,
         },
-        observer::{dispatch::ObserverHandler, subscriber::TreeSubscribers},
+        watch::{dispatch::WatchHandler, subscriber::TreeSubscribers},
     },
     tree::{Device, DeviceTree, Entity, Extension, Group},
 };
 use igloo_interface::{
     Aggregator, Component, ComponentType,
     id::{DeviceID, EntityIndex, ExtensionIndex, GroupID},
-    query::{
-        ComponentQuery, DeviceGroupFilter, ObserverUpdate as U, TypeFilter, check::QueryError,
-    },
+    query::{ComponentQuery, DeviceGroupFilter, TypeFilter, WatchUpdate as U, check::QueryError},
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::{
@@ -50,17 +48,17 @@ use std::{
     time::Instant,
 };
 
-pub struct ComponentObserver {
+pub struct ComponentWatcher {
     pub client_id: usize,
     pub query_id: usize,
     pub query: ComponentQuery,
-    observer_id: usize,
+    watcher_id: usize,
     matched: FxHashMap<DeviceID, DeviceMatch>,
 }
 
 struct DeviceMatch {
     device_id: DeviceID,
-    observer_id: usize,
+    watcher_id: usize,
     entities: FxHashMap<EntityIndex, EntityMatch>,
     owner_ref: Option<ExtensionIndex>,
 }
@@ -68,10 +66,10 @@ struct DeviceMatch {
 struct EntityMatch {
     device_id: DeviceID,
     entity_index: EntityIndex,
-    observer_id: usize,
+    watcher_id: usize,
 }
 
-impl ComponentObserver {
+impl ComponentWatcher {
     /// Subscriptions are registered here
     /// Then the subsequent `on_*` below will trigger
     #[allow(clippy::too_many_arguments)]
@@ -80,13 +78,13 @@ impl ComponentObserver {
         subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         query_id: usize,
-        observer_id: usize,
+        watcher_id: usize,
         client_id: usize,
         query: ComponentQuery,
     ) -> Result<Self, QueryError> {
         // validate here, and reject before registering
         if query.limit.is_some() {
-            return Err(QueryError::LimitOnObserver);
+            return Err(QueryError::LimitOnWatcher);
         }
 
         if let Some(op) = query.post_op
@@ -102,7 +100,7 @@ impl ComponentObserver {
         let mut me = Self {
             client_id,
             query_id,
-            observer_id,
+            watcher_id: watcher_id,
             matched: HashMap::with_capacity_and_hasher(
                 estimate_entity_count(tree, &query.device_filter, &query.entity_filter) + 5,
                 FxBuildHasher,
@@ -134,13 +132,13 @@ impl ComponentObserver {
                     .entry(*gid)
                     .or_default()
                     .all
-                    .push(observer_id);
+                    .push(watcher_id);
 
                 subs.group_deleted
                     .by_gid
                     .entry(*gid)
                     .or_insert_with(|| Vec::with_capacity(2))
-                    .push(me.observer_id);
+                    .push(me.watcher_id);
             }
             DeviceGroupFilter::InAny(gids) | DeviceGroupFilter::InAll(gids) => {
                 for gid in gids {
@@ -149,13 +147,13 @@ impl ComponentObserver {
                         .entry(*gid)
                         .or_default()
                         .all
-                        .push(observer_id);
+                        .push(watcher_id);
 
                     subs.group_deleted
                         .by_gid
                         .entry(*gid)
                         .or_insert_with(|| Vec::with_capacity(2))
-                        .push(me.observer_id);
+                        .push(me.watcher_id);
                 }
             }
         }
@@ -172,7 +170,7 @@ impl ComponentObserver {
                 .by_comp_type
                 .entry(ct)
                 .or_default()
-                .push(observer_id);
+                .push(watcher_id);
         }
 
         Ok(me)
@@ -189,19 +187,19 @@ impl ComponentObserver {
         match &self.query.device_filter.group {
             DeviceGroupFilter::In(gid) => {
                 if let Some(group_sub) = subs.group_device_added.by_gid.get_mut(gid) {
-                    group_sub.all.retain(|o| *o != self.observer_id);
+                    group_sub.all.retain(|o| *o != self.watcher_id);
                 }
-                if let Some(observers) = subs.group_deleted.by_gid.get_mut(gid) {
-                    observers.retain(|o| *o != self.observer_id);
+                if let Some(watchers) = subs.group_deleted.by_gid.get_mut(gid) {
+                    watchers.retain(|o| *o != self.watcher_id);
                 }
             }
             DeviceGroupFilter::InAny(gids) | DeviceGroupFilter::InAll(gids) => {
                 for gid in gids {
                     if let Some(group_sub) = subs.group_device_added.by_gid.get_mut(gid) {
-                        group_sub.all.retain(|o| *o != self.observer_id);
+                        group_sub.all.retain(|o| *o != self.watcher_id);
                     }
-                    if let Some(observers) = subs.group_deleted.by_gid.get_mut(gid) {
-                        observers.retain(|o| *o != self.observer_id);
+                    if let Some(watchers) = subs.group_deleted.by_gid.get_mut(gid) {
+                        watchers.retain(|o| *o != self.watcher_id);
                     }
                 }
             }
@@ -216,8 +214,8 @@ impl ComponentObserver {
         care.insert(self.query.component);
 
         for ct in care {
-            if let Some(observers) = subs.component_put.by_comp_type.get_mut(&ct) {
-                observers.retain(|o| *o != self.observer_id);
+            if let Some(watchers) = subs.component_put.by_comp_type.get_mut(&ct) {
+                watchers.retain(|o| *o != self.watcher_id);
             }
         }
     }
@@ -231,7 +229,7 @@ impl ComponentObserver {
         } else {
             // new device match
             let mut device_match =
-                DeviceMatch::new(*device.id(), self.observer_id, subs, device, &self.query);
+                DeviceMatch::new(*device.id(), self.watcher_id, subs, device, &self.query);
             device_match.add_entity(*entity.index(), subs, self.query.component);
             self.matched.insert(*device.id(), device_match);
         }
@@ -320,7 +318,7 @@ impl ComponentObserver {
 impl DeviceMatch {
     fn new(
         device_id: DeviceID,
-        observer_id: usize,
+        watcher_id: usize,
         subs: &mut TreeSubscribers,
         device: &Device,
         query: &ComponentQuery,
@@ -332,7 +330,7 @@ impl DeviceMatch {
             .by_did
             .entry(device_id)
             .or_insert_with(|| Vec::with_capacity(2))
-            .push(observer_id);
+            .push(watcher_id);
 
         // match detached
         if let Some(xindex) = device.owner_ref() {
@@ -340,7 +338,7 @@ impl DeviceMatch {
                 .by_xindex
                 .entry(xindex)
                 .or_insert_with(|| Vec::with_capacity(2))
-                .push(observer_id);
+                .push(watcher_id);
         }
 
         // group deleted | this device removed from group
@@ -357,7 +355,7 @@ impl DeviceMatch {
                     .by_did
                     .entry(device_id)
                     .or_insert_with(|| Vec::with_capacity(2))
-                    .push(observer_id);
+                    .push(watcher_id);
             }
             DeviceGroupFilter::InAny(gids) | DeviceGroupFilter::InAll(gids) => {
                 // in any, may cause contraction
@@ -370,14 +368,14 @@ impl DeviceMatch {
                         .by_did
                         .entry(device_id)
                         .or_insert_with(|| Vec::with_capacity(2))
-                        .push(observer_id);
+                        .push(watcher_id);
                 }
             }
         }
 
         Self {
             device_id,
-            observer_id,
+            watcher_id: watcher_id,
             entities: HashMap::with_capacity_and_hasher(4, FxBuildHasher),
             owner_ref: device.owner_ref(),
         }
@@ -392,7 +390,7 @@ impl DeviceMatch {
         let entity_match = EntityMatch::new(
             self.device_id,
             entity_index,
-            self.observer_id,
+            self.watcher_id,
             subs,
             component_type,
         );
@@ -418,18 +416,18 @@ impl DeviceMatch {
         }
 
         // cleanup device-level subscriptions
-        if let Some(observers) = subs.device_deleted.by_did.get_mut(&self.device_id) {
-            observers.retain(|o| *o != self.observer_id);
-            if observers.is_empty() {
+        if let Some(watchers) = subs.device_deleted.by_did.get_mut(&self.device_id) {
+            watchers.retain(|o| *o != self.watcher_id);
+            if watchers.is_empty() {
                 subs.device_deleted.by_did.remove(&self.device_id);
             }
         }
 
         // cleanup ext_detached (we don't know the xindex, so scan all)
         if let Some(xindex) = self.owner_ref
-            && let Some(observers) = subs.ext_detached.by_xindex.get_mut(&xindex)
+            && let Some(watchers) = subs.ext_detached.by_xindex.get_mut(&xindex)
         {
-            observers.retain(|o| *o != self.observer_id);
+            watchers.retain(|o| *o != self.watcher_id);
         }
 
         // cleanup group_device_removed
@@ -437,10 +435,10 @@ impl DeviceMatch {
             DeviceGroupFilter::Any => {}
             DeviceGroupFilter::In(gid) => {
                 if let Some(group_sub) = subs.group_device_removed.by_gid.get_mut(gid)
-                    && let Some(observers) = group_sub.by_did.get_mut(&self.device_id)
+                    && let Some(watchers) = group_sub.by_did.get_mut(&self.device_id)
                 {
-                    observers.retain(|o| *o != self.observer_id);
-                    if observers.is_empty() {
+                    watchers.retain(|o| *o != self.watcher_id);
+                    if watchers.is_empty() {
                         group_sub.by_did.remove(&self.device_id);
                     }
                 }
@@ -448,10 +446,10 @@ impl DeviceMatch {
             DeviceGroupFilter::InAny(gids) | DeviceGroupFilter::InAll(gids) => {
                 for gid in gids {
                     if let Some(group_sub) = subs.group_device_removed.by_gid.get_mut(gid)
-                        && let Some(observers) = group_sub.by_did.get_mut(&self.device_id)
+                        && let Some(watchers) = group_sub.by_did.get_mut(&self.device_id)
                     {
-                        observers.retain(|o| *o != self.observer_id);
-                        if observers.is_empty() {
+                        watchers.retain(|o| *o != self.watcher_id);
+                        if watchers.is_empty() {
                             group_sub.by_did.remove(&self.device_id);
                         }
                     }
@@ -465,7 +463,7 @@ impl EntityMatch {
     fn new(
         device_id: DeviceID,
         entity_index: EntityIndex,
-        observer_id: usize,
+        watcher_id: usize,
         subs: &mut TreeSubscribers,
         component_type: ComponentType,
     ) -> Self {
@@ -474,20 +472,20 @@ impl EntityMatch {
             .0
             .entry((device_id, entity_index, component_type))
             .or_insert_with(|| Vec::with_capacity(2))
-            .push(observer_id);
+            .push(watcher_id);
 
         Self {
             device_id,
             entity_index,
-            observer_id,
+            watcher_id: watcher_id,
         }
     }
 
     fn cleanup(&self, subs: &mut TreeSubscribers, component_type: ComponentType) {
         let key = (self.device_id, self.entity_index, component_type);
-        if let Some(observers) = subs.component_set.0.get_mut(&key) {
-            observers.retain(|o| *o != self.observer_id);
-            if observers.is_empty() {
+        if let Some(watchers) = subs.component_set.0.get_mut(&key) {
+            watchers.retain(|o| *o != self.watcher_id);
+            if watchers.is_empty() {
                 subs.component_set.0.remove(&key);
             }
         }
@@ -511,7 +509,7 @@ pub fn collect_all_types_in_tf(filter: &TypeFilter, set: &mut FxHashSet<Componen
     }
 }
 
-impl ObserverHandler for ComponentObserver {
+impl WatchHandler for ComponentWatcher {
     fn on_component_set(
         &mut self,
         cm: &mut ClientManager,
@@ -603,7 +601,7 @@ impl ObserverHandler for ComponentObserver {
 
         cm.send(
             self.client_id,
-            IglooResponse::ObserverUpdate {
+            IglooResponse::WatchUpdate {
                 query_id: self.query_id,
                 result,
             },
@@ -743,7 +741,7 @@ impl ObserverHandler for ComponentObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ComponentObserver should never receive device_created events"
+            "ComponentWatcher should never receive device_created events"
         );
         Ok(())
     }
@@ -758,7 +756,7 @@ impl ObserverHandler for ComponentObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ComponentObserver should never receive device_renamed events"
+            "ComponentWatcher should never receive device_renamed events"
         );
         Ok(())
     }
@@ -774,7 +772,7 @@ impl ObserverHandler for ComponentObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ComponentObserver should never receive entity_registered events"
+            "ComponentWatcher should never receive entity_registered events"
         );
         Ok(())
     }
@@ -789,7 +787,7 @@ impl ObserverHandler for ComponentObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ComponentObserver should never receive group_created events"
+            "ComponentWatcher should never receive group_created events"
         );
         Ok(())
     }
@@ -804,7 +802,7 @@ impl ObserverHandler for ComponentObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ComponentObserver should never receive group_renamed events"
+            "ComponentWatcher should never receive group_renamed events"
         );
         Ok(())
     }
@@ -819,7 +817,7 @@ impl ObserverHandler for ComponentObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ComponentObserver should never receive ext_attached events"
+            "ComponentWatcher should never receive ext_attached events"
         );
         Ok(())
     }

@@ -7,24 +7,24 @@ use crate::{
     core::{ClientManager, IglooError, IglooResponse},
     query::{
         QueryContext,
-        observer::{dispatch::ObserverHandler, subscriber::TreeSubscribers},
+        watch::{dispatch::WatchHandler, subscriber::TreeSubscribers},
     },
     tree::{Device, DeviceTree, Extension, Group},
 };
 use igloo_interface::{
     Component, ComponentType,
     id::{EntityIndex, GroupID},
-    query::{ExtensionQuery, IDFilter, ObserverUpdate as U, check::QueryError},
+    query::{ExtensionQuery, IDFilter, WatchUpdate as U, check::QueryError},
 };
 
-pub struct ExtensionObserver {
+pub struct ExtensionWatcher {
     pub client_id: usize,
     pub query_id: usize,
     pub query: ExtensionQuery,
-    observer_id: usize,
+    watcher_id: usize,
 }
 
-impl ExtensionObserver {
+impl ExtensionWatcher {
     /// Subscriptions are registered here
     /// Then the subsequent `on_*` below will trigger
     pub fn register(
@@ -32,30 +32,30 @@ impl ExtensionObserver {
         subs: &mut TreeSubscribers,
         _tree: &DeviceTree,
         query_id: usize,
-        observer_id: usize,
+        watcher_id: usize,
         client_id: usize,
         query: ExtensionQuery,
     ) -> Result<Self, QueryError> {
         if query.limit.is_some() {
-            return Err(QueryError::LimitOnObserver);
+            return Err(QueryError::LimitOnWatcher);
         }
 
         match &query.id {
             IDFilter::Any => {
-                subs.ext_attached.all.push(observer_id);
-                subs.ext_detached.all.push(observer_id);
+                subs.ext_attached.all.push(watcher_id);
+                subs.ext_detached.all.push(watcher_id);
             }
             IDFilter::Is(id) => {
                 subs.ext_attached
                     .by_xid
                     .entry(id.clone())
                     .or_default()
-                    .push(observer_id);
+                    .push(watcher_id);
                 subs.ext_detached
                     .by_xid
                     .entry(id.clone())
                     .or_default()
-                    .push(observer_id);
+                    .push(watcher_id);
             }
             IDFilter::OneOf(ids) => {
                 for id in ids {
@@ -63,12 +63,12 @@ impl ExtensionObserver {
                         .by_xid
                         .entry(id.clone())
                         .or_default()
-                        .push(observer_id);
+                        .push(watcher_id);
                     subs.ext_detached
                         .by_xid
                         .entry(id.clone())
                         .or_default()
-                        .push(observer_id);
+                        .push(watcher_id);
                 }
             }
         }
@@ -76,7 +76,7 @@ impl ExtensionObserver {
         Ok(Self {
             client_id,
             query_id,
-            observer_id,
+            watcher_id,
             query,
         })
     }
@@ -84,24 +84,24 @@ impl ExtensionObserver {
     pub fn cleanup(&mut self, subs: &mut TreeSubscribers) {
         match &self.query.id {
             IDFilter::Any => {
-                subs.ext_attached.all.retain(|o| *o != self.observer_id);
-                subs.ext_detached.all.retain(|o| *o != self.observer_id);
+                subs.ext_attached.all.retain(|o| *o != self.watcher_id);
+                subs.ext_detached.all.retain(|o| *o != self.watcher_id);
             }
             IDFilter::Is(id) => {
-                if let Some(observers) = subs.ext_attached.by_xid.get_mut(id) {
-                    observers.retain(|o| *o != self.observer_id);
+                if let Some(watchers) = subs.ext_attached.by_xid.get_mut(id) {
+                    watchers.retain(|o| *o != self.watcher_id);
                 }
-                if let Some(observers) = subs.ext_detached.by_xid.get_mut(id) {
-                    observers.retain(|o| *o != self.observer_id);
+                if let Some(watchers) = subs.ext_detached.by_xid.get_mut(id) {
+                    watchers.retain(|o| *o != self.watcher_id);
                 }
             }
             IDFilter::OneOf(ids) => {
                 for id in ids {
-                    if let Some(observers) = subs.ext_attached.by_xid.get_mut(id) {
-                        observers.retain(|o| *o != self.observer_id);
+                    if let Some(watchers) = subs.ext_attached.by_xid.get_mut(id) {
+                        watchers.retain(|o| *o != self.watcher_id);
                     }
-                    if let Some(observers) = subs.ext_detached.by_xid.get_mut(id) {
-                        observers.retain(|o| *o != self.observer_id);
+                    if let Some(watchers) = subs.ext_detached.by_xid.get_mut(id) {
+                        watchers.retain(|o| *o != self.watcher_id);
                     }
                 }
             }
@@ -109,7 +109,7 @@ impl ExtensionObserver {
     }
 }
 
-impl ObserverHandler for ExtensionObserver {
+impl WatchHandler for ExtensionWatcher {
     fn on_ext_attached(
         &mut self,
         cm: &mut ClientManager,
@@ -120,7 +120,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         cm.send(
             self.client_id,
-            IglooResponse::ObserverUpdate {
+            IglooResponse::WatchUpdate {
                 query_id: self.query_id,
                 result: U::ExtensionAttached(extension.id().clone(), true),
             },
@@ -137,7 +137,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         cm.send(
             self.client_id,
-            IglooResponse::ObserverUpdate {
+            IglooResponse::WatchUpdate {
                 query_id: self.query_id,
                 result: U::ExtensionAttached(extension.id().clone(), false),
             },
@@ -157,7 +157,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive component_set events"
+            "ExtensionWatcher should never receive component_set events"
         );
         Ok(())
     }
@@ -175,7 +175,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive component_put events"
+            "ExtensionWatcher should never receive component_put events"
         );
         Ok(())
     }
@@ -190,7 +190,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive device_created events"
+            "ExtensionWatcher should never receive device_created events"
         );
         Ok(())
     }
@@ -205,7 +205,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive device_deleted events"
+            "ExtensionWatcher should never receive device_deleted events"
         );
         Ok(())
     }
@@ -220,7 +220,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive device_renamed events"
+            "ExtensionWatcher should never receive device_renamed events"
         );
         Ok(())
     }
@@ -236,7 +236,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive entity_registered events"
+            "ExtensionWatcher should never receive entity_registered events"
         );
         Ok(())
     }
@@ -251,7 +251,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive group_created events"
+            "ExtensionWatcher should never receive group_created events"
         );
         Ok(())
     }
@@ -266,7 +266,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive group_deleted events"
+            "ExtensionWatcher should never receive group_deleted events"
         );
         Ok(())
     }
@@ -281,7 +281,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive group_renamed events"
+            "ExtensionWatcher should never receive group_renamed events"
         );
         Ok(())
     }
@@ -297,7 +297,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive group_device_added events"
+            "ExtensionWatcher should never receive group_device_added events"
         );
         Ok(())
     }
@@ -313,7 +313,7 @@ impl ObserverHandler for ExtensionObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "ExtensionObserver should never receive group_device_removed events"
+            "ExtensionWatcher should never receive group_device_removed events"
         );
         Ok(())
     }

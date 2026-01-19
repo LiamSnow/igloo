@@ -81,7 +81,7 @@ impl QueryEngine {
                     R::DeviceAttached(res)
                 }
             },
-            A::ObserveAttached | A::ObserveName => {
+            A::WatchAttached | A::WatchName => {
                 panic!("Observe should have been dispatched differently")
             }
             A::Inherit => return Ok(Err(QueryError::Inherit)),

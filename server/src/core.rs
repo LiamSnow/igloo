@@ -1,12 +1,12 @@
 use crate::{
     ext,
-    query::{QueryEngine, observer::ObserverID},
+    query::{QueryEngine, watch::WatcherID},
     tree::{DeviceTree, TreeIDError, mutation::TreeMutationError, persist::TreePersistError},
 };
 use igloo_interface::{
     id::ExtensionIndex,
     ipc::IglooMessage,
-    query::{ObserverUpdate, Query, QueryResult, check::QueryError},
+    query::{Query, QueryResult, WatchUpdate, check::QueryError},
 };
 use std::{error::Error, thread::JoinHandle};
 
@@ -25,7 +25,7 @@ pub enum IglooRequest {
         client_id: usize,
     },
 
-    // TODO unregister observer
+    // TODO unregister watcher
     /// Evaluate a query
     EvalQuery {
         client_id: usize,
@@ -55,9 +55,9 @@ pub enum IglooResponse {
         result: Result<QueryResult, QueryError>,
     },
 
-    ObserverUpdate {
+    WatchUpdate {
         query_id: usize,
-        result: ObserverUpdate,
+        result: WatchUpdate,
     },
 }
 
@@ -100,8 +100,8 @@ pub struct ClientManager {
 #[derive(Debug, Clone)]
 pub struct Client {
     channel: kanal::Sender<IglooResponse>,
-    /// [(query_id, observer_id)]
-    observers: Vec<(usize, ObserverID)>,
+    /// [(query_id, watcher_id)]
+    watchers: Vec<(usize, WatcherID)>,
 }
 
 pub async fn spawn() -> Result<(JoinHandle<()>, kanal::Sender<IglooRequest>), Box<dyn Error>> {
@@ -152,16 +152,16 @@ impl IglooCore {
             } => ext::handle_msg(&mut self.cm, &mut self.tree, &mut self.engine, from, msg),
             RegisterClient(channel) => self.cm.register(channel),
             UnregisterClient { client_id } => {
-                let observer_ids = self.cm.unregister(client_id)?;
-                self.engine.drop_observers(observer_ids);
+                let watcher_ids = self.cm.unregister(client_id)?;
+                self.engine.drop_watchers(watcher_ids);
                 Ok(())
             }
             DropQuery {
                 client_id,
                 query_id,
             } => {
-                let observer_ids = self.cm.drop_query(client_id, query_id)?;
-                self.engine.drop_observers(observer_ids);
+                let watcher_ids = self.cm.drop_query(client_id, query_id)?;
+                self.engine.drop_watchers(watcher_ids);
                 Ok(())
             }
             EvalQuery {
@@ -188,7 +188,7 @@ impl ClientManager {
             Ok(true) => {
                 self.clients[client_id] = Some(Client {
                     channel,
-                    observers: Vec::with_capacity(5),
+                    watchers: Vec::with_capacity(5),
                 });
                 Ok(())
             }
@@ -203,9 +203,9 @@ impl ClientManager {
         };
 
         Ok(client
-            .observers
+            .watchers
             .into_iter()
-            .map(|(_, observer_id)| observer_id)
+            .map(|(_, watcher_id)| watcher_id)
             .collect())
     }
 
@@ -225,15 +225,15 @@ impl ClientManager {
         }
     }
 
-    pub fn add_observer(
+    pub fn add_watcher(
         &mut self,
         client_id: usize,
         query_id: usize,
-        observer_id: usize,
+        watcher_id: usize,
     ) -> Result<(), IglooError> {
         match self.clients.get_mut(client_id) {
             Some(Some(client)) => {
-                client.observers.push((query_id, observer_id));
+                client.watchers.push((query_id, watcher_id));
                 Ok(())
             }
             _ => Err(IglooError::InvalidClient(client_id)),
@@ -249,16 +249,16 @@ impl ClientManager {
             return Err(IglooError::InvalidClient(client_id));
         };
 
-        let mut observer_ids = Vec::new();
+        let mut watcher_ids = Vec::new();
         let mut i = 0;
-        while i < client.observers.len() {
-            if client.observers[i].0 == query_id {
-                observer_ids.push(client.observers.swap_remove(i).1);
+        while i < client.watchers.len() {
+            if client.watchers[i].0 == query_id {
+                watcher_ids.push(client.watchers.swap_remove(i).1);
             } else {
                 i += 1;
             }
         }
 
-        Ok(observer_ids)
+        Ok(watcher_ids)
     }
 }

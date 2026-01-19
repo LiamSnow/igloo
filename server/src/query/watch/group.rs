@@ -1,4 +1,4 @@
-//! This one is simple. Two types of observers: Name & Membership
+//! This one is simple. Two types of watchers: Name & Membership
 //! Only have an ID filter, which means we have no need for a
 //! crazy expansion/contraction system.
 
@@ -6,24 +6,24 @@ use crate::{
     core::{ClientManager, IglooError, IglooResponse},
     query::{
         QueryContext,
-        observer::{dispatch::ObserverHandler, subscriber::TreeSubscribers},
+        watch::{dispatch::WatchHandler, subscriber::TreeSubscribers},
     },
     tree::{Device, DeviceTree, Extension, Group},
 };
 use igloo_interface::{
     Component, ComponentType,
     id::{EntityIndex, GroupID},
-    query::{GroupAction, GroupQuery, IDFilter, ObserverUpdate as U, check::QueryError},
+    query::{GroupAction, GroupQuery, IDFilter, WatchUpdate as U, check::QueryError},
 };
 
-pub struct GroupObserver {
+pub struct GroupWatcher {
     pub client_id: usize,
     pub query_id: usize,
     pub query: GroupQuery,
-    observer_id: usize,
+    watcher_id: usize,
 }
 
-impl GroupObserver {
+impl GroupWatcher {
     /// Subscriptions are registered here
     /// Then the subsequent `on_*` below will trigger
     pub fn register(
@@ -31,24 +31,24 @@ impl GroupObserver {
         subs: &mut TreeSubscribers,
         _tree: &DeviceTree,
         query_id: usize,
-        observer_id: usize,
+        watcher_id: usize,
         client_id: usize,
         query: GroupQuery,
     ) -> Result<Self, QueryError> {
         if query.limit.is_some() {
-            return Err(QueryError::LimitOnObserver);
+            return Err(QueryError::LimitOnWatcher);
         }
 
         match &query.id {
             IDFilter::Any => {
-                subscribe_to_all_groups(subs, observer_id, &query.action);
+                subscribe_to_all_groups(subs, watcher_id, &query.action);
             }
             IDFilter::Is(gid) => {
-                subscribe_to_group(subs, *gid, observer_id, &query.action);
+                subscribe_to_group(subs, *gid, watcher_id, &query.action);
             }
             IDFilter::OneOf(gids) => {
                 for gid in gids {
-                    subscribe_to_group(subs, *gid, observer_id, &query.action);
+                    subscribe_to_group(subs, *gid, watcher_id, &query.action);
                 }
             }
         }
@@ -56,7 +56,7 @@ impl GroupObserver {
         Ok(Self {
             client_id,
             query_id,
-            observer_id,
+            watcher_id,
             query,
         })
     }
@@ -64,28 +64,28 @@ impl GroupObserver {
     pub fn cleanup(&mut self, subs: &mut TreeSubscribers) {
         match &self.query.id {
             IDFilter::Any => {
-                unsubscribe_from_all_groups(subs, self.observer_id, &self.query.action);
+                unsubscribe_from_all_groups(subs, self.watcher_id, &self.query.action);
             }
             IDFilter::Is(gid) => {
-                unsubscribe_from_group(subs, *gid, self.observer_id, &self.query.action);
+                unsubscribe_from_group(subs, *gid, self.watcher_id, &self.query.action);
             }
             IDFilter::OneOf(gids) => {
                 for gid in gids {
-                    unsubscribe_from_group(subs, *gid, self.observer_id, &self.query.action);
+                    unsubscribe_from_group(subs, *gid, self.watcher_id, &self.query.action);
                 }
             }
         }
     }
 }
 
-fn subscribe_to_all_groups(subs: &mut TreeSubscribers, observer_id: usize, action: &GroupAction) {
+fn subscribe_to_all_groups(subs: &mut TreeSubscribers, watcher_id: usize, action: &GroupAction) {
     match action {
-        GroupAction::ObserveName => {
-            subs.group_renamed.all.push(observer_id);
+        GroupAction::WatchName => {
+            subs.group_renamed.all.push(watcher_id);
         }
-        GroupAction::ObserveMembership => {
-            subs.group_device_added.all.push(observer_id);
-            subs.group_device_removed.all.push(observer_id);
+        GroupAction::WatchMembership => {
+            subs.group_device_added.all.push(watcher_id);
+            subs.group_device_removed.all.push(watcher_id);
         }
         _ => {}
     }
@@ -93,16 +93,16 @@ fn subscribe_to_all_groups(subs: &mut TreeSubscribers, observer_id: usize, actio
 
 fn unsubscribe_from_all_groups(
     subs: &mut TreeSubscribers,
-    observer_id: usize,
+    watcher_id: usize,
     action: &GroupAction,
 ) {
     match action {
-        GroupAction::ObserveName => {
-            subs.group_renamed.all.retain(|o| *o != observer_id);
+        GroupAction::WatchName => {
+            subs.group_renamed.all.retain(|o| *o != watcher_id);
         }
-        GroupAction::ObserveMembership => {
-            subs.group_device_added.all.retain(|o| *o != observer_id);
-            subs.group_device_removed.all.retain(|o| *o != observer_id);
+        GroupAction::WatchMembership => {
+            subs.group_device_added.all.retain(|o| *o != watcher_id);
+            subs.group_device_removed.all.retain(|o| *o != watcher_id);
         }
         _ => {}
     }
@@ -111,30 +111,30 @@ fn unsubscribe_from_all_groups(
 fn subscribe_to_group(
     subs: &mut TreeSubscribers,
     gid: GroupID,
-    observer_id: usize,
+    watcher_id: usize,
     action: &GroupAction,
 ) {
     match action {
-        GroupAction::ObserveName => {
+        GroupAction::WatchName => {
             subs.group_renamed
                 .by_gid
                 .entry(gid)
                 .or_default()
-                .push(observer_id);
+                .push(watcher_id);
         }
-        GroupAction::ObserveMembership => {
+        GroupAction::WatchMembership => {
             subs.group_device_added
                 .by_gid
                 .entry(gid)
                 .or_default()
                 .all
-                .push(observer_id);
+                .push(watcher_id);
             subs.group_device_removed
                 .by_gid
                 .entry(gid)
                 .or_default()
                 .all
-                .push(observer_id);
+                .push(watcher_id);
         }
         _ => {}
     }
@@ -143,28 +143,28 @@ fn subscribe_to_group(
 fn unsubscribe_from_group(
     subs: &mut TreeSubscribers,
     gid: GroupID,
-    observer_id: usize,
+    watcher_id: usize,
     action: &GroupAction,
 ) {
     match action {
-        GroupAction::ObserveName => {
+        GroupAction::WatchName => {
             if let Some(subs) = subs.group_renamed.by_gid.get_mut(&gid) {
-                subs.retain(|o| *o != observer_id);
+                subs.retain(|o| *o != watcher_id);
             }
         }
-        GroupAction::ObserveMembership => {
+        GroupAction::WatchMembership => {
             if let Some(subs) = subs.group_device_added.by_gid.get_mut(&gid) {
-                subs.all.retain(|o| *o != observer_id);
+                subs.all.retain(|o| *o != watcher_id);
             }
             if let Some(subs) = subs.group_device_removed.by_gid.get_mut(&gid) {
-                subs.all.retain(|o| *o != observer_id);
+                subs.all.retain(|o| *o != watcher_id);
             }
         }
         _ => {}
     }
 }
 
-impl ObserverHandler for GroupObserver {
+impl WatchHandler for GroupWatcher {
     fn on_group_renamed(
         &mut self,
         cm: &mut ClientManager,
@@ -173,11 +173,11 @@ impl ObserverHandler for GroupObserver {
         _tree: &DeviceTree,
         group: &Group,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, GroupAction::ObserveName));
+        debug_assert!(matches!(self.query.action, GroupAction::WatchName));
 
         cm.send(
             self.client_id,
-            IglooResponse::ObserverUpdate {
+            IglooResponse::WatchUpdate {
                 query_id: self.query_id,
                 result: U::GroupRenamed(*group.id(), group.name().to_string()),
             },
@@ -193,11 +193,11 @@ impl ObserverHandler for GroupObserver {
         group: &Group,
         device: &Device,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, GroupAction::ObserveMembership));
+        debug_assert!(matches!(self.query.action, GroupAction::WatchMembership));
 
         cm.send(
             self.client_id,
-            IglooResponse::ObserverUpdate {
+            IglooResponse::WatchUpdate {
                 query_id: self.query_id,
                 result: U::GroupMembershipChanged(*group.id(), *device.id(), true),
             },
@@ -213,11 +213,11 @@ impl ObserverHandler for GroupObserver {
         group: &Group,
         device: &Device,
     ) -> Result<(), IglooError> {
-        debug_assert!(matches!(self.query.action, GroupAction::ObserveMembership));
+        debug_assert!(matches!(self.query.action, GroupAction::WatchMembership));
 
         cm.send(
             self.client_id,
-            IglooResponse::ObserverUpdate {
+            IglooResponse::WatchUpdate {
                 query_id: self.query_id,
                 result: U::GroupMembershipChanged(*group.id(), *device.id(), false),
             },
@@ -234,7 +234,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive group_created events"
+            "GroupWatcher should never receive group_created events"
         );
         Ok(())
     }
@@ -249,7 +249,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive group_deleted events"
+            "GroupWatcher should never receive group_deleted events"
         );
         Ok(())
     }
@@ -267,7 +267,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive component_set events"
+            "GroupWatcher should never receive component_set events"
         );
         Ok(())
     }
@@ -285,7 +285,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive component_put events"
+            "GroupWatcher should never receive component_put events"
         );
         Ok(())
     }
@@ -300,7 +300,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive device_created events"
+            "GroupWatcher should never receive device_created events"
         );
         Ok(())
     }
@@ -315,7 +315,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive device_deleted events"
+            "GroupWatcher should never receive device_deleted events"
         );
         Ok(())
     }
@@ -330,7 +330,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive device_renamed events"
+            "GroupWatcher should never receive device_renamed events"
         );
         Ok(())
     }
@@ -346,7 +346,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive entity_registered events"
+            "GroupWatcher should never receive entity_registered events"
         );
         Ok(())
     }
@@ -361,7 +361,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive ext_attached events"
+            "GroupWatcher should never receive ext_attached events"
         );
         Ok(())
     }
@@ -376,7 +376,7 @@ impl ObserverHandler for GroupObserver {
     ) -> Result<(), IglooError> {
         debug_assert!(
             false,
-            "GroupObserver should never receive ext_detached events"
+            "GroupWatcher should never receive ext_detached events"
         );
         Ok(())
     }

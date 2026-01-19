@@ -6,7 +6,7 @@ use igloo_interface::{
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use std::{collections::HashMap, fs::File, time::Instant};
+use std::{collections::HashMap, time::Instant};
 use tokio::task::JoinHandle;
 
 use crate::tree::{arena::Arena, persist::IniWriter};

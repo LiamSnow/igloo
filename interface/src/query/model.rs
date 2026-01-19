@@ -46,7 +46,7 @@ pub enum ExtensionAction {
     Snapshot,
 
     IsAttached,
-    ObserveAttached,
+    WatchAttached,
 
     Count,
     Inherit,
@@ -64,9 +64,9 @@ pub enum GroupAction {
     GetID,
     Snapshot,
 
-    ObserveName,
+    WatchName,
     /// device added, device removed
-    ObserveMembership,
+    WatchMembership,
 
     Count,
     Inherit,
@@ -86,8 +86,8 @@ pub enum DeviceAction {
     Snapshot(bool),
 
     IsAttached,
-    ObserveAttached,
-    ObserveName,
+    WatchAttached,
+    WatchName,
 
     Count,
     Inherit,
@@ -106,8 +106,8 @@ pub enum EntityAction {
     Snapshot,
     Count,
     Inherit,
-    ObserveRegistered,
-    ObserveComponentPut,
+    WatchRegistered,
+    WatchComponentPut,
     // entities dont attach
 }
 
@@ -127,7 +127,7 @@ pub struct ComponentQuery {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum ComponentAction {
     GetValue,
-    ObserveValue,
+    WatchValue,
 
     Set(IglooValue),
     Put(IglooValue),
@@ -259,12 +259,12 @@ pub enum QueryResultType {
     Count,
 
     /// Indicates Query will not immediately resolve
-    /// and instead of send ObserveUpdate periodically
-    Observer(ObserverUpdateType),
+    /// and instead of send WatchUpdate periodically
+    Watch(WatchUpdateType),
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub enum ObserverUpdate {
+pub enum WatchUpdate {
     ExtensionAttached(ExtensionID, bool),
 
     GroupRenamed(GroupID, String),
@@ -283,7 +283,7 @@ pub enum ObserverUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub enum ObserverUpdateType {
+pub enum WatchUpdateType {
     ExtensionAttached,
 
     GroupRenamed,
@@ -301,22 +301,22 @@ pub enum ObserverUpdateType {
 }
 
 impl Query {
-    pub fn is_observer(&self) -> bool {
+    pub fn is_watcher(&self) -> bool {
         match self {
-            Query::Extension(q) => matches!(q.action, ExtensionAction::ObserveAttached),
+            Query::Extension(q) => matches!(q.action, ExtensionAction::WatchAttached),
             Query::Group(q) => matches!(
                 q.action,
-                GroupAction::ObserveName | GroupAction::ObserveMembership
+                GroupAction::WatchName | GroupAction::WatchMembership
             ),
             Query::Device(q) => matches!(
                 q.action,
-                DeviceAction::ObserveAttached | DeviceAction::ObserveName
+                DeviceAction::WatchAttached | DeviceAction::WatchName
             ),
             Query::Entity(q) => matches!(
                 q.action,
-                EntityAction::ObserveComponentPut | EntityAction::ObserveRegistered
+                EntityAction::WatchComponentPut | EntityAction::WatchRegistered
             ),
-            Query::Component(q) => matches!(q.action, ComponentAction::ObserveValue),
+            Query::Component(q) => matches!(q.action, ComponentAction::WatchValue),
         }
     }
 }

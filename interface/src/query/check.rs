@@ -2,7 +2,7 @@ use crate::{
     ComponentType as CT, IglooType,
     query::{
         ComponentAction as C, DeviceAction as D, EntityAction as E, ExtensionAction as X,
-        GroupAction as G, ObserverUpdateType as O, Query, QueryResultType as R,
+        GroupAction as G, Query, QueryResultType as R, WatchUpdateType as O,
     },
     types::agg::AggregationOp,
 };
@@ -29,7 +29,7 @@ pub enum QueryError {
     #[error("Cannot set value of type {0} on component with value type {1}.")]
     ValueTypeMismatch(IglooType, IglooType),
 
-    #[error("Aggregation can only be used with GetValue or ObserveValue actions.")]
+    #[error("Aggregation can only be used with GetValue or WatchValue actions.")]
     AggregationRequiresValueAction,
 
     #[error(
@@ -37,8 +37,8 @@ pub enum QueryError {
     )]
     AggregationWithParents,
 
-    #[error("Limit cannot be placed on an Observer-type query.")]
-    LimitOnObserver,
+    #[error("Limit cannot be placed on an Watcher-type query.")]
+    LimitOnWatcher,
 }
 
 use QueryError as ERR;
@@ -54,9 +54,9 @@ impl Query {
                 X::IsAttached => R::ExtensionAttached,
                 X::Count => R::Count,
                 X::Inherit => return Err(ERR::Inherit),
-                X::ObserveAttached => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::ExtensionAttached),
+                X::WatchAttached => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::ExtensionAttached),
                 },
             },
             Query::Group(q) => match &q.action {
@@ -64,13 +64,13 @@ impl Query {
                 G::Snapshot => R::GroupSnapshot,
                 G::Count => R::Count,
                 G::Inherit => return Err(ERR::Inherit),
-                G::ObserveName => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::GroupRenamed),
+                G::WatchName => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::GroupRenamed),
                 },
-                G::ObserveMembership => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::GroupMembership),
+                G::WatchMembership => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::GroupMembership),
                 },
             },
             Query::Device(q) => match &q.action {
@@ -79,26 +79,26 @@ impl Query {
                 D::IsAttached => R::DeviceAttached,
                 D::Count => R::Count,
                 D::Inherit => return Err(ERR::Inherit),
-                D::ObserveAttached => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::DeviceAttached),
+                D::WatchAttached => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::DeviceAttached),
                 },
-                D::ObserveName => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::DeviceRenamed),
+                D::WatchName => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::DeviceRenamed),
                 },
             },
             Query::Entity(q) => match &q.action {
                 E::Snapshot => R::EntitySnapshot,
                 E::Count => R::Count,
                 E::Inherit => return Err(ERR::Inherit),
-                E::ObserveComponentPut => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::EntityComponentPut),
+                E::WatchComponentPut => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::EntityComponentPut),
                 },
-                E::ObserveRegistered => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnObserver),
-                    None => R::Observer(O::EntityRegistered),
+                E::WatchRegistered => match q.limit {
+                    Some(_) => return Err(ERR::LimitOnWatcher),
+                    None => R::Watch(O::EntityRegistered),
                 },
             },
             Query::Component(q) => {
@@ -113,7 +113,7 @@ impl Query {
                     .igloo_type()
                     .ok_or(ERR::ComponentNoValue(q.component))?;
 
-                if q.post_op.is_some() && !matches!(q.action, C::GetValue | C::ObserveValue) {
+                if q.post_op.is_some() && !matches!(q.action, C::GetValue | C::WatchValue) {
                     return Err(ERR::AggregationRequiresValueAction);
                 }
 
@@ -121,8 +121,8 @@ impl Query {
                     return Err(ERR::AggregationWithParents);
                 }
 
-                if q.limit.is_some() && !matches!(q.action, C::ObserveValue) {
-                    return Err(ERR::LimitOnObserver);
+                if q.limit.is_some() && !matches!(q.action, C::WatchValue) {
+                    return Err(ERR::LimitOnWatcher);
                 }
 
                 match &q.action {
@@ -134,7 +134,7 @@ impl Query {
                         (_, true) => R::ComponentValueWithParents(it),
                         (_, false) => R::ComponentValue(it),
                     },
-                    C::ObserveValue => R::Observer(match (q.post_op, q.include_parents) {
+                    C::WatchValue => R::Watch(match (q.post_op, q.include_parents) {
                         (Some(op), _) => match op.can_apply(&q.component) {
                             true => O::Aggregate(it),
                             false => return Err(ERR::InvalidAggregation(q.component, op)),

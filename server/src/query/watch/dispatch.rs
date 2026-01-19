@@ -1,4 +1,4 @@
-//! Takes events from DeviceTree and dispatches to affected Observers
+//! Takes events from DeviceTree and dispatches to affected Watchers
 //! Most of the logic lives in [subscriber.rs]
 
 use crate::{
@@ -6,9 +6,9 @@ use crate::{
     query::{
         QueryEngine,
         ctx::QueryContext,
-        observer::{
-            Observer, comp::ComponentObserver, device::DeviceObserver, entity::EntityObserver,
-            ext::ExtensionObserver, group::GroupObserver, subscriber::TreeSubscribers,
+        watch::{
+            Watcher, comp::ComponentWatcher, device::DeviceWatcher, entity::EntityWatcher,
+            ext::ExtensionWatcher, group::GroupWatcher, subscriber::TreeSubscribers,
         },
     },
     tree::{Device, DeviceTree, Extension, Group},
@@ -20,7 +20,7 @@ use igloo_interface::{
 };
 
 impl QueryEngine {
-    pub fn register_observer(
+    pub fn register_watcher(
         &mut self,
         tree: &DeviceTree,
         cm: &mut ClientManager,
@@ -28,93 +28,93 @@ impl QueryEngine {
         query_id: usize,
         query: Query,
     ) -> Result<Result<(), QueryError>, IglooError> {
-        let observer_id = if let Some(slot) = self.observers.iter().position(|w| w.is_none()) {
+        let watcher_id = if let Some(slot) = self.watchers.iter().position(|w| w.is_none()) {
             slot
         } else {
-            self.observers.push(None);
-            self.observers.len() - 1
+            self.watchers.push(None);
+            self.watchers.len() - 1
         };
 
-        let observer = match query {
+        let watcher = match query {
             Query::Device(q) => {
-                match DeviceObserver::register(
+                match DeviceWatcher::register(
                     &mut self.ctx,
                     &mut self.subscribers,
                     tree,
                     query_id,
-                    observer_id,
+                    watcher_id,
                     client_id,
                     q,
                 ) {
-                    Ok(o) => Observer::Devices(o),
+                    Ok(o) => Watcher::Devices(o),
                     Err(e) => return Ok(Err(e)),
                 }
             }
 
             Query::Entity(q) => {
-                match EntityObserver::register(
+                match EntityWatcher::register(
                     &mut self.ctx,
                     &mut self.subscribers,
                     tree,
                     query_id,
-                    observer_id,
+                    watcher_id,
                     client_id,
                     q,
                 ) {
-                    Ok(o) => Observer::Entities(o),
+                    Ok(o) => Watcher::Entities(o),
                     Err(e) => return Ok(Err(e)),
                 }
             }
 
             Query::Component(q) => {
-                match ComponentObserver::register(
+                match ComponentWatcher::register(
                     &mut self.ctx,
                     &mut self.subscribers,
                     tree,
                     query_id,
-                    observer_id,
+                    watcher_id,
                     client_id,
                     q,
                 ) {
-                    Ok(o) => Observer::Components(o),
+                    Ok(o) => Watcher::Components(o),
                     Err(e) => return Ok(Err(e)),
                 }
             }
 
             Query::Group(q) => {
-                match GroupObserver::register(
+                match GroupWatcher::register(
                     &mut self.ctx,
                     &mut self.subscribers,
                     tree,
                     query_id,
-                    observer_id,
+                    watcher_id,
                     client_id,
                     q,
                 ) {
-                    Ok(o) => Observer::Groups(o),
+                    Ok(o) => Watcher::Groups(o),
                     Err(e) => return Ok(Err(e)),
                 }
             }
 
             Query::Extension(q) => {
-                match ExtensionObserver::register(
+                match ExtensionWatcher::register(
                     &mut self.ctx,
                     &mut self.subscribers,
                     tree,
                     query_id,
-                    observer_id,
+                    watcher_id,
                     client_id,
                     q,
                 ) {
-                    Ok(o) => Observer::Extensions(o),
+                    Ok(o) => Watcher::Extensions(o),
                     Err(e) => return Ok(Err(e)),
                 }
             }
         };
 
-        cm.add_observer(client_id, query_id, observer_id)?;
+        cm.add_watcher(client_id, query_id, watcher_id)?;
 
-        self.observers[observer_id] = Some(observer);
+        self.watchers[watcher_id] = Some(watcher);
 
         Ok(Ok(()))
     }
@@ -133,10 +133,10 @@ impl QueryEngine {
                 .component_set
                 .affected(*device.id(), entity_index, comp_type);
 
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_component_set(
                             cm,
                             &mut self.ctx,
@@ -148,7 +148,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_component_set(
                             cm,
                             &mut self.ctx,
@@ -160,7 +160,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_component_set(
                             cm,
                             &mut self.ctx,
@@ -172,7 +172,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_component_set(
                             cm,
                             &mut self.ctx,
@@ -184,7 +184,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_component_set(
                             cm,
                             &mut self.ctx,
@@ -217,10 +217,10 @@ impl QueryEngine {
                 .component_put
                 .affected(device.id(), &entity_index, &comp_type);
 
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_component_put(
                             cm,
                             &mut self.ctx,
@@ -232,7 +232,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_component_put(
                             cm,
                             &mut self.ctx,
@@ -244,7 +244,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_component_put(
                             cm,
                             &mut self.ctx,
@@ -256,7 +256,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_component_put(
                             cm,
                             &mut self.ctx,
@@ -268,7 +268,7 @@ impl QueryEngine {
                             &comp,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_component_put(
                             cm,
                             &mut self.ctx,
@@ -294,10 +294,10 @@ impl QueryEngine {
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.device_created.affected(device.id());
 
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_device_created(
                             cm,
                             &mut self.ctx,
@@ -306,7 +306,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_device_created(
                             cm,
                             &mut self.ctx,
@@ -315,7 +315,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_device_created(
                             cm,
                             &mut self.ctx,
@@ -324,7 +324,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_device_created(
                             cm,
                             &mut self.ctx,
@@ -333,7 +333,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_device_created(
                             cm,
                             &mut self.ctx,
@@ -356,10 +356,10 @@ impl QueryEngine {
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.device_deleted.affected(device.id());
 
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_device_deleted(
                             cm,
                             &mut self.ctx,
@@ -368,7 +368,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_device_deleted(
                             cm,
                             &mut self.ctx,
@@ -377,7 +377,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_device_deleted(
                             cm,
                             &mut self.ctx,
@@ -386,7 +386,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_device_deleted(
                             cm,
                             &mut self.ctx,
@@ -395,7 +395,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_device_deleted(
                             cm,
                             &mut self.ctx,
@@ -418,10 +418,10 @@ impl QueryEngine {
         device: &Device,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.device_renamed.affected(device.id());
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_device_renamed(
                             cm,
                             &mut self.ctx,
@@ -430,7 +430,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_device_renamed(
                             cm,
                             &mut self.ctx,
@@ -439,7 +439,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_device_renamed(
                             cm,
                             &mut self.ctx,
@@ -448,7 +448,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_device_renamed(
                             cm,
                             &mut self.ctx,
@@ -457,7 +457,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_device_renamed(
                             cm,
                             &mut self.ctx,
@@ -480,10 +480,10 @@ impl QueryEngine {
         entity_index: EntityIndex,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.entity_registered.affected(device.id());
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_entity_registered(
                             cm,
                             &mut self.ctx,
@@ -493,7 +493,7 @@ impl QueryEngine {
                             entity_index,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_entity_registered(
                             cm,
                             &mut self.ctx,
@@ -503,7 +503,7 @@ impl QueryEngine {
                             entity_index,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_entity_registered(
                             cm,
                             &mut self.ctx,
@@ -513,7 +513,7 @@ impl QueryEngine {
                             entity_index,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_entity_registered(
                             cm,
                             &mut self.ctx,
@@ -523,7 +523,7 @@ impl QueryEngine {
                             entity_index,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_entity_registered(
                             cm,
                             &mut self.ctx,
@@ -546,22 +546,22 @@ impl QueryEngine {
         group: &Group,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.group_created.affected(group.id());
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_group_created(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
                 }
@@ -577,22 +577,22 @@ impl QueryEngine {
         gid: &GroupID,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.group_deleted.affected(gid);
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_group_deleted(cm, &mut self.ctx, &mut self.subscribers, tree, gid)?;
                     }
                 }
@@ -608,22 +608,22 @@ impl QueryEngine {
         group: &Group,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.group_renamed.affected(group.id());
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_group_renamed(cm, &mut self.ctx, &mut self.subscribers, tree, group)?;
                     }
                 }
@@ -643,10 +643,10 @@ impl QueryEngine {
             .subscribers
             .group_device_added
             .affected(group.id(), device.id());
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_group_device_added(
                             cm,
                             &mut self.ctx,
@@ -656,7 +656,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_group_device_added(
                             cm,
                             &mut self.ctx,
@@ -666,7 +666,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_group_device_added(
                             cm,
                             &mut self.ctx,
@@ -676,7 +676,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_group_device_added(
                             cm,
                             &mut self.ctx,
@@ -686,7 +686,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_group_device_added(
                             cm,
                             &mut self.ctx,
@@ -713,10 +713,10 @@ impl QueryEngine {
             .subscribers
             .group_device_removed
             .affected(group.id(), device.id());
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_group_device_removed(
                             cm,
                             &mut self.ctx,
@@ -726,7 +726,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_group_device_removed(
                             cm,
                             &mut self.ctx,
@@ -736,7 +736,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_group_device_removed(
                             cm,
                             &mut self.ctx,
@@ -746,7 +746,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_group_device_removed(
                             cm,
                             &mut self.ctx,
@@ -756,7 +756,7 @@ impl QueryEngine {
                             device,
                         )?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_group_device_removed(
                             cm,
                             &mut self.ctx,
@@ -779,22 +779,22 @@ impl QueryEngine {
         ext: &Extension,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.ext_attached.affected(ext);
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_ext_attached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
                 }
@@ -810,22 +810,22 @@ impl QueryEngine {
         ext: &Extension,
     ) -> Result<(), IglooError> {
         let affected = self.subscribers.ext_detached.affected(ext);
-        for observer_id in affected {
-            if let Some(Some(observer)) = self.observers.get_mut(observer_id) {
-                match observer {
-                    Observer::Devices(w) => {
+        for watcher_id in affected {
+            if let Some(Some(watcher)) = self.watchers.get_mut(watcher_id) {
+                match watcher {
+                    Watcher::Devices(w) => {
                         w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Entities(w) => {
+                    Watcher::Entities(w) => {
                         w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Components(w) => {
+                    Watcher::Components(w) => {
                         w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Groups(w) => {
+                    Watcher::Groups(w) => {
                         w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
-                    Observer::Extensions(w) => {
+                    Watcher::Extensions(w) => {
                         w.on_ext_detached(cm, &mut self.ctx, &mut self.subscribers, tree, ext)?;
                     }
                 }
@@ -835,7 +835,7 @@ impl QueryEngine {
     }
 }
 
-pub trait ObserverHandler {
+pub trait WatchHandler {
     fn on_component_set(
         &mut self,
         cm: &mut ClientManager,
