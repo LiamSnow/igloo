@@ -268,7 +268,7 @@ impl DeviceTree {
 }
 
 pub struct IniWriter {
-    file: File,
+    file: Option<File>,
     buf: String,
     itoa_buf: itoa::Buffer,
 }
@@ -276,22 +276,34 @@ pub struct IniWriter {
 impl IniWriter {
     pub fn new(file: File, capacity: usize) -> Self {
         Self {
-            file,
+            file: Some(file),
             buf: String::with_capacity(capacity),
             itoa_buf: itoa::Buffer::new(),
         }
     }
 
+    pub fn fake() -> Self {
+        Self {
+            file: None,
+            buf: String::with_capacity(1000),
+            itoa_buf: itoa::Buffer::new(),
+        }
+    }
+
     pub fn begin_write(&mut self) -> io::Result<()> {
-        self.file.seek(SeekFrom::Start(0))?;
-        self.buf.clear();
+        if let Some(file) = &mut self.file {
+            file.seek(SeekFrom::Start(0))?;
+            self.buf.clear();
+        }
         Ok(())
     }
 
     pub fn end_write(&mut self) -> io::Result<()> {
-        self.file.write_all(self.buf.as_bytes())?;
-        self.file.flush()?;
-        self.file.set_len(self.buf.len() as u64)?;
+        if let Some(file) = &mut self.file {
+            file.write_all(self.buf.as_bytes())?;
+            file.flush()?;
+            file.set_len(self.buf.len() as u64)?;
+        }
         Ok(())
     }
 
