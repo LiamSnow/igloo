@@ -2,7 +2,7 @@ use crate::{
     ComponentType as CT, IglooType,
     query::{
         ComponentAction as C, DeviceAction as D, EntityAction as E, ExtensionAction as X,
-        GroupAction as G, Query, QueryResultType as R, WatchUpdateType as O,
+        GroupAction as G, OneShotQuery, QueryResultType as R, WatchQuery, WatchUpdateType,
     },
     types::agg::AggregationOp,
 };
@@ -12,9 +12,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
 pub enum QueryError {
-    #[error("Inherit is an invalid action. Queries must be merged first.")]
-    Inherit,
-
     #[error(
         "Component type '{0:?}' has no value. Actions like 'Get', 'Set', and 'Put' can only be done on components like sensors, switches, or dimmers can be queried with 'Get'."
     )]
@@ -43,68 +40,59 @@ pub enum QueryError {
 
 use QueryError as ERR;
 
-impl Query {
+impl WatchQuery {
+    /// Runs type inferrence to find the return type of the Query
+    /// and ensures it is a valid Query
+    pub fn check(&self) -> Result<WatchUpdateType, ERR> {
+        match self {
+            WatchQuery::Metadata => return Ok(WatchUpdateType::Metadata),
+            WatchQuery::Component(q) => {
+                let it = q
+                    .component
+                    .igloo_type()
+                    .ok_or(ERR::ComponentNoValue(q.component))?;
+
+                Ok(match q.post_op {
+                    Some(op) => match op.can_apply(&q.component) {
+                        true => WatchUpdateType::ComponentAggregate(it),
+                        false => return Err(ERR::InvalidAggregation(q.component, op)),
+                    },
+                    None => WatchUpdateType::ComponentValue(it),
+                })
+            }
+        }
+    }
+}
+
+impl OneShotQuery {
     /// Runs type inferrence to find the return type of the Query
     /// and ensures it is a valid Query
     pub fn check(&self) -> Result<R, ERR> {
         Ok(match self {
-            Query::Extension(q) => match &q.action {
+            OneShotQuery::Extension(q) => match &q.action {
                 X::GetID => R::ExtensionID,
                 X::Snapshot => R::ExtensionID,
                 X::IsAttached => R::ExtensionAttached,
                 X::Count => R::Count,
-                X::Inherit => return Err(ERR::Inherit),
-                X::WatchAttached => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::ExtensionAttached),
-                },
             },
-            Query::Group(q) => match &q.action {
+            OneShotQuery::Group(q) => match &q.action {
                 G::GetID => R::GroupID,
                 G::Snapshot => R::GroupSnapshot,
                 G::Count => R::Count,
-                G::Inherit => return Err(ERR::Inherit),
-                G::WatchName => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::GroupRenamed),
-                },
-                G::WatchMembership => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::GroupMembership),
-                },
             },
-            Query::Device(q) => match &q.action {
+            OneShotQuery::Device(q) => match &q.action {
                 D::GetID => R::DeviceID,
                 D::Snapshot(_) => R::DeviceSnapshot,
                 D::IsAttached => R::DeviceAttached,
                 D::Count => R::Count,
-                D::Inherit => return Err(ERR::Inherit),
-                D::WatchAttached => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::DeviceAttached),
-                },
-                D::WatchName => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::DeviceRenamed),
-                },
             },
-            Query::Entity(q) => match &q.action {
+            OneShotQuery::Entity(q) => match &q.action {
                 E::Snapshot => R::EntitySnapshot,
                 E::Count => R::Count,
-                E::Inherit => return Err(ERR::Inherit),
-                E::WatchComponentPut => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::EntityComponentPut),
-                },
-                E::WatchRegistered => match q.limit {
-                    Some(_) => return Err(ERR::LimitOnWatcher),
-                    None => R::Watch(O::EntityRegistered),
-                },
             },
-            Query::Component(q) => {
+            OneShotQuery::Component(q) => {
                 match &q.action {
                     C::Count => return Ok(R::Count),
-                    C::Inherit => return Err(ERR::Inherit),
                     _ => {}
                 }
 
@@ -113,16 +101,12 @@ impl Query {
                     .igloo_type()
                     .ok_or(ERR::ComponentNoValue(q.component))?;
 
-                if q.post_op.is_some() && !matches!(q.action, C::GetValue | C::WatchValue) {
+                if q.post_op.is_some() && !matches!(q.action, C::GetValue) {
                     return Err(ERR::AggregationRequiresValueAction);
                 }
 
                 if q.post_op.is_some() && q.include_parents {
                     return Err(ERR::AggregationWithParents);
-                }
-
-                if q.limit.is_some() && !matches!(q.action, C::WatchValue) {
-                    return Err(ERR::LimitOnWatcher);
                 }
 
                 match &q.action {
@@ -134,14 +118,6 @@ impl Query {
                         (_, true) => R::ComponentValueWithParents(it),
                         (_, false) => R::ComponentValue(it),
                     },
-                    C::WatchValue => R::Watch(match (q.post_op, q.include_parents) {
-                        (Some(op), _) => match op.can_apply(&q.component) {
-                            true => O::Aggregate(it),
-                            false => return Err(ERR::InvalidAggregation(q.component, op)),
-                        },
-                        (_, true) => O::ComponentValueWithParents(it),
-                        (_, false) => O::ComponentValue(it),
-                    }),
                     C::Set(iv) | C::Put(iv) => {
                         let it_2 = iv.r#type();
 
@@ -158,7 +134,7 @@ impl Query {
 
                         R::Count
                     }
-                    C::Count | C::Inherit => unreachable!(),
+                    C::Count => unreachable!(),
                 }
             }
         })

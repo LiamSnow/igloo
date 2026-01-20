@@ -35,6 +35,7 @@ pub struct Extension {
     pub(super) devices: SmallVec<[DeviceID; 50]>,
     pub(super) handle: JoinHandle<()>,
     pub msic: u16,
+    #[allow(dead_code)]
     pub msim: u8,
 }
 

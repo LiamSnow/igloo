@@ -84,9 +84,6 @@ impl QueryEngine {
                     R::ExtensionAttached(res)
                 }
             },
-
-            A::WatchAttached => panic!("Observe should have been dispatched differently"),
-            A::Inherit => return Ok(Err(QueryError::Inherit)),
         };
 
         Ok(Ok(result))

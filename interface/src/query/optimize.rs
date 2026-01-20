@@ -1,30 +1,44 @@
 use crate::{
     ComponentType,
-    query::{ComponentAction, EntityFilter, Query, TypeFilter, ValueFilter},
+    query::{ComponentAction, EntityFilter, OneShotQuery, TypeFilter, ValueFilter, WatchQuery},
 };
 
-impl Query {
+impl OneShotQuery {
     pub fn optimize(&mut self) {
         match self {
-            Query::Entity(q) => {
-                q.entity_filter.optimize(None);
+            OneShotQuery::Entity(q) => {
+                q.entity_filter.optimize();
             }
-            Query::Component(q) => {
-                if matches!(q.action, ComponentAction::Put(_)) {
-                    // Put queries don't require that these
-                    // components already exist
-                    q.entity_filter.optimize(None);
-                } else {
-                    q.entity_filter.optimize(Some(&q.component));
+            OneShotQuery::Component(q) => {
+                // every action but Put requires .component to exist
+                if !matches!(q.action, ComponentAction::Put(_)) {
+                    TypeFilter::add_with(&mut q.entity_filter.type_filter, q.component);
                 }
+
+                q.entity_filter.optimize();
             }
             _ => {}
         }
     }
 }
 
+impl WatchQuery {
+    pub fn optimize(&mut self) {
+        match self {
+            WatchQuery::Metadata => {}
+            WatchQuery::Component(q) => {
+                TypeFilter::add_with(&mut q.type_filter, q.component);
+
+                if let Some(tf) = &mut q.type_filter {
+                    tf.optimize();
+                }
+            }
+        }
+    }
+}
+
 impl EntityFilter {
-    pub fn optimize(&mut self, comp: Option<&ComponentType>) {
+    pub fn optimize(&mut self) {
         // For a value filter to succeed, we need those components
         // to exist, so we add a type_filter which allows us to
         // precheck devices before checking all its entities
@@ -38,44 +52,8 @@ impl EntityFilter {
             });
         }
 
-        // If we are trying to get the value of component
-        // it requires that the component already exists
-        // so we add it to type_filter for device optimization
-        if let Some(comp) = comp {
-            match self.type_filter.take() {
-                None => {
-                    // no filter -> add one
-                    self.type_filter = Some(TypeFilter::With(*comp));
-                }
-                Some(TypeFilter::And(mut filters)) => {
-                    // extend existing And filter
-                    let with_filter = TypeFilter::With(*comp);
-                    if !filters.contains(&with_filter) {
-                        filters.push(with_filter);
-                    }
-                    self.type_filter = Some(TypeFilter::And(filters));
-                }
-                Some(existing) => {
-                    // has filter -> make And filter with ours and theirs
-                    let mut v = Vec::with_capacity(2);
-                    v.push(existing);
-
-                    let with_filter = TypeFilter::With(*comp);
-                    if !v.contains(&with_filter) {
-                        v.push(with_filter);
-                    }
-
-                    self.type_filter = Some(TypeFilter::And(v));
-                }
-            }
-        }
-
         if let Some(tf) = &mut self.type_filter {
             tf.optimize();
-
-            if matches!(tf, TypeFilter::And(f) | TypeFilter::Or(f) if f.is_empty()) {
-                self.type_filter = None;
-            }
         }
     }
 }
@@ -194,6 +172,22 @@ impl ValueFilter {
 }
 
 impl TypeFilter {
+    /// Merges With(comp) into an optional existing filter
+    pub fn add_with(existing: &mut Option<Self>, comp: ComponentType) {
+        let with_filter = TypeFilter::With(comp);
+
+        *existing = Some(match existing.take() {
+            None => with_filter,
+            Some(TypeFilter::And(mut filters)) => {
+                if !filters.contains(&with_filter) {
+                    filters.push(with_filter);
+                }
+                TypeFilter::And(filters)
+            }
+            Some(existing) => TypeFilter::merge_and(existing, with_filter),
+        });
+    }
+
     pub fn optimize(&mut self) {
         match self {
             TypeFilter::And(filters) | TypeFilter::Or(filters) => {
@@ -567,7 +561,7 @@ mod tests {
             value_filter: None,
             last_update: None,
         };
-        filter.optimize(Some(&ComponentType::Light));
+        TypeFilter::add_with(&mut filter.type_filter, ComponentType::Light);
         assert_eq!(
             filter.type_filter,
             Some(TypeFilter::With(ComponentType::Light))
@@ -579,7 +573,7 @@ mod tests {
             value_filter: None,
             last_update: None,
         };
-        filter.optimize(Some(&ComponentType::Dimmer));
+        TypeFilter::add_with(&mut filter.type_filter, ComponentType::Dimmer);
         match filter.type_filter {
             Some(TypeFilter::And(filters)) => assert_eq!(filters.len(), 2),
             _ => panic!("Expected And with both components"),
@@ -593,7 +587,7 @@ mod tests {
             value_filter: None,
             last_update: None,
         };
-        filter.optimize(Some(&ComponentType::Light));
+        TypeFilter::add_with(&mut filter.type_filter, ComponentType::Light);
         assert_eq!(
             filter.type_filter,
             Some(TypeFilter::With(ComponentType::Light))
@@ -608,7 +602,7 @@ mod tests {
             value_filter: Some(ValueFilter::If(ComparisonOp::Eq, Component::Dimmer(0.1))),
             last_update: None,
         };
-        filter.optimize(None);
+        filter.optimize();
         assert_eq!(
             filter.type_filter,
             Some(TypeFilter::With(ComponentType::Dimmer))
@@ -620,7 +614,7 @@ mod tests {
             value_filter: Some(ValueFilter::If(ComparisonOp::Eq, Component::Dimmer(0.1))),
             last_update: None,
         };
-        filter.optimize(None);
+        filter.optimize();
         match filter.type_filter {
             Some(TypeFilter::And(filters)) => assert_eq!(filters.len(), 2),
             _ => panic!("Expected merged And"),
@@ -635,13 +629,13 @@ mod tests {
             value_filter: None,
             last_update: None,
         };
-        filter.optimize(None);
+        filter.optimize();
         assert_eq!(filter.type_filter, None);
     }
 
     #[test]
     fn test_query_component_optimize() {
-        let mut query = Query::Component(ComponentQuery {
+        let mut query = OneShotQuery::Component(ComponentQuery {
             device_filter: DeviceFilter::default(),
             entity_filter: EntityFilter {
                 id: EntityIDFilter::Any,
@@ -659,7 +653,7 @@ mod tests {
         query.optimize();
 
         match query {
-            Query::Component(cq) => match cq.entity_filter.type_filter {
+            OneShotQuery::Component(cq) => match cq.entity_filter.type_filter {
                 Some(TypeFilter::And(filters)) => {
                     assert_eq!(filters.len(), 2);
                     assert!(filters.contains(&TypeFilter::With(ComponentType::Light)));
@@ -673,7 +667,7 @@ mod tests {
 
     #[test]
     fn test_query_entity_optimize() {
-        let mut query = Query::Entity(EntityQuery {
+        let mut query = OneShotQuery::Entity(EntityQuery {
             device_filter: DeviceFilter::default(),
             entity_filter: EntityFilter {
                 id: EntityIDFilter::Any,
@@ -691,7 +685,7 @@ mod tests {
         query.optimize();
 
         match query {
-            Query::Entity(eq) => {
+            OneShotQuery::Entity(eq) => {
                 assert_eq!(
                     eq.entity_filter.type_filter,
                     Some(TypeFilter::With(ComponentType::Light))

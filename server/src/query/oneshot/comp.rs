@@ -283,11 +283,6 @@ impl QueryEngine {
 
                 R::Count(count)
             }
-
-            A::WatchValue => {
-                panic!("Observe should have been dispatched differently")
-            }
-            A::Inherit => return Ok(Err(QueryError::Inherit)),
         };
 
         Ok(Ok(result))

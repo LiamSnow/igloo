@@ -62,11 +62,6 @@ impl QueryEngine {
                 });
                 R::GroupSnapshot(snapshots)
             }
-
-            A::WatchName | A::WatchMembership => {
-                panic!("Observe should have been dispatched differently")
-            }
-            A::Inherit => return Ok(Err(QueryError::Inherit)),
         };
 
         Ok(Ok(result))

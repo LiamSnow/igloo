@@ -1,7 +1,7 @@
 use bincode::{Decode, Encode};
 use derive_more::Display;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
 pub enum AggregationOp {
     #[display("mean")]
     Mean,

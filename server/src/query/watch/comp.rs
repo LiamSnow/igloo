@@ -1,9 +1,9 @@
-//! Watches the values of components
+//! Watches the values of component(s)
 //!
 //! # Core Idea
 //! Keep track of a matched set, check very minimal things on component_set (hot-path)
 //!
-//! First, find initial match set. Then subscribe to events than
+//! First, find initial match set. Then subscribe to events that
 //! can cause us to expand or contract that match set.
 //!
 //! # Expansion Events
@@ -15,7 +15,6 @@
 //!  - device_renamed, group_renamed :: name filters only exist for entities (which cant be renamed)
 //!  - ext_attached :: it's devices don't have entities/components yet
 //!  - entity_registered :: doesn't have components yet (can't pass query.component filter)
-//!  - value_filter, device/entity.last_update, entity_count :: these would cause expansion/contraction spam which actually makes it slower - instead they just get checked before every dispatch
 //!
 //! # Contraction Events
 //!  - component_put that now doesn't satify type_filter
@@ -28,34 +27,35 @@ use crate::{
     query::{
         QueryContext,
         iter::{
-            estimate_entity_count, for_each_entity, passes_device_last_update, passes_entity_count,
-            passes_entity_id_filter, passes_entity_last_update, passes_group_filter,
-            passes_id_filter, passes_owner_filter, passes_value_filter,
+            passes_entity_id_filter, passes_group_filter, passes_id_filter, passes_owner_filter,
+            watch::{estimate_entity_count, for_each_entity},
         },
-        watch::{dispatch::WatchHandler, subscriber::TreeSubscribers},
+        watch::{WatcherID, dispatch::TreeEventResponder, subscriber::TreeSubscribers},
     },
     tree::{Device, DeviceTree, Entity, Extension, Group},
 };
 use igloo_interface::{
     Aggregator, Component, ComponentType,
-    id::{DeviceID, EntityIndex, ExtensionIndex, GroupID},
-    query::{ComponentQuery, DeviceGroupFilter, TypeFilter, WatchUpdate as U, check::QueryError},
+    id::{DeviceID, EntityIndex, ExtensionIndex, GenerationalID, GroupID},
+    query::{
+        DeviceGroupFilter, TypeFilter, WatchComponentQuery, WatchUpdate as U, check::QueryError,
+    },
+    types::IglooValue,
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::{
     collections::{HashMap, HashSet},
     ops::ControlFlow,
-    time::Instant,
 };
 
 pub struct ComponentWatcher {
-    pub client_id: usize,
-    pub query_id: usize,
-    pub query: ComponentQuery,
-    watcher_id: usize,
+    pub id: WatcherID,
+    pub subs: Vec<(usize, usize)>,
+    pub query: WatchComponentQuery,
     matched: FxHashMap<DeviceID, DeviceMatch>,
 }
 
+#[derive(Debug)]
 struct DeviceMatch {
     device_id: DeviceID,
     watcher_id: usize,
@@ -63,30 +63,49 @@ struct DeviceMatch {
     owner_ref: Option<ExtensionIndex>,
 }
 
+#[derive(Debug)]
 struct EntityMatch {
     device_id: DeviceID,
     entity_index: EntityIndex,
     watcher_id: usize,
+    value: Component,
+}
+
+fn subscribe_to_group_events(subs: &mut TreeSubscribers, gid: GroupID, watcher_id: usize) {
+    subs.group_device_added
+        .by_gid
+        .entry(gid)
+        .or_default()
+        .all
+        .push(watcher_id);
+
+    subs.group_deleted
+        .by_gid
+        .entry(gid)
+        .or_insert_with(|| Vec::with_capacity(2))
+        .push(watcher_id);
+}
+
+fn unsubscribe_from_group_events(subs: &mut TreeSubscribers, gid: GroupID, watcher_id: usize) {
+    if let Some(group_sub) = subs.group_device_added.by_gid.get_mut(&gid) {
+        group_sub.all.retain(|o| *o != watcher_id);
+    }
+    if let Some(watchers) = subs.group_deleted.by_gid.get_mut(&gid) {
+        watchers.retain(|o| *o != watcher_id);
+    }
 }
 
 impl ComponentWatcher {
     /// Subscriptions are registered here
     /// Then the subsequent `on_*` below will trigger
-    #[allow(clippy::too_many_arguments)]
     pub fn register(
         ctx: &mut QueryContext,
         subs: &mut TreeSubscribers,
         tree: &DeviceTree,
-        query_id: usize,
         watcher_id: usize,
-        client_id: usize,
-        query: ComponentQuery,
+        query: WatchComponentQuery,
     ) -> Result<Self, QueryError> {
         // validate here, and reject before registering
-        if query.limit.is_some() {
-            return Err(QueryError::LimitOnWatcher);
-        }
-
         if let Some(op) = query.post_op
             && Aggregator::new(query.component, op).is_none()
         {
@@ -98,62 +117,32 @@ impl ComponentWatcher {
         }
 
         let mut me = Self {
-            client_id,
-            query_id,
-            watcher_id: watcher_id,
+            id: watcher_id,
+            subs: Vec::with_capacity(3),
             matched: HashMap::with_capacity_and_hasher(
-                estimate_entity_count(tree, &query.device_filter, &query.entity_filter) + 5,
+                estimate_entity_count(tree, &query) + 5,
                 FxBuildHasher,
             ),
             query,
         };
 
         // find initial match set
-        let _ = for_each_entity(
-            ctx,
-            tree,
-            &me.query.device_filter.clone(),
-            &me.query.entity_filter.clone(),
-            |device, entity| {
-                // validate component has value
-                me.expand_new_match(subs, device, entity);
-                ControlFlow::Continue(())
-            },
-        );
+        let _ = for_each_entity(ctx, tree, me.query.clone(), |device, entity| {
+            me.expand_new_match(subs, device, entity);
+            ControlFlow::Continue(())
+        });
 
         // new device added to group we care about
-        match &me.query.device_filter.group {
+        match &me.query.group {
             DeviceGroupFilter::Any => {
                 // no filter
             }
             DeviceGroupFilter::In(gid) => {
-                subs.group_device_added
-                    .by_gid
-                    .entry(*gid)
-                    .or_default()
-                    .all
-                    .push(watcher_id);
-
-                subs.group_deleted
-                    .by_gid
-                    .entry(*gid)
-                    .or_insert_with(|| Vec::with_capacity(2))
-                    .push(me.watcher_id);
+                subscribe_to_group_events(subs, *gid, watcher_id);
             }
             DeviceGroupFilter::InAny(gids) | DeviceGroupFilter::InAll(gids) => {
                 for gid in gids {
-                    subs.group_device_added
-                        .by_gid
-                        .entry(*gid)
-                        .or_default()
-                        .all
-                        .push(watcher_id);
-
-                    subs.group_deleted
-                        .by_gid
-                        .entry(*gid)
-                        .or_insert_with(|| Vec::with_capacity(2))
-                        .push(me.watcher_id);
+                    subscribe_to_group_events(subs, *gid, watcher_id);
                 }
             }
         }
@@ -161,7 +150,7 @@ impl ComponentWatcher {
         // listen to component put of CTs we care about
         // listen to all types, can cause expansion (With, And, Or) OR contraction (Without, Not, And)
         let mut care = HashSet::with_capacity_and_hasher(20, FxBuildHasher);
-        if let Some(filter) = &me.query.entity_filter.type_filter {
+        if let Some(filter) = &me.query.type_filter {
             collect_all_types_in_tf(filter, &mut care);
         }
         care.insert(me.query.component);
@@ -176,31 +165,87 @@ impl ComponentWatcher {
         Ok(me)
     }
 
+    pub fn on_sub(
+        &mut self,
+        cm: &mut ClientManager,
+        client_id: usize,
+        query_id: usize,
+    ) -> Result<(), IglooError> {
+        self.subs.push((client_id, query_id));
+
+        if self.query.post_op.is_some() {
+            if let Some(value) = self.compute_aggregate() {
+                cm.send(
+                    client_id,
+                    IglooResponse::WatchUpdate {
+                        query_id,
+                        value: U::ComponentAggregate(value),
+                    },
+                )?;
+            }
+        } else {
+            for dm in self.matched.values() {
+                for em in dm.entities.values() {
+                    let Some(iv) = em.value.to_igloo_value() else {
+                        continue;
+                    };
+                    cm.send(
+                        client_id,
+                        IglooResponse::WatchUpdate {
+                            query_id,
+                            value: U::ComponentValue(em.device_id, em.entity_index, iv),
+                        },
+                    )?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn compute_aggregate(&self) -> Option<IglooValue> {
+        let op = self.query.post_op?;
+        let mut agg = Aggregator::new(self.query.component, op)?;
+
+        println!("<em>");
+        'top: for dm in self.matched.values() {
+            for em in dm.entities.values() {
+                println!(
+                    " - dev={} ent={} value={:?}",
+                    em.device_id.take(),
+                    em.entity_index.0,
+                    em.value
+                );
+                // sometimes we can exit early
+                // ex. if we are checking binary ::Any
+                // and when encounter an `true` value
+                if agg.push(&em.value).is_break() {
+                    break 'top;
+                }
+            }
+        }
+        println!("<em/>");
+
+        agg.finish()
+    }
+
     pub fn cleanup(&mut self, subs: &mut TreeSubscribers) {
         // clean up matches
         let dids: Vec<DeviceID> = self.matched.keys().cloned().collect();
         for did in dids {
-            self.contract_device(subs, did);
+            if let Some(device_match) = self.matched.remove(&did) {
+                device_match.cleanup(subs, &self.query);
+            }
         }
 
         // clean up expansion subs
-        match &self.query.device_filter.group {
+        match &self.query.group {
             DeviceGroupFilter::In(gid) => {
-                if let Some(group_sub) = subs.group_device_added.by_gid.get_mut(gid) {
-                    group_sub.all.retain(|o| *o != self.watcher_id);
-                }
-                if let Some(watchers) = subs.group_deleted.by_gid.get_mut(gid) {
-                    watchers.retain(|o| *o != self.watcher_id);
-                }
+                unsubscribe_from_group_events(subs, *gid, self.id);
             }
             DeviceGroupFilter::InAny(gids) | DeviceGroupFilter::InAll(gids) => {
                 for gid in gids {
-                    if let Some(group_sub) = subs.group_device_added.by_gid.get_mut(gid) {
-                        group_sub.all.retain(|o| *o != self.watcher_id);
-                    }
-                    if let Some(watchers) = subs.group_deleted.by_gid.get_mut(gid) {
-                        watchers.retain(|o| *o != self.watcher_id);
-                    }
+                    unsubscribe_from_group_events(subs, *gid, self.id);
                 }
             }
             DeviceGroupFilter::Any => {}
@@ -208,14 +253,14 @@ impl ComponentWatcher {
 
         // clean up component_put subscriptions
         let mut care = HashSet::with_capacity_and_hasher(20, FxBuildHasher);
-        if let Some(filter) = &self.query.entity_filter.type_filter {
+        if let Some(filter) = &self.query.type_filter {
             collect_all_types_in_tf(filter, &mut care);
         }
         care.insert(self.query.component);
 
         for ct in care {
             if let Some(watchers) = subs.component_put.by_comp_type.get_mut(&ct) {
-                watchers.retain(|o| *o != self.watcher_id);
+                watchers.retain(|o| *o != self.id);
             }
         }
     }
@@ -223,14 +268,18 @@ impl ComponentWatcher {
     /// Expand matching set with a new device/entity pair
     /// WARN: this has no checks, use try_expand_entity if you are unsure to expand or not
     fn expand_new_match(&mut self, subs: &mut TreeSubscribers, device: &Device, entity: &Entity) {
+        let Some(comp) = entity.get(self.query.component) else {
+            return;
+        };
+
         if let Some(device_match) = self.matched.get_mut(device.id()) {
             // device already matched, just add entity
-            device_match.add_entity(*entity.index(), subs, self.query.component);
+            device_match.add_entity(*entity.index(), subs, self.query.component, comp.clone());
         } else {
             // new device match
             let mut device_match =
-                DeviceMatch::new(*device.id(), self.watcher_id, subs, device, &self.query);
-            device_match.add_entity(*entity.index(), subs, self.query.component);
+                DeviceMatch::new(*device.id(), self.id, subs, device, &self.query);
+            device_match.add_entity(*entity.index(), subs, self.query.component, comp.clone());
             self.matched.insert(*device.id(), device_match);
         }
     }
@@ -242,22 +291,20 @@ impl ComponentWatcher {
         device: &Device,
         entity: &Entity,
     ) -> bool {
-        // skip all runtime checks (last update, value filter, entity count)
-        // and only need to check type_filter against entity
-        if !passes_id_filter(device, &self.query.device_filter.id)
-            || !passes_group_filter(device, &self.query.device_filter.group, tree)
-            || !passes_owner_filter(device, &self.query.device_filter.owner)
+        if !passes_id_filter(device, &self.query.device_id)
+            || !passes_group_filter(device, &self.query.group, tree)
+            || !passes_owner_filter(device, &self.query.owner)
         {
             return false;
         }
 
-        if let Some(filter) = &self.query.entity_filter.type_filter
+        if let Some(filter) = &self.query.type_filter
             && !entity.matches(filter)
         {
             return false;
         }
 
-        passes_entity_id_filter(ctx, entity, &self.query.entity_filter.id)
+        passes_entity_id_filter(ctx, entity, &self.query.entity_id)
     }
 
     /// Expands matching set IF this is a valid target
@@ -290,28 +337,82 @@ impl ComponentWatcher {
         false
     }
 
-    fn contract_device(&mut self, subs: &mut TreeSubscribers, did: DeviceID) {
+    fn contract_device(
+        &mut self,
+        subs: &mut TreeSubscribers,
+        cm: &mut ClientManager,
+        did: DeviceID,
+    ) -> Result<(), IglooError> {
         if let Some(device_match) = self.matched.remove(&did) {
             device_match.cleanup(subs, &self.query);
         }
+
+        self.broadcast_aggregate_update(cm)?;
+        Ok(())
     }
 
     fn contract_entity(
         &mut self,
         subs: &mut TreeSubscribers,
+        cm: &mut ClientManager,
         did: DeviceID,
         entity_index: EntityIndex,
-    ) {
+    ) -> Result<(), IglooError> {
         let Some(device_match) = self.matched.get_mut(&did) else {
-            return;
+            return Ok(());
         };
 
         let is_empty = device_match.remove_entity(entity_index, subs, self.query.component);
 
         // remove device if no entities left
-        if is_empty && let Some(device_match) = self.matched.remove(&did) {
-            device_match.cleanup(subs, &self.query);
+        if is_empty {
+            if let Some(device_match) = self.matched.remove(&did) {
+                device_match.cleanup(subs, &self.query);
+            }
         }
+
+        self.broadcast_aggregate_update(cm)?;
+        Ok(())
+    }
+
+    fn broadcast_aggregate_update(&self, cm: &mut ClientManager) -> Result<(), IglooError> {
+        if self.query.post_op.is_some() {
+            if let Some(value) = self.compute_aggregate() {
+                for (client_id, query_id) in &self.subs {
+                    cm.send(
+                        *client_id,
+                        IglooResponse::WatchUpdate {
+                            query_id: *query_id,
+                            value: U::ComponentAggregate(value.clone()),
+                        },
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn contract_matching_devices<F>(
+        &mut self,
+        subs: &mut TreeSubscribers,
+        cm: &mut ClientManager,
+        filter_fn: F,
+    ) -> Result<(), IglooError>
+    where
+        F: Fn(&DeviceID, &DeviceMatch) -> bool,
+    {
+        let dids: Vec<DeviceID> = self
+            .matched
+            .iter()
+            .filter(|(did, dm)| filter_fn(did, dm))
+            .map(|(did, _)| *did)
+            .collect();
+
+        for did in dids {
+            self.contract_device(subs, cm, did)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -321,7 +422,7 @@ impl DeviceMatch {
         watcher_id: usize,
         subs: &mut TreeSubscribers,
         device: &Device,
-        query: &ComponentQuery,
+        query: &WatchComponentQuery,
     ) -> Self {
         // subscribe to device-level events that can cause contraction
 
@@ -342,7 +443,7 @@ impl DeviceMatch {
         }
 
         // group deleted | this device removed from group
-        match &query.device_filter.group {
+        match &query.group {
             DeviceGroupFilter::Any => {
                 // no filter
             }
@@ -375,7 +476,7 @@ impl DeviceMatch {
 
         Self {
             device_id,
-            watcher_id: watcher_id,
+            watcher_id,
             entities: HashMap::with_capacity_and_hasher(4, FxBuildHasher),
             owner_ref: device.owner_ref(),
         }
@@ -386,6 +487,7 @@ impl DeviceMatch {
         entity_index: EntityIndex,
         subs: &mut TreeSubscribers,
         component_type: ComponentType,
+        value: Component,
     ) {
         let entity_match = EntityMatch::new(
             self.device_id,
@@ -393,6 +495,7 @@ impl DeviceMatch {
             self.watcher_id,
             subs,
             component_type,
+            value,
         );
         self.entities.insert(entity_index, entity_match);
     }
@@ -409,7 +512,7 @@ impl DeviceMatch {
         self.entities.is_empty()
     }
 
-    fn cleanup(&self, subs: &mut TreeSubscribers, query: &ComponentQuery) {
+    fn cleanup(&self, subs: &mut TreeSubscribers, query: &WatchComponentQuery) {
         // cleanup all entities
         for entity_match in self.entities.values() {
             entity_match.cleanup(subs, query.component);
@@ -431,7 +534,7 @@ impl DeviceMatch {
         }
 
         // cleanup group_device_removed
-        match &query.device_filter.group {
+        match &query.group {
             DeviceGroupFilter::Any => {}
             DeviceGroupFilter::In(gid) => {
                 if let Some(group_sub) = subs.group_device_removed.by_gid.get_mut(gid)
@@ -466,6 +569,7 @@ impl EntityMatch {
         watcher_id: usize,
         subs: &mut TreeSubscribers,
         component_type: ComponentType,
+        value: Component,
     ) -> Self {
         // subscribe to triggering event
         subs.component_set
@@ -477,7 +581,8 @@ impl EntityMatch {
         Self {
             device_id,
             entity_index,
-            watcher_id: watcher_id,
+            watcher_id,
+            value,
         }
     }
 
@@ -509,13 +614,13 @@ pub fn collect_all_types_in_tf(filter: &TypeFilter, set: &mut FxHashSet<Componen
     }
 }
 
-impl WatchHandler for ComponentWatcher {
+impl TreeEventResponder for ComponentWatcher {
     fn on_component_set(
         &mut self,
         cm: &mut ClientManager,
-        ctx: &mut QueryContext,
+        _ctx: &mut QueryContext,
         _subs: &mut TreeSubscribers,
-        tree: &DeviceTree,
+        _tree: &DeviceTree,
         device: &Device,
         entity_index: EntityIndex,
         _comp_type: ComponentType,
@@ -531,81 +636,40 @@ impl WatchHandler for ComponentWatcher {
 
         // no need to check comp_type bc only subscribed to events on our query.component
 
-        let entity = &device.entities()[entity_index.0];
-
-        if !passes_entity_last_update(entity, &self.query.entity_filter.last_update) {
-            return Ok(());
-        }
-
-        if !passes_entity_count(device, &self.query.device_filter.entity_count) {
-            return Ok(());
-        }
-
-        if !passes_device_last_update(
-            &Instant::now(),
-            device,
-            &self.query.device_filter.last_update,
-        ) {
-            return Ok(());
-        }
-
-        if let Some(filter) = &self.query.entity_filter.value_filter
-            && !passes_value_filter(entity, filter)
+        if let Some(device_match) = self.matched.get_mut(device.id())
+            && let Some(entity_match) = device_match.entities.get_mut(&entity_index)
         {
-            return Ok(());
+            entity_match.value = comp.clone();
         }
 
-        let result = match self.query.post_op {
-            Some(op) => {
-                let Some(mut agg) = Aggregator::new(self.query.component, op) else {
-                    // error is caught during registration, ignore now
+        let update = match self.query.post_op {
+            Some(_op) => {
+                let Some(value) = self.compute_aggregate() else {
                     return Ok(());
                 };
-
-                let _ = for_each_entity(
-                    ctx,
-                    tree,
-                    &self.query.device_filter,
-                    &self.query.entity_filter,
-                    |_, entity| {
-                        if let Some(comp) = entity.get(self.query.component) {
-                            agg.push(comp)?;
-                        }
-                        ControlFlow::Continue(())
-                    },
-                );
-
-                let Some(res) = agg.finish() else {
-                    return Ok(());
-                };
-
-                U::Aggregate(res)
+                U::ComponentAggregate(value)
             }
 
-            None if self.query.include_parents => {
+            None => {
                 let Some(iv) = comp.to_igloo_value() else {
-                    // error is caught during registration, ignore now
+                    // ignore bc it should have caught at registration
                     return Ok(());
                 };
-                U::ComponentValueWithParents(*device.id(), entity.id().clone(), iv)
-            }
-
-            _ => {
-                let Some(iv) = comp.to_igloo_value() else {
-                    // error is caught during registration, ignore now
-                    return Ok(());
-                };
-                U::ComponentValue(iv)
+                U::ComponentValue(*device.id(), entity_index, iv)
             }
         };
 
-        cm.send(
-            self.client_id,
-            IglooResponse::WatchUpdate {
-                query_id: self.query_id,
-                result,
-            },
-        )
+        for (client_id, query_id) in &self.subs {
+            cm.send(
+                *client_id,
+                IglooResponse::WatchUpdate {
+                    query_id: *query_id,
+                    value: update.clone(),
+                },
+            )?;
+        }
+
+        Ok(())
     }
 
     fn on_component_put(
@@ -621,10 +685,10 @@ impl WatchHandler for ComponentWatcher {
     ) -> Result<(), IglooError> {
         let entity = &device.entities()[entity_index.0];
 
-        if let Some(filter) = &self.query.entity_filter.type_filter
+        if let Some(filter) = &self.query.type_filter
             && !entity.matches(filter)
         {
-            self.contract_entity(subs, *device.id(), entity_index);
+            self.contract_entity(subs, cm, *device.id(), entity_index)?;
         } else if self.try_expand_entity(ctx, subs, tree, device, entity)
             && comp_type == self.query.component
         {
@@ -645,35 +709,29 @@ impl WatchHandler for ComponentWatcher {
 
     fn on_device_deleted(
         &mut self,
-        _cm: &mut ClientManager,
+        cm: &mut ClientManager,
         _ctx: &mut QueryContext,
         subs: &mut TreeSubscribers,
         _tree: &DeviceTree,
         device: &Device,
     ) -> Result<(), IglooError> {
-        self.contract_device(subs, *device.id());
-        Ok(())
+        self.contract_device(subs, cm, *device.id())
     }
 
     fn on_group_deleted(
         &mut self,
-        _cm: &mut ClientManager,
+        cm: &mut ClientManager,
         _ctx: &mut QueryContext,
         subs: &mut TreeSubscribers,
         tree: &DeviceTree,
         _gid: &GroupID,
     ) -> Result<(), IglooError> {
-        let dids: Vec<DeviceID> = self.matched.keys().cloned().collect();
-        for did in dids {
-            let Ok(device) = tree.device(&did) else {
-                continue;
-            };
-            if !passes_group_filter(device, &self.query.device_filter.group, tree) {
-                self.contract_device(subs, did);
-            }
-        }
-
-        Ok(())
+        let group_filter = self.query.group.clone();
+        self.contract_matching_devices(subs, cm, |did, _| {
+            tree.device(did)
+                .map(|device| !passes_group_filter(device, &group_filter, tree))
+                .unwrap_or(false)
+        })
     }
 
     fn on_group_device_added(
@@ -693,7 +751,7 @@ impl WatchHandler for ComponentWatcher {
 
     fn on_group_device_removed(
         &mut self,
-        _cm: &mut ClientManager,
+        cm: &mut ClientManager,
         _ctx: &mut QueryContext,
         subs: &mut TreeSubscribers,
         tree: &DeviceTree,
@@ -701,34 +759,22 @@ impl WatchHandler for ComponentWatcher {
         device: &Device,
     ) -> Result<(), IglooError> {
         // recheck filter bc it may apply if ::InAny
-        if !passes_group_filter(device, &self.query.device_filter.group, tree) {
-            self.contract_device(subs, *device.id());
+        if !passes_group_filter(device, &self.query.group, tree) {
+            self.contract_device(subs, cm, *device.id())?;
         }
         Ok(())
     }
 
     fn on_ext_detached(
         &mut self,
-        _cm: &mut ClientManager,
+        cm: &mut ClientManager,
         _ctx: &mut QueryContext,
         subs: &mut TreeSubscribers,
         _tree: &DeviceTree,
         ext: &Extension,
     ) -> Result<(), IglooError> {
         let owner_ref = Some(*ext.index());
-
-        let dids: Vec<DeviceID> = self
-            .matched
-            .iter()
-            .filter(|(_, dm)| dm.owner_ref == owner_ref)
-            .map(|(did, _)| *did)
-            .collect();
-
-        for did in dids {
-            self.contract_device(subs, did);
-        }
-
-        Ok(())
+        self.contract_matching_devices(subs, cm, |_, dm| dm.owner_ref == owner_ref)
     }
 
     fn on_device_created(

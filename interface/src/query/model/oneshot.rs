@@ -5,27 +5,14 @@ use crate::{
     types::{agg::AggregationOp, compare::ComparisonOp, math::MathOp},
 };
 use bincode::{Decode, Encode};
-use rustc_hash::FxHashSet;
 
-// TODO if we make a Pyo3 rust python library for Extensions, we should
-// be able to drop Borsh and just use Bincode. This way we can easily
-// add more optimizations like SmallVecs
-//
-// By doing this we can potentially add huge optimizations. A complete
-// Extension Rust library allows us to do really cool things like a A::SetFunction
-// This would ship over the function to the Extension itself which spawns fake
-// messages.
-// For things like an RGB effect we can get serious performance benefits
-// Alternatively, we can implement SetFunctions into the query engine.
-// Regardless set functions have a huge benefit of:
-//  1. Have penguin nodes for effects
-//  2. Easily override/cancel effects - future Sets will stop the SetFunction
-
-// FUTURE IDEAS:
-//  4. temporal queries: values & agg (ex. mean of last month)
+// TODO
+//  - now that we use Bincode, we should add SmallVecs
+//  - Pyo3 python package
+//  - temporal component value queries (requires changes to device tree first)
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub enum Query {
+pub enum OneShotQuery {
     Extension(ExtensionQuery),
     Group(GroupQuery),
     Device(DeviceQuery),
@@ -46,10 +33,8 @@ pub enum ExtensionAction {
     Snapshot,
 
     IsAttached,
-    WatchAttached,
 
     Count,
-    Inherit,
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
@@ -64,12 +49,7 @@ pub enum GroupAction {
     GetID,
     Snapshot,
 
-    WatchName,
-    /// device added, device removed
-    WatchMembership,
-
     Count,
-    Inherit,
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
@@ -84,13 +64,9 @@ pub enum DeviceAction {
     GetID,
     /// true=include entity snapshots
     Snapshot(bool),
-
     IsAttached,
-    WatchAttached,
-    WatchName,
 
     Count,
-    Inherit,
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
@@ -105,10 +81,6 @@ pub struct EntityQuery {
 pub enum EntityAction {
     Snapshot,
     Count,
-    Inherit,
-    WatchRegistered,
-    WatchComponentPut,
-    // entities dont attach
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
@@ -127,17 +99,15 @@ pub struct ComponentQuery {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum ComponentAction {
     GetValue,
-    WatchValue,
 
     Set(IglooValue),
     Put(IglooValue),
     Apply(MathOp),
 
     Count,
-    Inherit,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
 pub enum IDFilter<T> {
     #[default]
     Any,
@@ -157,7 +127,7 @@ pub struct DeviceFilter {
     pub last_update: Option<(ComparisonOp, usize)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
 pub enum DeviceGroupFilter {
     #[default]
     Any,
@@ -180,7 +150,7 @@ pub struct EntityFilter {
     pub last_update: Option<(ComparisonOp, usize)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
 pub enum TypeFilter {
     With(ComponentType),
     Without(ComponentType),
@@ -197,15 +167,17 @@ pub enum ValueFilter {
     Not(Box<ValueFilter>),
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
 pub enum EntityIDFilter {
     #[default]
     Any,
     Is(String),
-    OneOf(FxHashSet<String>),
+    OneOf(Vec<String>),
     /// glob pattern
     Matches(String),
 }
+
+// -- Responses
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 pub enum QueryResult {
@@ -242,13 +214,10 @@ pub enum QueryResultType {
 
     GroupID,
     GroupSnapshot,
-    GroupMutation,
 
     DeviceID,
     DeviceSnapshot,
     DeviceAttached,
-    DeviceRenamed,
-    DeviceEntityAdded,
 
     EntitySnapshot,
 
@@ -257,66 +226,4 @@ pub enum QueryResultType {
     ComponentValueWithParents(IglooType),
 
     Count,
-
-    /// Indicates Query will not immediately resolve
-    /// and instead of send WatchUpdate periodically
-    Watch(WatchUpdateType),
-}
-
-#[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub enum WatchUpdate {
-    ExtensionAttached(ExtensionID, bool),
-
-    GroupRenamed(GroupID, String),
-    /// true => added, false => removed
-    GroupMembershipChanged(GroupID, DeviceID, bool),
-
-    DeviceRenamed(DeviceID, String),
-    DeviceAttached(DeviceID, bool),
-
-    EntityRegistered(DeviceID, EntityID),
-    EntityComponentPut(DeviceID, EntityID, Component),
-
-    Aggregate(IglooValue),
-    ComponentValue(IglooValue),
-    ComponentValueWithParents(DeviceID, EntityID, IglooValue),
-}
-
-#[derive(Debug, Clone, PartialEq, Encode, Decode)]
-pub enum WatchUpdateType {
-    ExtensionAttached,
-
-    GroupRenamed,
-    GroupMembership,
-
-    DeviceRenamed,
-    DeviceAttached,
-
-    EntityRegistered,
-    EntityComponentPut,
-
-    Aggregate(IglooType),
-    ComponentValue(IglooType),
-    ComponentValueWithParents(IglooType),
-}
-
-impl Query {
-    pub fn is_watcher(&self) -> bool {
-        match self {
-            Query::Extension(q) => matches!(q.action, ExtensionAction::WatchAttached),
-            Query::Group(q) => matches!(
-                q.action,
-                GroupAction::WatchName | GroupAction::WatchMembership
-            ),
-            Query::Device(q) => matches!(
-                q.action,
-                DeviceAction::WatchAttached | DeviceAction::WatchName
-            ),
-            Query::Entity(q) => matches!(
-                q.action,
-                EntityAction::WatchComponentPut | EntityAction::WatchRegistered
-            ),
-            Query::Component(q) => matches!(q.action, ComponentAction::WatchValue),
-        }
-    }
 }

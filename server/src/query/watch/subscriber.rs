@@ -34,6 +34,7 @@ pub struct TreeSubscribers {
 }
 
 impl TreeSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.component_set.unsubscribe(watcher_id);
         self.component_put.unsubscribe(watcher_id);
@@ -220,6 +221,7 @@ impl Default for ComponentPutEventEntitySubscribers {
 }
 
 impl GroupEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_gid.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -244,6 +246,7 @@ impl GroupEventSubscribers {
 }
 
 impl GroupDeviceEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_gid.retain(|_, group_sub| {
             group_sub.unsubscribe(watcher_id);
@@ -276,6 +279,7 @@ impl GroupDeviceEventSubscribers {
 }
 
 impl GroupDeviceEventGroupSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -284,12 +288,14 @@ impl GroupDeviceEventGroupSubscribers {
         self.all.retain(|&id| id != watcher_id);
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.by_did.is_empty() && self.all.is_empty()
     }
 }
 
 impl ExtensionEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_xid.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -333,6 +339,7 @@ impl ExtensionEventSubscribers {
 }
 
 impl DeviceEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -357,6 +364,7 @@ impl DeviceEventSubscribers {
 }
 
 impl EntityEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -381,6 +389,7 @@ impl EntityEventSubscribers {
 }
 
 impl ComponentSetEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.0.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -403,6 +412,7 @@ impl ComponentSetEventSubscribers {
 }
 
 impl ComponentPutEventSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_did.retain(|_, device_sub| {
             device_sub.unsubscribe(watcher_id);
@@ -473,6 +483,7 @@ impl ComponentPutEventSubscribers {
 }
 
 impl ComponentPutEventDeviceSubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_eindex.retain(|_, entity_sub| {
             entity_sub.unsubscribe(watcher_id);
@@ -485,12 +496,14 @@ impl ComponentPutEventDeviceSubscribers {
         self.all.retain(|&id| id != watcher_id);
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.by_eindex.is_empty() && self.by_comp_type.is_empty() && self.all.is_empty()
     }
 }
 
 impl ComponentPutEventEntitySubscribers {
+    #[allow(dead_code)]
     pub fn unsubscribe(&mut self, watcher_id: WatcherID) {
         self.by_comp_type.retain(|_, list| {
             list.retain(|&id| id != watcher_id);
@@ -499,6 +512,7 @@ impl ComponentPutEventEntitySubscribers {
         self.all.retain(|&id| id != watcher_id);
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.by_comp_type.is_empty() && self.all.is_empty()
     }

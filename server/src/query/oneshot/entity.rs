@@ -60,11 +60,6 @@ impl QueryEngine {
                 );
                 R::EntitySnapshot(snapshots)
             }
-
-            A::WatchComponentPut | A::WatchRegistered => {
-                panic!("Observe should have been dispatched differently")
-            }
-            A::Inherit => return Ok(Err(QueryError::Inherit)),
         };
 
         Ok(Ok(result))

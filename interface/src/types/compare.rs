@@ -2,7 +2,7 @@ use crate::types::{IglooType, IglooValue, cast::CastDirection};
 use bincode::{Decode, Encode};
 use derive_more::Display;
 
-#[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Encode, Decode)]
 pub enum ComparisonOp {
     #[display("==")]
     Eq,

@@ -47,6 +47,7 @@ impl QueryEngine {
                 });
                 R::DeviceId(ids)
             }
+
             A::Snapshot(include_comps) => {
                 let limit = query.limit.unwrap_or(usize::MAX);
                 let estimate = estimate_device_count(tree, &query.filter).min(limit);
@@ -62,6 +63,7 @@ impl QueryEngine {
                 });
                 R::DeviceSnapshot(snapshots)
             }
+
             A::IsAttached => match query.filter.id {
                 IDFilter::Any => panic!("Must provide ID to check if device is attached"),
                 IDFilter::Is(id) => {
@@ -81,10 +83,6 @@ impl QueryEngine {
                     R::DeviceAttached(res)
                 }
             },
-            A::WatchAttached | A::WatchName => {
-                panic!("Observe should have been dispatched differently")
-            }
-            A::Inherit => return Ok(Err(QueryError::Inherit)),
         };
 
         Ok(Ok(result))

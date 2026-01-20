@@ -6,13 +6,14 @@ use crate::{
 use igloo_interface::{
     id::ExtensionIndex,
     ipc::IglooMessage,
-    query::{Query, QueryResult, WatchUpdate, check::QueryError},
+    query::{OneShotQuery, QueryResult, WatchQuery, WatchUpdate, check::QueryError},
 };
-use std::{error::Error, thread::JoinHandle};
+use std::{error::Error, mem, thread::JoinHandle};
 
 // we allow the large size difference since
 // eval and apply are the most common operations
 #[allow(clippy::large_enum_variant)]
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum IglooRequest {
     Shutdown,
@@ -20,22 +21,24 @@ pub enum IglooRequest {
     /// Register with Igloo
     RegisterClient(kanal::Sender<IglooResponse>),
 
-    #[allow(dead_code)]
     UnregisterClient {
         client_id: usize,
     },
 
-    // TODO unregister watcher
-    /// Evaluate a query
-    EvalQuery {
+    EvalOneShot {
         client_id: usize,
         query_id: usize,
-        query: Query,
+        query: OneShotQuery,
     },
 
-    DropQuery {
+    SubWatch {
         client_id: usize,
         query_id: usize,
+        query: WatchQuery,
+    },
+
+    UnsubWatches {
+        client_id: usize,
     },
 
     HandleMessage {
@@ -44,11 +47,14 @@ pub enum IglooRequest {
     },
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum IglooResponse {
     /// Sent after registration
     /// Use this `client_id` for all future requests
-    Registered { client_id: usize },
+    Registered {
+        client_id: usize,
+    },
 
     QueryResult {
         query_id: usize,
@@ -57,7 +63,12 @@ pub enum IglooResponse {
 
     WatchUpdate {
         query_id: usize,
-        result: WatchUpdate,
+        value: WatchUpdate,
+    },
+
+    InvalidWatch {
+        query_id: usize,
+        error: QueryError,
     },
 }
 
@@ -100,8 +111,7 @@ pub struct ClientManager {
 #[derive(Debug, Clone)]
 pub struct Client {
     channel: kanal::Sender<IglooResponse>,
-    /// [(query_id, watcher_id)]
-    watchers: Vec<(usize, WatcherID)>,
+    watchers: Vec<WatcherID>,
 }
 
 pub async fn spawn() -> Result<(JoinHandle<()>, kanal::Sender<IglooRequest>), Box<dyn Error>> {
@@ -133,6 +143,15 @@ impl IglooCore {
         while let Ok(req) = self.rx.recv() {
             if let IglooRequest::Shutdown = req {
                 println!("CORE: Shutting down");
+                // for device in self.tree.devices().iter() {
+                //     println!("> device: {:?}", device.id());
+                //     for entity in device.entities() {
+                //         println!("   - entity: {}", entity.id());
+                //         for comp in entity.components() {
+                //             println!("      - comp: {comp:?}");
+                //         }
+                //     }
+                // }
                 break;
             }
 
@@ -146,31 +165,42 @@ impl IglooCore {
         use IglooRequest::*;
         match req {
             Shutdown => unreachable!(),
+
+            // extension proxy
             HandleMessage {
                 sender: from,
                 content: msg,
             } => ext::handle_msg(&mut self.cm, &mut self.tree, &mut self.engine, from, msg),
+
+            // client reg
             RegisterClient(channel) => self.cm.register(channel),
             UnregisterClient { client_id } => {
-                let watcher_ids = self.cm.unregister(client_id)?;
-                self.engine.drop_watchers(watcher_ids);
-                Ok(())
+                let client = self.cm.unregister(client_id)?;
+                self.engine.unsub_watches(client_id, client.watchers)
             }
-            DropQuery {
-                client_id,
-                query_id,
-            } => {
-                let watcher_ids = self.cm.drop_query(client_id, query_id)?;
-                self.engine.drop_watchers(watcher_ids);
-                Ok(())
-            }
-            EvalQuery {
+
+            // oneshot
+            EvalOneShot {
                 client_id,
                 query_id,
                 query,
             } => self
                 .engine
-                .eval(&mut self.tree, &mut self.cm, client_id, query_id, query),
+                .eval_oneshot(&mut self.tree, &mut self.cm, client_id, query_id, query),
+
+            // watch
+            SubWatch {
+                client_id,
+                query_id,
+                query,
+            } => self
+                .engine
+                .sub_watch(&mut self.tree, &mut self.cm, client_id, query_id, query),
+            UnsubWatches { client_id } => {
+                let client = self.cm.get_client_mut(client_id)?;
+                self.engine
+                    .unsub_watches(client_id, mem::take(&mut client.watchers))
+            }
         }
     }
 }
@@ -197,16 +227,11 @@ impl ClientManager {
         }
     }
 
-    fn unregister(&mut self, client_id: usize) -> Result<Vec<usize>, IglooError> {
-        let Some(client) = self.clients.get_mut(client_id).and_then(|o| o.take()) else {
-            return Err(IglooError::InvalidClient(client_id));
-        };
-
-        Ok(client
-            .watchers
-            .into_iter()
-            .map(|(_, watcher_id)| watcher_id)
-            .collect())
+    fn unregister(&mut self, client_id: usize) -> Result<Client, IglooError> {
+        match self.clients.get_mut(client_id).and_then(|o| o.take()) {
+            Some(client) => Ok(client),
+            None => Err(IglooError::InvalidClient(client_id)),
+        }
     }
 
     pub fn send(&mut self, client_id: usize, response: IglooResponse) -> Result<(), IglooError> {
@@ -225,40 +250,20 @@ impl ClientManager {
         }
     }
 
-    pub fn add_watcher(
-        &mut self,
-        client_id: usize,
-        query_id: usize,
-        watcher_id: usize,
-    ) -> Result<(), IglooError> {
+    fn get_client_mut(&mut self, client_id: usize) -> Result<&mut Client, IglooError> {
         match self.clients.get_mut(client_id) {
-            Some(Some(client)) => {
-                client.watchers.push((query_id, watcher_id));
-                Ok(())
-            }
+            Some(Some(client)) => Ok(client),
             _ => Err(IglooError::InvalidClient(client_id)),
         }
     }
 
-    pub fn drop_query(
+    pub fn add_watcher(
         &mut self,
         client_id: usize,
-        query_id: usize,
-    ) -> Result<Vec<usize>, IglooError> {
-        let Some(Some(client)) = self.clients.get_mut(client_id) else {
-            return Err(IglooError::InvalidClient(client_id));
-        };
-
-        let mut watcher_ids = Vec::new();
-        let mut i = 0;
-        while i < client.watchers.len() {
-            if client.watchers[i].0 == query_id {
-                watcher_ids.push(client.watchers.swap_remove(i).1);
-            } else {
-                i += 1;
-            }
-        }
-
-        Ok(watcher_ids)
+        watcher_id: WatcherID,
+    ) -> Result<(), IglooError> {
+        let client = self.get_client_mut(client_id)?;
+        client.watchers.push(watcher_id);
+        Ok(())
     }
 }
