@@ -3,6 +3,7 @@ use bincode::{Decode, Encode};
 use derive_more::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ComparisonOp {
     #[display("==")]
     Eq,

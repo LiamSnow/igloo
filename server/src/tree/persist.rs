@@ -151,15 +151,18 @@ impl DeviceTree {
 
         let name = reader.expect_field("name")?;
 
+        let devices_str = reader.expect_field("devices")?;
         let mut devices = HashSet::with_capacity_and_hasher(5, FxBuildHasher);
-        for device_str in reader.expect_field("devices")?.split(',') {
-            let device = device_str.parse::<u64>().map_err(|e| ContexedParseError {
-                inner: ParseError::ParseInt(e),
-                filename: reader.filename.clone(),
-                line: reader.cur_line,
-            })?;
+        if !devices_str.is_empty() {
+            for device_str in devices_str.split(',') {
+                let device = device_str.parse::<u64>().map_err(|e| ContexedParseError {
+                    inner: ParseError::ParseInt(e),
+                    filename: reader.filename.clone(),
+                    line: reader.cur_line,
+                })?;
 
-            devices.insert(DeviceID::from_comb(device));
+                devices.insert(DeviceID::from_comb(device));
+            }
         }
 
         arena

@@ -123,14 +123,7 @@ impl DeviceTree {
         let now = Instant::now();
         for device in self.devices.iter_mut() {
             if device.owner_ref == Some(index) {
-                device.owner_ref = None;
-
-                // clear device
-                device.presense = Presense::default();
-                device.entities = SmallVec::default();
-                device.entity_index_lut = HashMap::with_capacity_and_hasher(10, FxBuildHasher);
-                device.comp_to_entity = [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN];
-
+                device.reset();
                 device.last_updated = now;
             }
         }

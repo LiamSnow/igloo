@@ -36,7 +36,7 @@ use crate::{
 };
 use igloo_interface::{
     Aggregator, Component, ComponentType,
-    id::{DeviceID, EntityIndex, ExtensionIndex, GenerationalID, GroupID},
+    id::{DeviceID, EntityIndex, ExtensionIndex, GroupID},
     query::{
         DeviceGroupFilter, TypeFilter, WatchComponentQuery, WatchUpdate as U, check::QueryError,
     },
@@ -133,7 +133,7 @@ impl ComponentWatcher {
         });
 
         // new device added to group we care about
-        match &me.query.group {
+        match &me.query.device_filter.group {
             DeviceGroupFilter::Any => {
                 // no filter
             }
@@ -150,7 +150,7 @@ impl ComponentWatcher {
         // listen to component put of CTs we care about
         // listen to all types, can cause expansion (With, And, Or) OR contraction (Without, Not, And)
         let mut care = HashSet::with_capacity_and_hasher(20, FxBuildHasher);
-        if let Some(filter) = &me.query.type_filter {
+        if let Some(filter) = &me.query.entity_filter.type_filter {
             collect_all_types_in_tf(filter, &mut care);
         }
         care.insert(me.query.component);
@@ -207,15 +207,8 @@ impl ComponentWatcher {
         let op = self.query.post_op?;
         let mut agg = Aggregator::new(self.query.component, op)?;
 
-        println!("<em>");
         'top: for dm in self.matched.values() {
             for em in dm.entities.values() {
-                println!(
-                    " - dev={} ent={} value={:?}",
-                    em.device_id.take(),
-                    em.entity_index.0,
-                    em.value
-                );
                 // sometimes we can exit early
                 // ex. if we are checking binary ::Any
                 // and when encounter an `true` value
@@ -224,7 +217,6 @@ impl ComponentWatcher {
                 }
             }
         }
-        println!("<em/>");
 
         agg.finish()
     }
@@ -239,7 +231,7 @@ impl ComponentWatcher {
         }
 
         // clean up expansion subs
-        match &self.query.group {
+        match &self.query.device_filter.group {
             DeviceGroupFilter::In(gid) => {
                 unsubscribe_from_group_events(subs, *gid, self.id);
             }
@@ -253,7 +245,7 @@ impl ComponentWatcher {
 
         // clean up component_put subscriptions
         let mut care = HashSet::with_capacity_and_hasher(20, FxBuildHasher);
-        if let Some(filter) = &self.query.type_filter {
+        if let Some(filter) = &self.query.entity_filter.type_filter {
             collect_all_types_in_tf(filter, &mut care);
         }
         care.insert(self.query.component);
@@ -291,20 +283,20 @@ impl ComponentWatcher {
         device: &Device,
         entity: &Entity,
     ) -> bool {
-        if !passes_id_filter(device, &self.query.device_id)
-            || !passes_group_filter(device, &self.query.group, tree)
-            || !passes_owner_filter(device, &self.query.owner)
+        if !passes_id_filter(device, &self.query.device_filter.id)
+            || !passes_group_filter(device, &self.query.device_filter.group, tree)
+            || !passes_owner_filter(device, &self.query.device_filter.owner)
         {
             return false;
         }
 
-        if let Some(filter) = &self.query.type_filter
+        if let Some(filter) = &self.query.entity_filter.type_filter
             && !entity.matches(filter)
         {
             return false;
         }
 
-        passes_entity_id_filter(ctx, entity, &self.query.entity_id)
+        passes_entity_id_filter(ctx, entity, &self.query.entity_filter.id)
     }
 
     /// Expands matching set IF this is a valid target
@@ -443,7 +435,7 @@ impl DeviceMatch {
         }
 
         // group deleted | this device removed from group
-        match &query.group {
+        match &query.device_filter.group {
             DeviceGroupFilter::Any => {
                 // no filter
             }
@@ -534,7 +526,7 @@ impl DeviceMatch {
         }
 
         // cleanup group_device_removed
-        match &query.group {
+        match &query.device_filter.group {
             DeviceGroupFilter::Any => {}
             DeviceGroupFilter::In(gid) => {
                 if let Some(group_sub) = subs.group_device_removed.by_gid.get_mut(gid)
@@ -685,7 +677,7 @@ impl TreeEventResponder for ComponentWatcher {
     ) -> Result<(), IglooError> {
         let entity = &device.entities()[entity_index.0];
 
-        if let Some(filter) = &self.query.type_filter
+        if let Some(filter) = &self.query.entity_filter.type_filter
             && !entity.matches(filter)
         {
             self.contract_entity(subs, cm, *device.id(), entity_index)?;
@@ -726,7 +718,7 @@ impl TreeEventResponder for ComponentWatcher {
         tree: &DeviceTree,
         _gid: &GroupID,
     ) -> Result<(), IglooError> {
-        let group_filter = self.query.group.clone();
+        let group_filter = self.query.device_filter.group.clone();
         self.contract_matching_devices(subs, cm, |did, _| {
             tree.device(did)
                 .map(|device| !passes_group_filter(device, &group_filter, tree))
@@ -759,7 +751,7 @@ impl TreeEventResponder for ComponentWatcher {
         device: &Device,
     ) -> Result<(), IglooError> {
         // recheck filter bc it may apply if ::InAny
-        if !passes_group_filter(device, &self.query.group, tree) {
+        if !passes_group_filter(device, &self.query.device_filter.group, tree) {
             self.contract_device(subs, cm, *device.id())?;
         }
         Ok(())

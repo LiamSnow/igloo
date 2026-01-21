@@ -74,13 +74,13 @@ pub fn gen_enum_types(comps: &[Component]) -> TokenStream {
 
     quote! {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
-        #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub enum IglooEnumType {
             #(#type_variants),*
         }
 
         #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-        #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub enum IglooEnumValue {
             #(#value_variants),*
         }

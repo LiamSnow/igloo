@@ -12,6 +12,15 @@
 //! Each watcher subscribes to many events on the DeviceTree (ex. on_device_created)
 //! and may do some internal bookkeeping and/or dispatch a new update to it's clients.
 
+// TODO add delayed garbage collection (after maybe like a IRL day or something)
+// subscribing to existing watchers is cheap (<1us), maintaining watchers is pretty cheap,
+// and making new ones is more expensive (25-30us) so there is clear reason to do this,
+// especially when considering:
+//  1. dashboards can easily have 200+ watchers that need to be subscribed to
+//  2. watchers must be regiested sequentially
+//  3. faster registration -> faster page load
+//  4. the 25-30us regiration benchmark is: one a small smart home, running on my PC, and has minimal filters
+
 use igloo_interface::query::{WatchQuery, check::QueryError};
 
 use crate::{
@@ -52,7 +61,6 @@ impl QueryEngine {
         mut query: WatchQuery,
     ) -> Result<(), IglooError> {
         self.ctx.check_gc();
-
         query.optimize();
 
         let watcher = match self.get_watcher_by_query(&query) {
@@ -61,7 +69,7 @@ impl QueryEngine {
             None => match self.reg_watcher(tree, query) {
                 Ok(w) => w,
                 Err(error) => {
-                    cm.send(client_id, IglooResponse::InvalidWatch { query_id, error })?;
+                    cm.send(client_id, IglooResponse::WatchError { query_id, error })?;
                     return Ok(());
                 }
             },

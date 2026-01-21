@@ -35,6 +35,6 @@ impl QueryEngine {
             Component(q) => self.eval_component(cm, tree, q)?,
         };
 
-        cm.send(client_id, IglooResponse::QueryResult { query_id, result })
+        cm.send(client_id, IglooResponse::EvalResult { query_id, result })
     }
 }

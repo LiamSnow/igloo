@@ -48,8 +48,6 @@ pub fn main() {
         use crate::types::agg::AggregationOp;
         use std::cmp::Ordering;
         use bincode::{Encode, Decode};
-        #[cfg(feature = "penguin")]
-        use serde::{Deserialize, Serialize};
 
         /// Maximum Supported Igloo Component (ID)
         pub const MSIC: u16 = #max_id;

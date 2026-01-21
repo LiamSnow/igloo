@@ -27,9 +27,9 @@ impl WatchQuery {
         match self {
             WatchQuery::Metadata => {}
             WatchQuery::Component(q) => {
-                TypeFilter::add_with(&mut q.type_filter, q.component);
+                TypeFilter::add_with(&mut q.entity_filter.type_filter, q.component);
 
-                if let Some(tf) = &mut q.type_filter {
+                if let Some(tf) = &mut q.entity_filter.type_filter {
                     tf.optimize();
                 }
             }

@@ -6,8 +6,9 @@ build = "build/main.rs"
 
 [features]
 default = []
-penguin = ["serde"]
+penguin = []
 ipc = ["bytes", "tokio", "tokio-util", "futures-core", "futures-sink"]
+serde = ["dep:serde"]
 
 [dependencies]
 bincode = "2.0.1"

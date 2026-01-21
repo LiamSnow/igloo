@@ -4,7 +4,6 @@ use crate::{
     penguin::*,
     types::{IglooType, IglooValue},
 };
-use serde::{Deserialize, Serialize};
 
 /// PenguinGraph is meant to be a reliable serialization format
 /// for saving and transferring around graphs.
@@ -13,18 +12,19 @@ use serde::{Deserialize, Serialize};
 /// I have chosen to do it this way because the UI and Server
 /// have very different requirements for what they need to do
 /// with the graph.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenguinGraph {
     pub nodes: HashMap<PenguinNodeID, PenguinNode>,
     pub wires: HashMap<PenguinWireID, PenguinWire>,
 }
 
-#[derive(
-    Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenguinNodeID(pub u16);
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenguinNode {
     pub defn_ref: PenguinNodeDefnRef,
     pub x: f64,
@@ -38,18 +38,19 @@ pub struct PenguinNode {
     pub size: Option<(i32, i32)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenguinInputValue {
     pub value: IglooValue,
     pub size: Option<(i32, i32)>,
 }
 
-#[derive(
-    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenguinWireID(pub u16);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenguinWire {
     pub from_node: PenguinNodeID,
     pub from_pin: PenguinPinID,

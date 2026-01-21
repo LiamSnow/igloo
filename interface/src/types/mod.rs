@@ -34,7 +34,7 @@ pub type GroupSnapshotList = Vec<GroupSnapshot>;
 pub type EntitySnapshotList = Vec<EntitySnapshot>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IglooType {
     #[display("Integer")]
     Integer,
@@ -132,7 +132,7 @@ pub static IGLOO_TYPES: [IglooType; 28] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IglooValue {
     #[display("{_0}")]
     Integer(IglooInteger),

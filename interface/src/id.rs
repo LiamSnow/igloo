@@ -6,21 +6,21 @@ use std::str::FromStr;
 
 /// persistent
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Extension(\"{_0}\")")]
 #[repr(transparent)]
 pub struct ExtensionID(pub String);
 
 /// ephemeral
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Extension(#{_0})")]
 #[repr(transparent)]
 pub struct ExtensionIndex(pub usize);
 
 /// persistent
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Entity(\"{_0}\")")]
 #[repr(transparent)]
 pub struct EntityID(pub String);
@@ -28,7 +28,7 @@ pub struct EntityID(pub String);
 /// ephemeral
 // TODO actually use this
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Entity(#{_0})")]
 #[repr(transparent)]
 pub struct EntityIndex(pub usize);
@@ -47,7 +47,7 @@ pub struct EntityIndex(pub usize);
     bincode::Encode,
     bincode::Decode,
 )]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Device({}:{})", self.index(), self.generation())]
 #[repr(transparent)]
 pub struct DeviceID(u64);
@@ -66,7 +66,7 @@ pub struct DeviceID(u64);
     bincode::Encode,
     bincode::Decode,
 )]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Group({}:{})", self.index(), self.generation())]
 #[repr(transparent)]
 pub struct GroupID(u64);

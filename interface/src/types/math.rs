@@ -6,7 +6,7 @@ use derive_more::Display;
 /// The result type is always the type of the LHS (input value)
 /// For cases like Add(Real+Int) the RHS is auto-casted
 #[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MathOp {
     /// Int+Int,
     /// Real+Real, Real+Int,

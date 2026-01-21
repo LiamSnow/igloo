@@ -14,9 +14,9 @@ use std::ops::ControlFlow;
 
 pub fn estimate_entity_count(tree: &DeviceTree, query: &WatchComponentQuery) -> usize {
     let device_filter = DeviceFilter {
-        id: query.device_id.clone(),
-        owner: query.owner.clone(),
-        group: query.group.clone(),
+        id: query.device_filter.id.clone(),
+        owner: query.device_filter.owner.clone(),
+        group: query.device_filter.group.clone(),
         entity_count: None,
         last_update: None,
     };
@@ -35,16 +35,16 @@ where
     F: FnMut(&Device, &Entity) -> ControlFlow<()>,
 {
     let device_filter = DeviceFilter {
-        id: query.device_id,
-        owner: query.owner,
-        group: query.group,
+        id: query.device_filter.id,
+        owner: query.device_filter.owner,
+        group: query.device_filter.group,
         entity_count: None,
         last_update: None,
     };
 
     let entity_filter = EntityFilter {
-        id: query.entity_id,
-        type_filter: query.type_filter,
+        id: query.entity_filter.id,
+        type_filter: query.entity_filter.type_filter,
         value_filter: None,
         last_update: None,
     };

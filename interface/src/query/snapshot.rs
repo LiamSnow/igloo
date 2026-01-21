@@ -7,7 +7,7 @@ use derive_more::Display;
 use rustc_hash::FxHashSet;
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("{id}{{name={name},devices=[..]}}")]
 pub struct GroupSnapshot {
     pub id: GroupID,
@@ -16,7 +16,7 @@ pub struct GroupSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("{id}{{index={index},msc={max_supported_component}}}")]
 pub struct ExtensionSnapshot {
     pub id: ExtensionID,
@@ -26,7 +26,7 @@ pub struct ExtensionSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("{id}{{name={name},owner={owner},owner_ref={owner_ref:?},entities=[..],groups=[..]}}")]
 pub struct DeviceSnapshot {
     pub id: DeviceID,
@@ -38,7 +38,7 @@ pub struct DeviceSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[display("Entity{{id={id},index={index},components=[..]}}")]
 pub struct EntitySnapshot {
     pub id: EntityID,

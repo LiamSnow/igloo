@@ -1,9 +1,8 @@
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
-
 use crate::types::IglooType;
+use derive_more::Display;
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize, Display)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Display)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PenguinPinType {
     /// execution flow
     #[display("Flow")]

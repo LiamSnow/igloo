@@ -41,7 +41,7 @@ pub fn gen_comp_enum(comps: &[Component]) -> TokenStream {
 
     quote! {
         #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-        #[cfg_attr(feature = "penguin", derive(serde::Serialize, serde::Deserialize))]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[repr(u16)]
         pub enum Component {
             #(#enum_variants),*
@@ -164,7 +164,7 @@ impl Component {
 
         quote! {
             #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-            #[cfg_attr(feature = "penguin", derive(Serialize, Deserialize))]
+            #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
             #[repr(u8)]
             pub enum #name {
                 #(#variant_defs),*

@@ -4,51 +4,81 @@ use crate::{
     tree::{DeviceTree, TreeIDError, mutation::TreeMutationError, persist::TreePersistError},
 };
 use igloo_interface::{
-    id::ExtensionIndex,
-    ipc::IglooMessage,
+    id::{DeviceID, ExtensionIndex, GroupID},
+    ipc,
     query::{OneShotQuery, QueryResult, WatchQuery, WatchUpdate, check::QueryError},
 };
+use serde::{Deserialize, Serialize};
 use std::{error::Error, mem, thread::JoinHandle};
 
-// we allow the large size difference since
-// eval and apply are the most common operations
+/// (Client | Ext) -> Igloo Core
 #[allow(clippy::large_enum_variant)]
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum IglooRequest {
     Shutdown,
 
-    /// Register with Igloo
+    /// Register with Igloo Core
     RegisterClient(kanal::Sender<IglooResponse>),
 
-    UnregisterClient {
+    /// Client (once registered) -> Igloo
+    Client {
         client_id: usize,
-    },
-
-    EvalOneShot {
-        client_id: usize,
-        query_id: usize,
-        query: OneShotQuery,
-    },
-
-    SubWatch {
-        client_id: usize,
-        query_id: usize,
-        query: WatchQuery,
-    },
-
-    UnsubWatches {
-        client_id: usize,
+        msg: ClientMsg,
     },
 
     HandleMessage {
         sender: ExtensionIndex,
-        content: IglooMessage,
+        content: ipc::IglooMessage,
     },
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ClientMsg {
+    Unregister,
+
+    /// evaluate one-shot query
+    Eval {
+        query_id: usize,
+        query: OneShotQuery,
+    },
+
+    /// subscribe to watch query
+    Sub {
+        query_id: usize,
+        query: WatchQuery,
+    },
+
+    // unsubscribe from all watch queries
+    UnsubAll,
+
+    RenameDevice {
+        device_id: DeviceID,
+        new_name: String,
+    },
+
+    CreateGroup {
+        name: String,
+    },
+
+    DeleteGroup(GroupID),
+
+    RenameGroup {
+        group_id: GroupID,
+        new_name: String,
+    },
+
+    AddDeviceToGroup(GroupID, DeviceID),
+
+    RemoveDeviceFromGroup(GroupID, DeviceID),
+
+    DetachExt(ExtensionIndex),
+}
+
+/// Igloo Core -> Client
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IglooResponse {
     /// Sent after registration
     /// Use this `client_id` for all future requests
@@ -56,20 +86,25 @@ pub enum IglooResponse {
         client_id: usize,
     },
 
-    QueryResult {
+    // one-shot queries
+    EvalResult {
         query_id: usize,
         result: Result<QueryResult, QueryError>,
     },
 
+    // watch queries
     WatchUpdate {
         query_id: usize,
         value: WatchUpdate,
     },
-
-    InvalidWatch {
+    WatchError {
         query_id: usize,
         error: QueryError,
     },
+
+    // device tree mutation proxy
+    InvalidID(TreeIDError),
+    GroupCreated(GroupID),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -143,15 +178,15 @@ impl IglooCore {
         while let Ok(req) = self.rx.recv() {
             if let IglooRequest::Shutdown = req {
                 println!("CORE: Shutting down");
-                // for device in self.tree.devices().iter() {
-                //     println!("> device: {:?}", device.id());
-                //     for entity in device.entities() {
-                //         println!("   - entity: {}", entity.id());
-                //         for comp in entity.components() {
-                //             println!("      - comp: {comp:?}");
-                //         }
-                //     }
-                // }
+                for device in self.tree.devices().iter() {
+                    println!("> device: {:?}", device.id());
+                    for entity in device.entities() {
+                        println!("   - entity: {}", entity.id());
+                        for comp in entity.components() {
+                            println!("      - comp: {comp:?}");
+                        }
+                    }
+                }
                 break;
             }
 
@@ -174,33 +209,72 @@ impl IglooCore {
 
             // client reg
             RegisterClient(channel) => self.cm.register(channel),
-            UnregisterClient { client_id } => {
+
+            Client { client_id, msg } => {
+                let res = self.handle_client_msg(client_id, msg);
+                // all igloo errors an internal issues (ex. saving)
+                // except tree ID errors (client used invalid ID)
+                if let Err(IglooError::DeviceTreeID(e)) = res {
+                    return self.cm.send(client_id, IglooResponse::InvalidID(e));
+                }
+                res
+            }
+        }
+    }
+
+    fn handle_client_msg(&mut self, client_id: usize, msg: ClientMsg) -> Result<(), IglooError> {
+        use ClientMsg::*;
+        match msg {
+            Unregister => {
                 let client = self.cm.unregister(client_id)?;
                 self.engine.unsub_watches(client_id, client.watchers)
             }
 
-            // oneshot
-            EvalOneShot {
-                client_id,
-                query_id,
-                query,
-            } => self
-                .engine
-                .eval_oneshot(&mut self.tree, &mut self.cm, client_id, query_id, query),
+            // one-shot queries
+            Eval { query_id, query } => {
+                self.engine
+                    .eval_oneshot(&mut self.tree, &mut self.cm, client_id, query_id, query)
+            }
 
-            // watch
-            SubWatch {
-                client_id,
-                query_id,
-                query,
-            } => self
-                .engine
-                .sub_watch(&mut self.tree, &mut self.cm, client_id, query_id, query),
-            UnsubWatches { client_id } => {
+            // watch queries
+            Sub { query_id, query } => {
+                self.engine
+                    .sub_watch(&mut self.tree, &mut self.cm, client_id, query_id, query)
+            }
+            UnsubAll => {
                 let client = self.cm.get_client_mut(client_id)?;
                 self.engine
                     .unsub_watches(client_id, mem::take(&mut client.watchers))
             }
+
+            // device tree mutation proxy
+            RenameDevice {
+                device_id,
+                new_name,
+            } => self
+                .tree
+                .rename_device(&mut self.cm, &mut self.engine, device_id, new_name),
+            CreateGroup { name } => {
+                let gid = self
+                    .tree
+                    .create_group(&mut self.cm, &mut self.engine, name)?;
+                self.cm.send(client_id, IglooResponse::GroupCreated(gid))?;
+                Ok(())
+            }
+            DeleteGroup(gid) => self.tree.delete_group(&mut self.cm, &mut self.engine, gid),
+            RenameGroup { group_id, new_name } => {
+                self.tree
+                    .rename_group(&mut self.cm, &mut self.engine, &group_id, new_name)
+            }
+            AddDeviceToGroup(gid, did) => {
+                self.tree
+                    .add_device_to_group(&mut self.cm, &mut self.engine, gid, did)
+            }
+            RemoveDeviceFromGroup(gid, did) => {
+                self.tree
+                    .remove_device_from_group(&mut self.cm, &mut self.engine, gid, did)
+            }
+            DetachExt(xindex) => self.tree.detach_ext(&mut self.cm, &mut self.engine, xindex),
         }
     }
 }

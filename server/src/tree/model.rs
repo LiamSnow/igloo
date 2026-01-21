@@ -5,6 +5,7 @@ use igloo_interface::{
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot, TypeFilter},
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::{collections::HashMap, time::Instant};
 use tokio::task::JoinHandle;
@@ -85,7 +86,7 @@ pub struct Entity {
     pub(super) last_updated: Instant,
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
 pub enum TreeIDError {
     #[error("Device {0} does not exist")]
     DeviceDeleted(DeviceID),
@@ -299,6 +300,14 @@ impl Device {
             last_updated: Instant::now(),
             comp_to_entity: [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN],
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.owner_ref = None;
+        self.presense = Presense::default();
+        self.entities = SmallVec::default();
+        self.entity_index_lut = HashMap::with_capacity_and_hasher(10, FxBuildHasher);
+        self.comp_to_entity = [const { SmallVec::new_const() }; COMP_TYPE_ARR_LEN];
     }
 
     #[inline]

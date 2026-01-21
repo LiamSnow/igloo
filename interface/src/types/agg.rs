@@ -2,6 +2,7 @@ use bincode::{Decode, Encode};
 use derive_more::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AggregationOp {
     #[display("mean")]
     Mean,

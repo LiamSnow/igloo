@@ -12,6 +12,7 @@ use bincode::{Decode, Encode};
 //  - temporal component value queries (requires changes to device tree first)
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OneShotQuery {
     Extension(ExtensionQuery),
     Group(GroupQuery),
@@ -21,6 +22,7 @@ pub enum OneShotQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExtensionQuery {
     pub id: IDFilter<ExtensionID>,
     pub action: ExtensionAction,
@@ -28,6 +30,7 @@ pub struct ExtensionQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExtensionAction {
     GetID,
     Snapshot,
@@ -38,6 +41,7 @@ pub enum ExtensionAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GroupQuery {
     pub id: IDFilter<GroupID>,
     pub action: GroupAction,
@@ -45,6 +49,7 @@ pub struct GroupQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GroupAction {
     GetID,
     Snapshot,
@@ -53,6 +58,7 @@ pub enum GroupAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeviceQuery {
     pub filter: DeviceFilter,
     pub action: DeviceAction,
@@ -60,6 +66,7 @@ pub struct DeviceQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceAction {
     GetID,
     /// true=include entity snapshots
@@ -70,6 +77,7 @@ pub enum DeviceAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntityQuery {
     pub device_filter: DeviceFilter,
     pub entity_filter: EntityFilter,
@@ -78,12 +86,14 @@ pub struct EntityQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EntityAction {
     Snapshot,
     Count,
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ComponentQuery {
     pub device_filter: DeviceFilter,
     pub entity_filter: EntityFilter,
@@ -97,6 +107,7 @@ pub struct ComponentQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ComponentAction {
     GetValue,
 
@@ -108,6 +119,7 @@ pub enum ComponentAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IDFilter<T> {
     #[default]
     Any,
@@ -116,6 +128,7 @@ pub enum IDFilter<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeviceFilter {
     pub id: IDFilter<DeviceID>,
     pub owner: IDFilter<ExtensionID>,
@@ -128,6 +141,7 @@ pub struct DeviceFilter {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceGroupFilter {
     #[default]
     Any,
@@ -137,6 +151,7 @@ pub enum DeviceGroupFilter {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntityFilter {
     pub id: EntityIDFilter,
 
@@ -151,6 +166,7 @@ pub struct EntityFilter {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TypeFilter {
     With(ComponentType),
     Without(ComponentType),
@@ -160,6 +176,7 @@ pub enum TypeFilter {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ValueFilter {
     If(ComparisonOp, Component),
     And(Vec<ValueFilter>),
@@ -168,6 +185,7 @@ pub enum ValueFilter {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EntityIDFilter {
     #[default]
     Any,
@@ -180,6 +198,7 @@ pub enum EntityIDFilter {
 // -- Responses
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QueryResult {
     /// For Put, Set, Apply
     Ok,
@@ -205,6 +224,7 @@ pub enum QueryResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QueryResultType {
     Ok,
 

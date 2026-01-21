@@ -5,17 +5,7 @@
 // For things like Weather, etc they should be separate providers
 // What should dummies be?
 
-use igloo_interface::{
-    ComponentType,
-    id::{GenerationalID, GroupID},
-    query::{
-        ComponentQuery, DeviceFilter, DeviceGroupFilter, EntityFilter, EntityIDFilter, IDFilter,
-        OneShotQuery, TypeFilter, WatchComponentQuery, WatchQuery,
-    },
-    types::{IglooValue, agg::AggregationOp},
-};
-
-use crate::core::{IglooRequest, IglooResponse};
+use crate::core::IglooRequest;
 
 mod core;
 mod ext;
@@ -27,30 +17,30 @@ mod web;
 async fn main() {
     let (handle, req_tx) = core::spawn().await.unwrap();
 
-    let (tx, rx) = kanal::bounded(50);
-    req_tx.send(IglooRequest::RegisterClient(tx)).unwrap();
+    // let (tx, rx) = kanal::bounded(50);
+    // req_tx.send(IglooRequest::RegisterClient(tx)).unwrap();
 
-    let rx = rx.to_async();
+    // let rx = rx.to_async();
 
-    let Ok(IglooResponse::Registered { client_id }) = rx.recv().await else {
-        panic!();
-    };
+    // let Ok(IglooResponse::Registered { client_id }) = rx.recv().await else {
+    //     panic!();
+    // };
 
-    let query = OneShotQuery::Component(ComponentQuery {
-        device_filter: DeviceFilter {
-            group: DeviceGroupFilter::In(GroupID::from_comb(1)),
-            ..Default::default()
-        },
-        entity_filter: EntityFilter {
-            type_filter: Some(TypeFilter::With(ComponentType::Light)),
-            ..Default::default()
-        },
-        action: igloo_interface::query::ComponentAction::Set(IglooValue::Real(0.7)),
-        component: ComponentType::Dimmer,
-        post_op: None,
-        include_parents: false,
-        limit: None,
-    });
+    // let query = OneShotQuery::Component(ComponentQuery {
+    //     device_filter: DeviceFilter {
+    //         group: DeviceGroupFilter::In(GroupID::from_comb(1)),
+    //         ..Default::default()
+    //     },
+    //     entity_filter: EntityFilter {
+    //         type_filter: Some(TypeFilter::With(ComponentType::Light)),
+    //         ..Default::default()
+    //     },
+    //     action: igloo_interface::query::ComponentAction::Set(IglooValue::Real(0.7)),
+    //     component: ComponentType::Dimmer,
+    //     post_op: None,
+    //     include_parents: false,
+    //     limit: None,
+    // });
 
     // tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
@@ -62,8 +52,7 @@ async fn main() {
     //     })
     //     .unwrap();
 
-    let query = WatchQuery::Metadata;
-
+    // for i in 0..100 {
     // let query = WatchQuery::Component(WatchComponentQuery {
     //     device_id: IDFilter::Any,
     //     entity_id: EntityIDFilter::Any,
@@ -74,24 +63,49 @@ async fn main() {
     //     post_op: Some(AggregationOp::Mean),
     // });
 
-    req_tx
-        .send(IglooRequest::SubWatch {
-            client_id,
-            query_id: 0,
-            query,
-        })
-        .unwrap();
+    //     req_tx
+    //         .send(IglooRequest::SubWatch {
+    //             client_id,
+    //             query_id: 0,
+    //             query,
+    //         })
+    //         .unwrap();
+    // }
 
-    while let Ok(res) = rx.recv().await {
-        dbg!(res);
-    }
+    // let query = WatchQuery::Metadata;
+
+    // req_tx
+    //     .send(IglooRequest::Client {
+    //         client_id,
+    //         msg: ClientMsg::Sub { query_id: 0, query },
+    //     })
+    //     .unwrap();
+
+    // let group_id = GroupID::from_comb(2);
+
+    // let msgs = vec![
+    //     ClientMsg::AddDeviceToGroup(group_id, DeviceID::from_comb(0)),
+    //     ClientMsg::AddDeviceToGroup(group_id, DeviceID::from_comb(1)),
+    //     ClientMsg::RemoveDeviceFromGroup(group_id, DeviceID::from_comb(0)),
+    // ];
+
+    // for msg in msgs {
+    //     req_tx
+    //         .send(IglooRequest::Client { client_id, msg })
+    //         .unwrap();
+    //     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    // }
+
+    // while let Ok(res) = rx.recv().await {
+    //     dbg!(res);
+    // }
 
     // if let Err(e) = web::run(req_tx.clone()).await {
     //     eprintln!("Error running web: {e}");
     // }
 
-    // tokio::signal::ctrl_c().await.unwrap();
-    // println!("SHUTTING DOWN");
-    // req_tx.send(IglooRequest::Shutdown).unwrap();
-    // handle.join().unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+    println!("SHUTTING DOWN");
+    req_tx.send(IglooRequest::Shutdown).unwrap();
+    handle.join().unwrap();
 }

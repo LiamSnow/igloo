@@ -22,7 +22,7 @@ web-sys = { version = "0.3.81", features = [
   "KeyboardEvent",
   "InputEvent",
 ] }
-igloo-interface = { path = "../interface/", features = ["penguin"] }
+igloo-interface = { path = "../interface/", features = ["penguin", "serde"] }
 log = "0.4.28"
 console_log = "1.0.0"
 indexmap = "2.12.0"
