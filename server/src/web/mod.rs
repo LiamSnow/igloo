@@ -11,6 +11,7 @@ use axum_extra::{TypedHeader, headers::Cookie};
 use futures_util::{SinkExt, StreamExt};
 use std::error::Error;
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
 
 use crate::core::{ClientMsg, IglooRequest, IglooResponse};
 
@@ -47,8 +48,10 @@ pub async fn run(req_tx: kanal::Sender<IglooRequest>) -> Result<(), Box<dyn Erro
     };
 
     let app = Router::new()
-        // .route("/", get(d))
         .route("/ws", any(ws_handler))
+        .nest_service("/plugins", ServeDir::new("./plugins"))
+        .nest_service("/dashboards", ServeDir::new("./dashboards"))
+        .fallback_service(ServeDir::new("./web").append_index_html_on_directories(true))
         .with_state(state);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
@@ -80,8 +83,17 @@ async fn handle_socket(_cookies: Option<TypedHeader<Cookie>>, state: WState, soc
     }
     let res_rx = res_rx.to_async();
     let client_id = match res_rx.recv().await {
-        Ok(IglooResponse::Registered { client_id }) => {
+        Ok(response @ IglooResponse::Registered { client_id }) => {
             println!("Client {client_id} registered");
+
+            // Send registration confirmation to client
+            if let Ok(json) = serde_json::to_string(&response) {
+                if let Err(e) = ws_tx.send(Message::Text(json.into())).await {
+                    eprintln!("Failed to send registration to websocket: {e}");
+                    return;
+                }
+            }
+
             client_id
         }
         Ok(other) => {
@@ -113,7 +125,7 @@ async fn handle_socket(_cookies: Option<TypedHeader<Cookie>>, state: WState, soc
                             }
                             Err(e) => {
                                 // TODO send err over ws
-                                eprintln!("Failed to deserialize ClientMsg: {e}");
+                                eprintln!("Failed to deserialize ClientMsg: {e}\nRaw:{text}");
                             }
                         }
                     }

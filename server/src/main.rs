@@ -100,9 +100,9 @@ async fn main() {
     //     dbg!(res);
     // }
 
-    // if let Err(e) = web::run(req_tx.clone()).await {
-    //     eprintln!("Error running web: {e}");
-    // }
+    if let Err(e) = web::run(req_tx.clone()).await {
+        eprintln!("Error running web: {e}");
+    }
 
     tokio::signal::ctrl_c().await.unwrap();
     println!("SHUTTING DOWN");
