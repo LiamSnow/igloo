@@ -24,8 +24,10 @@ pub enum OneShotQuery {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExtensionQuery {
+    #[cfg_attr(feature = "serde", serde(default))]
     pub id: IDFilter<ExtensionID>,
     pub action: ExtensionAction,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub limit: Option<usize>,
 }
 
@@ -43,8 +45,10 @@ pub enum ExtensionAction {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GroupQuery {
+    #[cfg_attr(feature = "serde", serde(default))]
     pub id: IDFilter<GroupID>,
     pub action: GroupAction,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub limit: Option<usize>,
 }
 
@@ -60,8 +64,10 @@ pub enum GroupAction {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeviceQuery {
+    #[cfg_attr(feature = "serde", serde(default))]
     pub filter: DeviceFilter,
     pub action: DeviceAction,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub limit: Option<usize>,
 }
 
@@ -79,9 +85,12 @@ pub enum DeviceAction {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntityQuery {
+    #[cfg_attr(feature = "serde", serde(default))]
     pub device_filter: DeviceFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub entity_filter: EntityFilter,
     pub action: EntityAction,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub limit: Option<usize>,
 }
 
@@ -95,14 +104,19 @@ pub enum EntityAction {
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ComponentQuery {
+    #[cfg_attr(feature = "serde", serde(default))]
     pub device_filter: DeviceFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub entity_filter: EntityFilter,
     pub action: ComponentAction,
     pub component: ComponentType,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub post_op: Option<AggregationOp>,
     /// includes (DeviceID, EntityName) for each response
     /// R::ComponentValueWithParents instead of R::ComponentValue
+    #[cfg_attr(feature = "serde", serde(default))]
     pub include_parents: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub limit: Option<usize>,
 }
 
@@ -129,6 +143,7 @@ pub enum IDFilter<T> {
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct DeviceFilter {
     pub id: IDFilter<DeviceID>,
     pub owner: IDFilter<ExtensionID>,
@@ -152,6 +167,7 @@ pub enum DeviceGroupFilter {
 
 #[derive(Debug, Clone, PartialEq, Default, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct EntityFilter {
     pub id: EntityIDFilter,
 

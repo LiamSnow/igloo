@@ -16,14 +16,18 @@ pub enum WatchQuery {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WatchComponentQuery {
+    #[cfg_attr(feature = "serde", serde(default))]
     pub device_filter: WatchDeviceFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub entity_filter: WatchEntityFilter,
     pub component: ComponentType,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub post_op: Option<AggregationOp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct WatchDeviceFilter {
     pub id: IDFilter<DeviceID>,
     pub owner: IDFilter<ExtensionID>,
@@ -32,6 +36,7 @@ pub struct WatchDeviceFilter {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Encode, Decode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct WatchEntityFilter {
     pub id: EntityIDFilter,
     pub type_filter: Option<TypeFilter>,
