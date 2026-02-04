@@ -8,7 +8,6 @@ use crate::{
 };
 use igloo_interface::{
     Aggregator, Component,
-    id::GenerationalID,
     ipc::IglooMessage,
     query::{ComponentAction as A, ComponentQuery, QueryResult as R, check::QueryError},
 };
@@ -180,7 +179,7 @@ impl QueryEngine {
                             ..
                         } = &mut msg
                         {
-                            *d = device.id().take();
+                            *d = *device.id().inner();
                             *e = entity.index().0;
                         }
 
@@ -255,7 +254,7 @@ impl QueryEngine {
                         // components they put
 
                         let msg = IglooMessage::WriteComponents {
-                            device: device.id().take(),
+                            device: *device.id().inner(),
                             entity: entity.index().0,
                             comps: vec![comp],
                         };

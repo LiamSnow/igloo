@@ -4,7 +4,7 @@ use crate::{
     tree::DeviceTree,
 };
 use igloo_interface::{
-    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GenerationalID},
+    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex},
     ipc::IglooMessage,
 };
 use std::{error::Error, path::Path};
@@ -42,7 +42,7 @@ pub fn handle_msg(
             let id = tree.create_device(cm, engine, name.clone(), xindex)?;
             let ext = tree.ext(&xindex)?;
             let mut scratch = Vec::with_capacity(name.len() + 32);
-            let msg = IglooMessage::DeviceCreated(name, id.take());
+            let msg = IglooMessage::DeviceCreated(name, *id.inner());
             let res = ext.writer.try_write_immut(&msg, &mut scratch);
             if let Err(e) = res {
                 eprintln!(
@@ -62,7 +62,7 @@ pub fn handle_msg(
         } => tree.register_entity(
             cm,
             engine,
-            DeviceID::from_comb(device),
+            DeviceID::new(device),
             EntityID(entity_id),
             EntityIndex(entity_index),
         ),
@@ -74,7 +74,7 @@ pub fn handle_msg(
         } => tree.write_components(
             cm,
             engine,
-            DeviceID::from_comb(device),
+            DeviceID::new(device),
             EntityIndex(entity),
             comps,
         ),
