@@ -1,16 +1,22 @@
 use super::EXTS_DIR;
-use crate::core::{IglooError, IglooRequest};
+use crate::{
+    DATA_DIR, PACKAGES_DIR,
+    core::{IglooError, IglooRequest},
+};
 use futures_util::StreamExt;
 use igloo_interface::{
     MSIC,
     id::{ExtensionID, ExtensionIndex},
-    ipc::{IReader, IWriter, IglooMessage, MSIM},
+    ipc::{DATA_PATH_ENV_VAR, IReader, IWriter, IglooMessage, MSIM},
 };
-use std::{path::Path, process::Stdio};
+use std::{
+    path::{self, Path},
+    process::Stdio,
+};
 use tokio::{
     fs,
     net::UnixListener,
-    process::{self, Child},
+    process::{self, Child, Command},
     task::JoinHandle,
 };
 
@@ -23,6 +29,9 @@ pub struct ExtensionHandle {
     pub msim: u8,
 }
 
+pub const SOCKET: &str = "igloo.sock";
+pub const EXECUTABLE: &str = "./ext";
+
 impl ExtensionHandle {
     // TODO remove unwraps and panics
     pub async fn new(
@@ -31,20 +40,31 @@ impl ExtensionHandle {
     ) -> Result<(Self, IWriter), IglooError> {
         println!("Initializing Extension {id}");
 
-        let cwd = format!("{EXTS_DIR}/{}", id.0);
+        let mut cwd = PACKAGES_DIR.get().unwrap().clone();
+        cwd.push(EXTS_DIR);
+        cwd.push(id.0.to_string());
 
-        let data_path = format!("{cwd}/data");
+        let mut data_path = DATA_DIR.get().unwrap().clone();
+        data_path.push(EXTS_DIR);
+        data_path.push(id.0.to_string());
+        data_path = path::absolute(&data_path)?;
+
+        let mut socket_path = PACKAGES_DIR.get().unwrap().clone();
+        socket_path.push(EXTS_DIR);
+        socket_path.push(id.0.to_string());
+        socket_path.push(SOCKET);
+
         fs::create_dir_all(&data_path).await?;
-
-        let socket_path = format!("{cwd}/igloo.sock");
         let _ = fs::remove_file(&socket_path).await;
+
         let listener = UnixListener::bind(&socket_path)?;
 
         // TODO need to properly keep track of this for shutdown
-        let mut process = process::Command::new(Path::new("./ext"))
+        let mut process = Command::new(EXECUTABLE)
             .current_dir(cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .env(DATA_PATH_ENV_VAR, data_path)
             .spawn()?;
 
         proxy_stdio(&mut process, &id);

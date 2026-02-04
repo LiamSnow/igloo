@@ -1,4 +1,5 @@
 use crate::{
+    PACKAGES_DIR,
     core::{ClientManager, IglooError, IglooRequest},
     query::QueryEngine,
     tree::DeviceTree,
@@ -7,13 +8,13 @@ use igloo_interface::{
     id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex},
     ipc::IglooMessage,
 };
-use std::{error::Error, path::Path};
+use std::error::Error;
 use tokio::fs;
 
 pub mod handle;
 pub use handle::*;
 
-pub const EXTS_DIR: &str = "./extensions";
+pub const EXTS_DIR: &str = "extensions";
 
 pub async fn spawn_all(
     cm: &mut ClientManager,
@@ -28,6 +29,7 @@ pub async fn spawn_all(
     Ok(())
 }
 
+// TODO TODO move to igloo core ASAP
 /// Takes commands from a Extension and applies to Device Tree
 pub fn handle_msg(
     cm: &mut ClientManager,
@@ -87,9 +89,11 @@ pub fn handle_msg(
 }
 
 async fn get_all_ext_ids() -> Result<Vec<ExtensionID>, IglooError> {
-    let exts_path = Path::new(EXTS_DIR);
+    let mut exts_path = PACKAGES_DIR.get().unwrap().clone();
+    exts_path.push(EXTS_DIR);
+
     if !exts_path.exists() {
-        fs::create_dir(exts_path).await?;
+        fs::create_dir(&exts_path).await?;
         println!("Created directory: {EXTS_DIR}");
     } else if !exts_path.is_dir() {
         panic!("{EXTS_DIR} exists but is not a directory!");

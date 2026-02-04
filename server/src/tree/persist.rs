@@ -1,12 +1,8 @@
-//! This file handles saving and loading from groups.ini and devices.ini
-//!
-//! The goal here is to a super reliable parser with good error messages.
-//! Performance doesn't really matter here since it only happens once.
-//!
-//! For saving our goal is pure speed since it blocks the main loop.
-
 use super::{Device, DeviceTree, Group};
-use crate::tree::arena::{Arena, SlotOccupied};
+use crate::{
+    DATA_DIR,
+    tree::arena::{Arena, SlotOccupied},
+};
 use igloo_interface::id::{DeviceID, DeviceIDMarker, ExtensionID, GroupIDMarker};
 use rustc_hash::FxBuildHasher;
 use serde::Deserialize;
@@ -14,11 +10,11 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
+    path::PathBuf,
 };
 
-pub const GROUPS_FILE: &str = "data/groups.toml";
-pub const DEVICES_FILE: &str = "data/devices.toml";
-pub const WRITER_BUF_CAPACITY: usize = 1000;
+pub const GROUPS_FILE: &str = "groups.toml";
+pub const DEVICES_FILE: &str = "devices.toml";
 
 pub const HEADER_COMMENT: &str = "# WARN: Do not modify \
 this file unless you really know what you're doing.\n\
@@ -28,12 +24,14 @@ this file unless you really know what you're doing.\n\
 pub enum TreePersistError {
     #[error("File system error: {0}")]
     FileSystem(#[from] std::io::Error),
-    #[error("{0} cannot be a directory")]
-    FileIsDirectory(String),
+    #[error("{} cannot be a directory", _0.to_string_lossy())]
+    FileIsDirectory(PathBuf),
     #[error("Devices `{}` and `{}` have duplicate indicies. Hint: maybe file corruption or an error in manual modification.", _0.tried, _0.there)]
     DuplicateDevices(#[from] SlotOccupied<DeviceIDMarker>),
     #[error("Groups `{}` and `{}` have duplicate indicies. Hint: maybe file corruption or an error in manual modification.", _0.tried, _0.there)]
     DuplicateGroups(#[from] SlotOccupied<GroupIDMarker>),
+    #[error("`{}`: {}", _0, _1)]
+    Parse(&'static str, toml::de::Error),
 }
 
 #[derive(Deserialize)]
@@ -84,21 +82,24 @@ impl DeviceTree {
     }
 
     fn open_file(filename: &str) -> Result<File, TreePersistError> {
-        if !fs::exists(filename)? {
-            fs::write(filename, "generation=0\n")?;
+        let mut path = DATA_DIR.get().unwrap().clone();
+        path.push(filename);
+
+        if !fs::exists(&path)? {
+            fs::write(&path, format!("{HEADER_COMMENT}generation = 0\n\n"))?;
         }
 
-        let file = File::options().read(true).write(true).open(filename)?;
+        let file = File::options().read(true).write(true).open(&path)?;
 
         let meta = file.metadata()?;
         if meta.is_dir() {
-            return Err(TreePersistError::FileIsDirectory(filename.to_string()));
+            return Err(TreePersistError::FileIsDirectory(path));
         }
 
         if meta.is_symlink() {
-            let sym_meta = fs::symlink_metadata(filename)?;
+            let sym_meta = fs::symlink_metadata(&path)?;
             if sym_meta.is_dir() {
-                return Err(TreePersistError::FileIsDirectory(filename.to_string()));
+                return Err(TreePersistError::FileIsDirectory(path));
             }
         }
 
@@ -108,7 +109,8 @@ impl DeviceTree {
     fn load_groups(file: &mut File) -> Result<Arena<GroupIDMarker, Group>, TreePersistError> {
         let mut content = String::with_capacity(file.metadata()?.len() as usize);
         file.read_to_string(&mut content)?;
-        let ir: GroupsIR = toml::from_str(&content).unwrap();
+        let ir: GroupsIR =
+            toml::from_str(&content).map_err(|e| TreePersistError::Parse(GROUPS_FILE, e))?;
 
         let max_index = ir
             .group
@@ -127,7 +129,8 @@ impl DeviceTree {
     fn load_devices(file: &mut File) -> Result<Arena<DeviceIDMarker, Device>, TreePersistError> {
         let mut content = String::with_capacity(file.metadata()?.len() as usize);
         file.read_to_string(&mut content)?;
-        let ir: DevicesIR = toml::from_str(&content).unwrap();
+        let ir: DevicesIR =
+            toml::from_str(&content).map_err(|e| TreePersistError::Parse(DEVICES_FILE, e))?;
 
         let max_index = ir
             .device
@@ -196,7 +199,7 @@ impl PersistWriter {
     pub fn new(file: File) -> Self {
         Self {
             file: Some(file),
-            buf: String::with_capacity(WRITER_BUF_CAPACITY),
+            buf: String::with_capacity(1000),
             itoa_buf: itoa::Buffer::new(),
         }
     }
@@ -204,7 +207,7 @@ impl PersistWriter {
     pub fn fake() -> Self {
         Self {
             file: None,
-            buf: String::with_capacity(WRITER_BUF_CAPACITY),
+            buf: String::with_capacity(1000),
             itoa_buf: itoa::Buffer::new(),
         }
     }

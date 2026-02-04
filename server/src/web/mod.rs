@@ -13,7 +13,10 @@ use std::error::Error;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use crate::core::{ClientMsg, IglooRequest, IglooResponse};
+use crate::{
+    DATA_DIR, PACKAGES_DIR, WWW_DIR,
+    core::{ClientMsg, IglooRequest, IglooResponse},
+};
 
 #[derive(Clone)]
 struct WState {
@@ -42,19 +45,36 @@ MVP Should:
 
 */
 
-pub async fn run(req_tx: kanal::Sender<IglooRequest>) -> Result<(), Box<dyn Error>> {
+pub const PLUGINS_DIR: &str = "plugins";
+pub const DASHBOARDS_DIR: &str = "dashboards";
+
+pub async fn run(
+    req_tx: kanal::Sender<IglooRequest>,
+    address: String,
+    port: u16,
+) -> Result<(), Box<dyn Error>> {
     let state = WState {
         req_tx: req_tx.to_async(),
     };
 
+    let mut plugins_dir = PACKAGES_DIR.get().unwrap().clone();
+    plugins_dir.push(PLUGINS_DIR);
+
+    let mut dashboards_dir = DATA_DIR.get().unwrap().clone();
+    dashboards_dir.push(DASHBOARDS_DIR);
+
+    let www_dir = WWW_DIR.get().unwrap();
+
     let app = Router::new()
         .route("/ws", any(ws_handler))
-        .nest_service("/plugins", ServeDir::new("./plugins"))
-        .nest_service("/dashboards", ServeDir::new("./dashboards"))
-        .fallback_service(ServeDir::new("./web").append_index_html_on_directories(true))
+        .nest_service("/plugins", ServeDir::new(plugins_dir))
+        .nest_service("/dashboards", ServeDir::new(dashboards_dir))
+        .fallback_service(ServeDir::new(www_dir).append_index_html_on_directories(true))
         .with_state(state);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
+    let addr = format!("{address}:{port}");
+    let listener = TcpListener::bind(&addr).await?;
+    println!("Running server on {addr}");
     axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())
