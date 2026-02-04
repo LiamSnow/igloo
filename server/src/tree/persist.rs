@@ -107,7 +107,7 @@ impl DeviceTree {
 
     fn load_groups(file: &mut File) -> Result<Arena<GroupIDMarker, Group>, TreePersistError> {
         let mut content = String::with_capacity(file.metadata()?.len() as usize);
-        file.read_to_string(&mut content);
+        file.read_to_string(&mut content)?;
         let ir: GroupsIR = toml::from_str(&content).unwrap();
 
         let max_index = ir
@@ -126,7 +126,7 @@ impl DeviceTree {
 
     fn load_devices(file: &mut File) -> Result<Arena<DeviceIDMarker, Device>, TreePersistError> {
         let mut content = String::with_capacity(file.metadata()?.len() as usize);
-        file.read_to_string(&mut content);
+        file.read_to_string(&mut content)?;
         let ir: DevicesIR = toml::from_str(&content).unwrap();
 
         let max_index = ir
