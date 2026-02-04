@@ -11,9 +11,10 @@ use igloo_interface::id::GenerationalID;
 use std::marker::PhantomData;
 
 #[derive(thiserror::Error, Debug)]
-pub enum InsertAtError {
-    #[error("Slot {0} already occupied")]
-    SlotOccupied(usize),
+#[error("Cannot insert `{tried}` because `{there}` has that slot!")]
+pub struct SlotOccupied<IDMarker> {
+    pub tried: GenerationalID<IDMarker>,
+    pub there: GenerationalID<IDMarker>,
 }
 
 #[derive(Debug)]
@@ -22,35 +23,18 @@ pub enum Entry<T> {
     Occupied { generation: u32, value: T },
 }
 
-#[derive(Debug)]
-pub struct Arena<ID: GenerationalID, T> {
+pub struct Arena<IDMarker, T> {
     items: Vec<Entry<T>>,
     generation: u32,
     free_list_head: Option<usize>,
     len: usize,
-    _phantom: PhantomData<ID>,
+    _phantom: PhantomData<IDMarker>,
 }
 
-impl<ID: GenerationalID, T> Default for Arena<ID, T> {
-    fn default() -> Self {
-        Self::with_capacity(50)
-    }
-}
-
-impl<ID: GenerationalID, T> Arena<ID, T> {
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            items: Vec::with_capacity(capacity),
-            generation: 0,
-            free_list_head: None,
-            len: 0,
-            _phantom: PhantomData,
-        }
-    }
-
+impl<IDMarker, T> Arena<IDMarker, T> {
     /// Creates an arena with pre-allocated slots up to max_index
     /// All slots up to max_index become free entries
-    pub fn with_preallocated_slots(max_index: usize, generation: u32) -> Self {
+    pub fn new(max_index: usize, generation: u32) -> Self {
         let mut items = Vec::with_capacity(max_index + 1);
 
         // build free list
@@ -74,7 +58,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
     }
 
     /// Insert a value, allocating a new slot if needed
-    pub fn insert(&mut self, value: T) -> ID {
+    pub fn insert(&mut self, value: T) -> GenerationalID<IDMarker> {
         // try to use free list first
         if let Some(index) = self.free_list_head {
             match self.items[index] {
@@ -85,7 +69,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
                         generation: self.generation,
                         value,
                     };
-                    return ID::from_parts(index as u32, self.generation);
+                    return GenerationalID::from_parts(index as u32, self.generation);
                 }
                 Entry::Occupied { .. } => {
                     eprintln!(
@@ -114,7 +98,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
                     generation: self.generation,
                     value,
                 };
-                ID::from_parts(index as u32, self.generation)
+                GenerationalID::from_parts(index as u32, self.generation)
             }
             // really should not happen
             Entry::Occupied { .. } => unreachable!("corrupt free list after reserve"),
@@ -139,7 +123,11 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
     /// Insert at a specific index with a specific generation
     /// Used during load to restore persisted state
     /// Will automatically expand the arena if needed
-    pub fn insert_at(&mut self, id: ID, value: T) -> Result<(), InsertAtError> {
+    pub fn insert_at(
+        &mut self,
+        id: GenerationalID<IDMarker>,
+        value: T,
+    ) -> Result<(), SlotOccupied<IDMarker>> {
         let index = id.index() as usize;
         let generation = id.generation();
 
@@ -171,7 +159,10 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
                 self.len += 1;
                 Ok(())
             }
-            Entry::Occupied { .. } => Err(InsertAtError::SlotOccupied(index)),
+            Entry::Occupied { generation, .. } => Err(SlotOccupied {
+                tried: id,
+                there: GenerationalID::from_parts(index as u32, *generation),
+            }),
         }
     }
 
@@ -209,7 +200,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
 
     /// Remove an element by ID
     /// Returns Some(value) if removed, None if not found or stale
-    pub fn remove(&mut self, id: ID) -> Option<T> {
+    pub fn remove(&mut self, id: GenerationalID<IDMarker>) -> Option<T> {
         let index = id.index() as usize;
 
         if index >= self.items.len() {
@@ -241,7 +232,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
     /// Get a reference to an element
     /// Returns None if not found or stale
     #[inline]
-    pub fn get(&self, id: &ID) -> Option<&T> {
+    pub fn get(&self, id: &GenerationalID<IDMarker>) -> Option<&T> {
         let index = id.index() as usize;
 
         match self.items.get(index) {
@@ -255,7 +246,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
     /// Get a mutable reference to an element
     /// Returns None if not found or stale
     #[inline]
-    pub fn get_mut(&mut self, id: &ID) -> Option<&mut T> {
+    pub fn get_mut(&mut self, id: &GenerationalID<IDMarker>) -> Option<&mut T> {
         let index = id.index() as usize;
 
         match self.items.get_mut(index) {
@@ -268,7 +259,7 @@ impl<ID: GenerationalID, T> Arena<ID, T> {
 
     #[allow(dead_code)]
     #[inline]
-    pub fn contains(&self, id: &ID) -> bool {
+    pub fn contains(&self, id: &GenerationalID<IDMarker>) -> bool {
         self.get(id).is_some()
     }
 

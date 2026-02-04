@@ -6,71 +6,59 @@
 //! For saving our goal is pure speed since it blocks the main loop.
 
 use super::{Device, DeviceTree, Group};
-use crate::tree::arena::{Arena, InsertAtError};
-use igloo_interface::id::{DeviceID, ExtensionID, GenerationalID, GroupID};
+use crate::tree::arena::{Arena, SlotOccupied};
+use igloo_interface::id::{DeviceID, DeviceIDMarker, ExtensionID, GroupIDMarker};
 use rustc_hash::FxBuildHasher;
+use serde::Deserialize;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{self, File},
-    io::{self, Seek, SeekFrom, Write},
-    num::ParseIntError,
+    io::{self, Read, Seek, SeekFrom, Write},
 };
 
-pub const GROUPS_FILE: &str = "groups.ini";
-pub const DEVICES_FILE: &str = "devices.ini";
+pub const GROUPS_FILE: &str = "data/groups.toml";
+pub const DEVICES_FILE: &str = "data/devices.toml";
+pub const WRITER_BUF_CAPACITY: usize = 1000;
 
-pub const HEADER_COMMENT: &str = "; WARN: Do not modify \
+pub const HEADER_COMMENT: &str = "# WARN: Do not modify \
 this file unless you really know what you're doing.\n\
-; This file is NOT format or comment preserving \n\n";
+# This file is NOT format or comment preserving \n\n";
 
 #[derive(thiserror::Error, Debug)]
 pub enum TreePersistError {
     #[error("File system error: {0}")]
     FileSystem(#[from] std::io::Error),
     #[error("{0} cannot be a directory")]
-    FileIsDirection(String),
-    #[error(transparent)]
-    Parse(#[from] ContexedParseError),
+    FileIsDirectory(String),
+    #[error("Devices `{}` and `{}` have duplicate indicies. Hint: maybe file corruption or an error in manual modification.", _0.tried, _0.there)]
+    DuplicateDevices(#[from] SlotOccupied<DeviceIDMarker>),
+    #[error("Groups `{}` and `{}` have duplicate indicies. Hint: maybe file corruption or an error in manual modification.", _0.tried, _0.there)]
+    DuplicateGroups(#[from] SlotOccupied<GroupIDMarker>),
 }
 
-#[derive(thiserror::Error, Debug)]
-#[error("Error in {filename} on line {line}: {inner}")]
-pub struct ContexedParseError {
-    pub filename: String,
-    pub line: usize,
-    pub inner: ParseError,
+#[derive(Deserialize)]
+struct GroupsIR {
+    generation: u32,
+    group: Vec<Group>,
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum ParseError {
-    #[error(transparent)]
-    ParseInt(ParseIntError),
-    #[error("Unclosed section bracket")]
-    UnclosedSection,
-    #[error("Invalid section number: {0}")]
-    InvalidSectionNumber(String),
-    #[error("Invalid line format (expected section or key=value)")]
-    InvalidLineFormat,
-    #[error(transparent)]
-    InsertAt(InsertAtError),
-    #[error("Expected {expected}, found end of file")]
-    UnexpectedEOF { expected: String },
-    #[error("Expected {expected}, found section [{found}]")]
-    UnexpectedSection { expected: String, found: u64 },
-    #[error("Expected {expected}, found field '{found_key}={found_value}'")]
-    UnexpectedField {
-        expected: String,
-        found_key: String,
-        found_value: String,
-    },
+#[derive(Deserialize)]
+struct DevicesIR {
+    generation: u32,
+    device: Vec<DeviceIR>,
+}
+
+#[derive(Deserialize)]
+struct DeviceIR {
+    id: DeviceID,
+    name: String,
+    owner: ExtensionID,
 }
 
 impl DeviceTree {
     pub fn load() -> Result<Self, TreePersistError> {
         let mut groups_file = Self::open_file(GROUPS_FILE)?;
         let mut devices_file = Self::open_file(DEVICES_FILE)?;
-        let groups_meta = groups_file.metadata()?;
-        let devices_meta = devices_file.metadata()?;
 
         let groups = Self::load_groups(&mut groups_file)?;
         let devices = Self::load_devices(&mut devices_file)?;
@@ -87,17 +75,11 @@ impl DeviceTree {
 
         Ok(Self {
             groups,
+            groups_writer: PersistWriter::new(groups_file),
             devices,
+            devices_writer: PersistWriter::new(devices_file),
             attached_exts: Vec::with_capacity(10),
             ext_ref_lut: HashMap::with_capacity_and_hasher(10, FxBuildHasher),
-            groups_writer: IniWriter::new(
-                groups_file,
-                usize::max(1000, (groups_meta.len() * 100 + 200) as usize),
-            ),
-            devices_writer: IniWriter::new(
-                devices_file,
-                usize::max(1000, (devices_meta.len() * 100 + 200) as usize),
-            ),
         })
     }
 
@@ -110,111 +92,55 @@ impl DeviceTree {
 
         let meta = file.metadata()?;
         if meta.is_dir() {
-            return Err(TreePersistError::FileIsDirection(filename.to_string()));
+            return Err(TreePersistError::FileIsDirectory(filename.to_string()));
         }
 
         if meta.is_symlink() {
             let sym_meta = fs::symlink_metadata(filename)?;
             if sym_meta.is_dir() {
-                return Err(TreePersistError::FileIsDirection(filename.to_string()));
+                return Err(TreePersistError::FileIsDirectory(filename.to_string()));
             }
         }
 
         Ok(file)
     }
 
-    fn load_groups(file: &mut File) -> Result<Arena<GroupID, Group>, TreePersistError> {
-        let mut reader = IniReader::new(GROUPS_FILE.to_string(), file)?;
-        let global_gen = reader.read_global_generation()?;
+    fn load_groups(file: &mut File) -> Result<Arena<GroupIDMarker, Group>, TreePersistError> {
+        let mut content = String::with_capacity(file.metadata()?.len() as usize);
+        file.read_to_string(&mut content);
+        let ir: GroupsIR = toml::from_str(&content).unwrap();
 
-        let est = reader.lines.len().saturating_sub(3) / 4;
-        let mut arena = Arena::with_preallocated_slots(est, global_gen);
+        let max_index = ir
+            .group
+            .last()
+            .map(|last| last.id.index())
+            .unwrap_or_default();
+        let mut arena = Arena::new(max_index as usize, ir.generation);
 
-        Self::load_groups_rec(&mut reader, &mut arena)?;
-
-        Ok(arena)
-    }
-
-    fn load_groups_rec(
-        reader: &mut IniReader,
-        arena: &mut Arena<GroupID, Group>,
-    ) -> Result<(), ContexedParseError> {
-        let id = match reader.expect_section() {
-            Ok(id) => GroupID::from_comb(id),
-            Err(e) => {
-                if matches!(e.inner, ParseError::UnexpectedEOF { .. }) {
-                    return Ok(());
-                }
-                return Err(e);
-            }
-        };
-
-        let name = reader.expect_field("name")?;
-
-        let devices_str = reader.expect_field("devices")?;
-        let mut devices = HashSet::with_capacity_and_hasher(5, FxBuildHasher);
-        if !devices_str.is_empty() {
-            for device_str in devices_str.split(',') {
-                let device = device_str.parse::<u64>().map_err(|e| ContexedParseError {
-                    inner: ParseError::ParseInt(e),
-                    filename: reader.filename.clone(),
-                    line: reader.cur_line,
-                })?;
-
-                devices.insert(DeviceID::from_comb(device));
-            }
+        for group in ir.group {
+            arena.insert_at(group.id, group)?;
         }
 
-        arena
-            .insert_at(id, Group { id, name, devices })
-            .map_err(|e| ContexedParseError {
-                inner: ParseError::InsertAt(e),
-                filename: reader.filename.clone(),
-                line: reader.cur_line,
-            })?;
-
-        Self::load_groups_rec(reader, arena)
-    }
-
-    fn load_devices(file: &mut File) -> Result<Arena<DeviceID, Device>, TreePersistError> {
-        let mut reader = IniReader::new(DEVICES_FILE.to_string(), file)?;
-        let global_gen = reader.read_global_generation()?;
-
-        let est = reader.lines.len().saturating_sub(3) / 4;
-        let mut arena = Arena::with_preallocated_slots(est, global_gen);
-
-        Self::load_devices_rec(&mut reader, &mut arena)?;
-
         Ok(arena)
     }
 
-    fn load_devices_rec(
-        reader: &mut IniReader,
-        arena: &mut Arena<DeviceID, Device>,
-    ) -> Result<(), ContexedParseError> {
-        let id = match reader.expect_section() {
-            Ok(id) => DeviceID::from_comb(id),
-            Err(e) => {
-                if matches!(e.inner, ParseError::UnexpectedEOF { .. }) {
-                    return Ok(());
-                }
-                return Err(e);
-            }
-        };
+    fn load_devices(file: &mut File) -> Result<Arena<DeviceIDMarker, Device>, TreePersistError> {
+        let mut content = String::with_capacity(file.metadata()?.len() as usize);
+        file.read_to_string(&mut content);
+        let ir: DevicesIR = toml::from_str(&content).unwrap();
 
-        let name = reader.expect_field("name")?;
-        let owner = reader.expect_field("owner")?;
-        let owner = ExtensionID(owner);
+        let max_index = ir
+            .device
+            .last()
+            .map(|last| last.id.index())
+            .unwrap_or_default();
+        let mut arena = Arena::new(max_index as usize, ir.generation);
 
-        arena
-            .insert_at(id, Device::new(id, name, owner))
-            .map_err(|e| ContexedParseError {
-                inner: ParseError::InsertAt(e),
-                filename: reader.filename.clone(),
-                line: reader.cur_line,
-            })?;
+        for device in ir.device {
+            arena.insert_at(device.id, Device::new(device.id, device.name, device.owner))?;
+        }
 
-        Self::load_devices_rec(reader, arena)
+        Ok(arena)
     }
 
     pub(super) fn save_groups(&mut self) -> Result<(), TreePersistError> {
@@ -228,19 +154,9 @@ impl DeviceTree {
                 continue;
             };
 
-            w.write_section(group.id().take());
-            w.write_field("name", &group.name);
-
-            w.buf.push_str("devices=");
-            let mut first = true;
-            for device_id in &group.devices {
-                if !first {
-                    w.buf.push(',');
-                }
-                w.buf.push_str(w.itoa_buf.format(device_id.take()));
-                first = false;
-            }
-            w.buf.push('\n');
+            w.buf.push_str("\n[[group]]\n");
+            let content = toml::to_string_pretty(group).unwrap();
+            w.buf.push_str(&content);
         }
 
         w.end_write()?;
@@ -259,9 +175,9 @@ impl DeviceTree {
                 continue;
             };
 
-            w.write_section(device.id().take());
-            w.write_field("name", &device.name);
-            w.write_field("owner", &device.owner.0);
+            w.buf.push_str("\n[[device]]\n");
+            let content = toml::to_string_pretty(device).unwrap();
+            w.buf.push_str(&content);
         }
 
         w.end_write()?;
@@ -270,17 +186,17 @@ impl DeviceTree {
     }
 }
 
-pub struct IniWriter {
+pub struct PersistWriter {
     file: Option<File>,
     buf: String,
     itoa_buf: itoa::Buffer,
 }
 
-impl IniWriter {
-    pub fn new(file: File, capacity: usize) -> Self {
+impl PersistWriter {
+    pub fn new(file: File) -> Self {
         Self {
             file: Some(file),
-            buf: String::with_capacity(capacity),
+            buf: String::with_capacity(WRITER_BUF_CAPACITY),
             itoa_buf: itoa::Buffer::new(),
         }
     }
@@ -288,7 +204,7 @@ impl IniWriter {
     pub fn fake() -> Self {
         Self {
             file: None,
-            buf: String::with_capacity(1000),
+            buf: String::with_capacity(WRITER_BUF_CAPACITY),
             itoa_buf: itoa::Buffer::new(),
         }
     }
@@ -312,155 +228,8 @@ impl IniWriter {
 
     pub fn write_header(&mut self, generation: u32) {
         self.buf.push_str(HEADER_COMMENT);
-        self.buf.push_str("generation=");
+        self.buf.push_str("generation = ");
         self.buf.push_str(self.itoa_buf.format(generation));
         self.buf.push_str("\n\n");
     }
-
-    pub fn write_section(&mut self, id: u64) {
-        self.buf.push_str("\n[");
-        self.buf.push_str(self.itoa_buf.format(id));
-        self.buf.push_str("]\n");
-    }
-
-    pub fn write_field(&mut self, key: &str, value: &str) {
-        self.buf.push_str(key);
-        self.buf.push('=');
-        self.buf.push_str(value);
-        self.buf.push('\n');
-    }
 }
-
-struct IniReader {
-    filename: String,
-    lines: Vec<String>,
-    cur_line: usize,
-}
-
-enum IniLine<'a> {
-    Section(u64),
-    Field { key: &'a str, value: &'a str },
-}
-
-impl IniReader {
-    fn new(filename: String, file: &mut File) -> io::Result<Self> {
-        let content = io::read_to_string(file)?;
-        let lines: Vec<String> = content.lines().map(String::from).collect();
-        Ok(Self {
-            filename,
-            lines,
-            cur_line: 0,
-        })
-    }
-
-    fn next_line<'a>(&'a mut self) -> Result<Option<IniLine<'a>>, ContexedParseError> {
-        loop {
-            let Some(line) = self.lines.get(self.cur_line) else {
-                return Ok(None);
-            };
-            self.cur_line += 1;
-
-            let line = match line.find([';', '#']) {
-                Some(pos) => &line[..pos].trim(),
-                None => line.trim(),
-            };
-
-            if line.is_empty() {
-                continue;
-            }
-
-            if let Some(stripped) = line.strip_prefix('[') {
-                let section_str = stripped
-                    .strip_suffix(']')
-                    .ok_or_else(|| ContexedParseError {
-                        filename: self.filename.clone(),
-                        line: self.cur_line,
-                        inner: ParseError::UnclosedSection,
-                    })?;
-
-                let section = section_str.parse::<u64>().map_err(|_| ContexedParseError {
-                    filename: self.filename.clone(),
-                    line: self.cur_line,
-                    inner: ParseError::InvalidSectionNumber(section_str.to_string()),
-                })?;
-
-                return Ok(Some(IniLine::Section(section)));
-            }
-
-            return match line.split_once('=') {
-                Some((key, value)) => Ok(Some(IniLine::Field {
-                    key: key.trim(),
-                    value: value.trim(),
-                })),
-                None => Err(ContexedParseError {
-                    filename: self.filename.clone(),
-                    line: self.cur_line,
-                    inner: ParseError::InvalidLineFormat,
-                }),
-            };
-        }
-    }
-
-    fn read_global_generation(&mut self) -> Result<u32, ContexedParseError> {
-        let value = self.expect_field("generation")?;
-        value.parse::<u32>().map_err(|e| ContexedParseError {
-            filename: self.filename.clone(),
-            line: self.cur_line,
-            inner: ParseError::ParseInt(e),
-        })
-    }
-
-    fn expect_section(&mut self) -> Result<u64, ContexedParseError> {
-        match self.next_line()? {
-            Some(IniLine::Section(id)) => Ok(id),
-            Some(IniLine::Field { key, value }) => Err(ContexedParseError {
-                inner: ParseError::UnexpectedField {
-                    expected: "section".to_string(),
-                    found_key: key.to_string(),
-                    found_value: value.to_string(),
-                },
-                filename: self.filename.clone(),
-                line: self.cur_line,
-            }),
-            None => Err(ContexedParseError {
-                filename: self.filename.clone(),
-                line: self.cur_line,
-                inner: ParseError::UnexpectedEOF {
-                    expected: "section".to_string(),
-                },
-            }),
-        }
-    }
-
-    fn expect_field(&mut self, expected_key: &str) -> Result<String, ContexedParseError> {
-        match self.next_line()? {
-            Some(IniLine::Field { key, value }) if key == expected_key => Ok(value.to_string()),
-            Some(IniLine::Field { key, value }) => Err(ContexedParseError {
-                inner: ParseError::UnexpectedField {
-                    expected: format!("field '{}'", expected_key),
-                    found_key: key.to_string(),
-                    found_value: value.to_string(),
-                },
-                filename: self.filename.clone(),
-                line: self.cur_line,
-            }),
-            Some(IniLine::Section(id)) => Err(ContexedParseError {
-                filename: self.filename.clone(),
-                line: self.cur_line,
-                inner: ParseError::UnexpectedSection {
-                    expected: format!("field '{}'", expected_key),
-                    found: id,
-                },
-            }),
-            None => Err(ContexedParseError {
-                filename: self.filename.clone(),
-                line: self.cur_line,
-                inner: ParseError::UnexpectedEOF {
-                    expected: format!("field '{}'", expected_key),
-                },
-            }),
-        }
-    }
-}
-
-// TODO add testing!!

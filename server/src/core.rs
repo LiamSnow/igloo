@@ -18,16 +18,14 @@ use std::{error::Error, mem, thread::JoinHandle};
 pub enum IglooRequest {
     Shutdown,
 
-    /// Register with Igloo Core
     RegisterClient(kanal::Sender<IglooResponse>),
 
-    /// Client (once registered) -> Igloo
     Client {
         client_id: usize,
         msg: ClientMsg,
     },
 
-    HandleMessage {
+    Ext {
         sender: ExtensionIndex,
         content: ipc::IglooMessage,
     },
@@ -202,7 +200,7 @@ impl IglooCore {
             Shutdown => unreachable!(),
 
             // extension proxy
-            HandleMessage {
+            Ext {
                 sender: from,
                 content: msg,
             } => ext::handle_msg(&mut self.cm, &mut self.tree, &mut self.engine, from, msg),

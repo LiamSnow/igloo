@@ -110,7 +110,7 @@ impl ExtensionHandle {
                 }
             };
 
-            let req = IglooRequest::HandleMessage {
+            let req = IglooRequest::Ext {
                 sender: self.index,
                 content: msg,
             };

@@ -1,6 +1,9 @@
 use igloo_interface::{
     Component, ComponentType, MSIC,
-    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
+    id::{
+        DeviceID, DeviceIDMarker, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID,
+        GroupIDMarker,
+    },
     ipc::IWriter,
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot, TypeFilter},
 };
@@ -10,19 +13,19 @@ use smallvec::SmallVec;
 use std::{collections::HashMap, time::Instant};
 use tokio::task::JoinHandle;
 
-use crate::tree::{arena::Arena, persist::IniWriter};
+use crate::tree::{arena::Arena, persist::PersistWriter};
 
 pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
 
 /// Root
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
 pub struct DeviceTree {
-    pub(super) groups: Arena<GroupID, Group>,
+    pub(super) groups: Arena<GroupIDMarker, Group>,
+    pub(super) groups_writer: PersistWriter,
+    pub(super) devices: Arena<DeviceIDMarker, Device>,
+    pub(super) devices_writer: PersistWriter,
     pub(super) attached_exts: Vec<Option<Extension>>,
     pub(super) ext_ref_lut: FxHashMap<ExtensionID, ExtensionIndex>,
-    pub(super) devices: Arena<DeviceID, Device>,
-    pub(super) groups_writer: IniWriter,
-    pub(super) devices_writer: IniWriter,
 }
 
 /// Connected Extension
@@ -41,7 +44,7 @@ pub struct Extension {
 }
 
 /// Collection of devices (ex. "Living Room")
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Group {
     pub(super) id: GroupID,
     pub(super) name: String,
@@ -49,21 +52,28 @@ pub struct Group {
 }
 
 /// Physical Device, owned (registered & attached) by Extension
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Device {
     pub(super) id: DeviceID,
     pub(super) name: String,
     pub(super) owner: ExtensionID,
+    #[serde(skip)]
     pub(super) owner_ref: Option<ExtensionIndex>,
+    #[serde(skip)]
     pub(super) groups: FxHashSet<GroupID>,
     /// Bitset of which component types exist on any of its entity
     // TODO FIXME now that we have comp_to_entity, I think this is useless
+    #[serde(skip)]
     pub(super) presense: Presense,
     /// ComponentType -> Entity Indexes
+    #[serde(skip)]
     pub(super) comp_to_entity: [SmallVec<[EntityIndex; 4]>; COMP_TYPE_ARR_LEN],
     /// Entity index -> Entity
+    #[serde(skip)]
     pub(super) entities: SmallVec<[Entity; 16]>,
+    #[serde(skip)]
     pub(super) entity_index_lut: FxHashMap<EntityID, EntityIndex>,
+    #[serde(skip)]
     pub(super) last_updated: Instant,
 }
 
@@ -106,11 +116,11 @@ impl DeviceTree {
         &self.attached_exts
     }
 
-    pub fn groups(&self) -> &Arena<GroupID, Group> {
+    pub fn groups(&self) -> &Arena<GroupIDMarker, Group> {
         &self.groups
     }
 
-    pub fn devices(&self) -> &Arena<DeviceID, Device> {
+    pub fn devices(&self) -> &Arena<DeviceIDMarker, Device> {
         &self.devices
     }
 
