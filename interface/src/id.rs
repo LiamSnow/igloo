@@ -95,6 +95,11 @@ impl<T> GenerationalID<T> {
         (self.packed >> 32) as u32
     }
 
+    #[inline]
+    pub fn inner(&self) -> &u64 {
+        &self.packed
+    }
+
     // Decode from Base58
     pub fn decode_bs58(s: &str) -> bs58::decode::Result<Self> {
         let mut bytes = [0u8; 8];
