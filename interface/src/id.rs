@@ -1,7 +1,7 @@
 use bincode::{Decode, Encode};
 use derive_more::Display;
-use std::fmt;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::str::FromStr;
 
 /// persistent
@@ -33,7 +33,7 @@ pub struct EntityID(pub String);
 #[repr(transparent)]
 pub struct EntityIndex(pub usize);
 
-/// persistent
+// Persistent Packed ID
 #[derive(
     Debug,
     Clone,
@@ -47,91 +47,64 @@ pub struct EntityIndex(pub usize);
     bincode::Encode,
     bincode::Decode,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[display("Device({}:{})", self.index(), self.generation())]
+#[display("{}", bs58::encode(packed.to_be_bytes()).into_string())]
 #[repr(transparent)]
-pub struct DeviceID(u64);
+pub struct GenerationalID<T> {
+    packed: u64,
+    marker: PhantomData<T>,
+}
 
-/// persistent
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Display,
-    bincode::Encode,
-    bincode::Decode,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Encode, bincode::Decode,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[display("Group({}:{})", self.index(), self.generation())]
-#[repr(transparent)]
-pub struct GroupID(u64);
+pub struct DeviceIDMarker;
 
-pub trait GenerationalID: Copy + Eq + Hash + fmt::Display + fmt::Debug {
-    fn from_parts(index: u32, generation: u32) -> Self;
-    fn from_comb(c: u64) -> Self;
-    fn index(&self) -> u32;
-    fn generation(&self) -> u32;
-    fn take(self) -> u64;
-}
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Encode, bincode::Decode,
+)]
+pub struct GroupIDMarker;
 
-impl GenerationalID for GroupID {
+// Persistent Packed ID
+pub type DeviceID = GenerationalID<DeviceIDMarker>;
+
+// Persistent Packed ID
+pub type GroupID = GenerationalID<GroupIDMarker>;
+
+impl<T> GenerationalID<T> {
     #[inline]
-    fn from_parts(index: u32, generation: u32) -> Self {
+    pub fn new(packed: u64) -> Self {
+        Self {
+            packed,
+            marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub fn from_parts(index: u32, generation: u32) -> Self {
         let packed = (index as u64) | ((generation as u64) << 32);
-        GroupID(packed)
+        Self::new(packed)
     }
 
     #[inline]
-    fn from_comb(c: u64) -> Self {
-        GroupID(c)
+    pub fn index(&self) -> u32 {
+        self.packed as u32
     }
 
     #[inline]
-    fn index(&self) -> u32 {
-        self.0 as u32
+    pub fn generation(&self) -> u32 {
+        (self.packed >> 32) as u32
     }
 
-    #[inline]
-    fn generation(&self) -> u32 {
-        (self.0 >> 32) as u32
+    // Decode from Base58
+    pub fn decode_bs58(s: &str) -> bs58::decode::Result<Self> {
+        let mut bytes = [0u8; 8];
+        bs58::decode(s).onto(&mut bytes)?;
+        Ok(Self::new(u64::from_be_bytes(bytes)))
     }
 
-    #[inline]
-    fn take(self) -> u64 {
-        self.0
-    }
-}
-
-impl GenerationalID for DeviceID {
-    #[inline]
-    fn from_parts(index: u32, generation: u32) -> Self {
-        let packed = (index as u64) | ((generation as u64) << 32);
-        DeviceID(packed)
-    }
-
-    #[inline]
-    fn from_comb(c: u64) -> Self {
-        DeviceID(c)
-    }
-
-    #[inline]
-    fn index(&self) -> u32 {
-        self.0 as u32
-    }
-
-    #[inline]
-    fn generation(&self) -> u32 {
-        (self.0 >> 32) as u32
-    }
-
-    #[inline]
-    fn take(self) -> u64 {
-        self.0
+    /// Encode to Base58
+    pub fn encode_bs58(&self) -> String {
+        bs58::encode(self.packed.to_be_bytes()).into_string()
     }
 }
 
@@ -153,15 +126,9 @@ impl Default for ExtensionIndex {
     }
 }
 
-impl Default for DeviceID {
+impl<T> Default for GenerationalID<T> {
     fn default() -> Self {
-        Self(u64::MAX)
-    }
-}
-
-impl Default for GroupID {
-    fn default() -> Self {
-        Self(u64::MAX)
+        Self::new(u64::MAX)
     }
 }
 
@@ -171,48 +138,45 @@ impl Default for EntityIndex {
     }
 }
 
-impl FromStr for DeviceID {
-    type Err = String;
+impl<T> FromStr for GenerationalID<T> {
+    type Err = bs58::decode::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split(':').collect();
-        if parts.len() != 2 {
-            return Err(format!(
-                "Expected DeviceID format 'index:generation', got '{}'",
-                s
-            ));
-        }
-
-        let index = parts[0]
-            .parse::<u32>()
-            .map_err(|e| format!("Invalid DeviceID index: {}", e))?;
-        let generation = parts[1]
-            .parse::<u32>()
-            .map_err(|e| format!("Invalid DeviceID generation: {}", e))?;
-
-        Ok(DeviceID::from_parts(index, generation))
+        Self::decode_bs58(s)
     }
 }
 
-impl FromStr for GroupID {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split(':').collect();
-        if parts.len() != 2 {
-            return Err(format!(
-                "Expected GroupID format 'index:generation', got '{}'",
-                s
-            ));
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for GenerationalID<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            // toml|json -> base58 string
+            let encoded = self.encode_bs58();
+            serializer.serialize_str(&encoded)
+        } else {
+            // bincode -> raw u64
+            serializer.serialize_u64(self.packed)
         }
+    }
+}
 
-        let index = parts[0]
-            .parse::<u32>()
-            .map_err(|e| format!("Invalid GroupID index: {}", e))?;
-        let generation = parts[1]
-            .parse::<u32>()
-            .map_err(|e| format!("Invalid GroupID generation: {}", e))?;
-
-        Ok(GroupID::from_parts(index, generation))
+#[cfg(feature = "serde")]
+impl<'de, T> serde::Deserialize<'de> for GenerationalID<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            // toml|json -> base58 string
+            let s = String::deserialize(deserializer)?;
+            Self::decode_bs58(&s).map_err(serde::de::Error::custom)
+        } else {
+            // bincode -> raw u64
+            let value = u64::deserialize(deserializer)?;
+            Ok(Self::new(value))
+        }
     }
 }

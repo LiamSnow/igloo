@@ -12,6 +12,7 @@ serde = ["dep:serde"]
 
 [dependencies]
 bincode = "2.0.1"
+bs58 = "0.5.1"
 bytes = { version = "1.10.1", optional = true }
 derive_more = { version = "2.0.1", features = ["display", "from"] }
 display-more = "0.2.1"
