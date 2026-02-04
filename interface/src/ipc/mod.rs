@@ -1,3 +1,5 @@
+use std::env;
+
 use crate::MSIC;
 use tokio::net::UnixStream;
 
@@ -7,6 +9,8 @@ pub mod reader;
 pub use reader::{IReader, IReaderError};
 pub mod writer;
 pub use writer::{IWriter, IWriterError};
+
+pub const DATA_PATH_ENV_VAR: &str = "DATA_PATH";
 
 pub async fn connect() -> Result<(IWriter, IReader), IWriterError> {
     let stream = UnixStream::connect("igloo.sock").await?;
@@ -19,4 +23,8 @@ pub async fn connect() -> Result<(IWriter, IReader), IWriterError> {
     writer.flush().await?;
 
     Ok((writer, reader))
+}
+
+pub fn get_data_path() -> String {
+    env::var(DATA_PATH_ENV_VAR).unwrap()
 }
