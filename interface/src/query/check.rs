@@ -6,12 +6,12 @@ use crate::{
     },
     types::agg::AggregationOp,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 // TODO validate globs
 
-#[derive(Error, Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum QueryError {
     #[error(
         "Component type '{0:?}' has no value. Actions like 'Get', 'Set', and 'Put' can only be done on components like sensors, switches, or dimmers can be queried with 'Get'."

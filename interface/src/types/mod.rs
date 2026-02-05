@@ -3,7 +3,6 @@ use crate::{
     id::{DeviceID, ExtensionID, GroupID},
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot},
 };
-use bincode::{Decode, Encode};
 use derive_more::Display;
 
 pub mod agg;
@@ -11,6 +10,7 @@ pub mod cast;
 pub mod compare;
 pub mod compound;
 pub use compound::*;
+use serde::{Deserialize, Serialize};
 pub mod math;
 
 pub type IglooInteger = i64;
@@ -33,8 +33,7 @@ pub type DeviceSnapshotList = Vec<DeviceSnapshot>;
 pub type GroupSnapshotList = Vec<GroupSnapshot>;
 pub type EntitySnapshotList = Vec<EntitySnapshot>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 pub enum IglooType {
     #[display("Integer")]
     Integer,
@@ -131,8 +130,7 @@ pub static IGLOO_TYPES: [IglooType; 28] = [
     IglooType::EntitySnapshotList,
 ];
 
-#[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Display, Serialize, Deserialize)]
 pub enum IglooValue {
     #[display("{_0}")]
     Integer(IglooInteger),

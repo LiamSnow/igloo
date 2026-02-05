@@ -1,9 +1,9 @@
 use crate::{penguin::*, types::IglooType};
 use derive_more::Display;
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, PartialEq, Display)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Default, PartialEq, Display, Serialize, Deserialize)]
 #[display("{lib_name}/{node_name}")]
 pub struct PenguinNodeDefnRef {
     pub lib_name: String,
@@ -40,8 +40,7 @@ pub struct NodeQueryFeature {
     pub is_aggregate: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeInputFeatureID(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]

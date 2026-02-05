@@ -2,12 +2,11 @@ use crate::{
     Component,
     id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
 };
-use bincode::{Decode, Encode};
 use derive_more::Display;
 use rustc_hash::FxHashSet;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Display, Default, Serialize, Deserialize)]
 #[display("{id}{{name={name},devices=[..]}}")]
 pub struct GroupSnapshot {
     pub id: GroupID,
@@ -15,8 +14,7 @@ pub struct GroupSnapshot {
     pub devices: FxHashSet<DeviceID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Display, Default, Serialize, Deserialize)]
 #[display("{id}{{index={index},msc={max_supported_component}}}")]
 pub struct ExtensionSnapshot {
     pub id: ExtensionID,
@@ -25,8 +23,7 @@ pub struct ExtensionSnapshot {
     pub devices: Vec<DeviceID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Display, Default, Serialize, Deserialize)]
 #[display("{id}{{name={name},owner={owner},owner_ref={owner_ref:?},entities=[..],groups=[..]}}")]
 pub struct DeviceSnapshot {
     pub id: DeviceID,
@@ -37,8 +34,7 @@ pub struct DeviceSnapshot {
     pub groups: FxHashSet<GroupID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Display, Default, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Display, Default, Serialize, Deserialize)]
 #[display("Entity{{id={id},index={index},components=[..]}}")]
 pub struct EntitySnapshot {
     pub id: EntityID,

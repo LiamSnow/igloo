@@ -1,45 +1,44 @@
 use crate::Component;
-use bincode::{Decode, Encode};
-use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
-pub const MSIM: u8 = 5;
+pub const DATA_PATH_ENV_VAR: &str = "DATA_PATH";
 
-#[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[repr(u8)]
-pub enum IglooMessage {
-    // WARN: Append-only. Never change order or it will break backwards-compatibility
-    //.
-    //.
-    /// Extension/Script must send to Igloo on boot
-    /// Igloo will then never send >MSIC or >MSIM
-    WhatsUpIgloo {
-        // max supported igloo component
-        msic: u16,
-        // max supported igloo message
-        msim: u8,
-    } = 0,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ExtensionToIgloo {
+    /// Initiates communication
+    /// Extension must send on boot
+    WhatsUpIgloo,
 
-    /// Name
-    CreateDevice(String) = 1,
-    /// Name, DeviceID
-    DeviceCreated(String, u64) = 2,
+    // UpgradeTo { version: u16 }
+    CreateDevice {
+        name: String,
+    },
 
     RegisterEntity {
         device: u64,
         entity_id: String,
         entity_index: usize,
-    } = 3,
+    },
 
     WriteComponents {
         device: u64,
         entity: usize,
         comps: Vec<Component>,
-    } = 4,
+    },
 
-    /// Custom command from Igloo -> Client
-    /// As specified in Igloo.toml
-    Custom {
+    Custom(serde_json::Value),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum IglooToExtension {
+    DeviceCreated {
         name: String,
-        params: FxHashMap<String, String>,
-    } = 5,
+        id: u64,
+    },
+
+    WriteComponents {
+        device: u64,
+        entity: usize,
+        comps: Vec<Component>,
+    },
 }

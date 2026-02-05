@@ -1,52 +1,40 @@
-use bincode::{Decode, Encode};
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
 /// persistent
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Serialize, Deserialize)]
 #[display("Extension(\"{_0}\")")]
 #[repr(transparent)]
 pub struct ExtensionID(pub String);
 
 /// ephemeral
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Serialize, Deserialize,
+)]
 #[display("Extension(#{_0})")]
 #[repr(transparent)]
 pub struct ExtensionIndex(pub usize);
 
 /// persistent
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Serialize, Deserialize)]
 #[display("Entity(\"{_0}\")")]
 #[repr(transparent)]
 pub struct EntityID(pub String);
 
 /// ephemeral
 // TODO actually use this
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Serialize, Deserialize,
+)]
 #[display("Entity(#{_0})")]
 #[repr(transparent)]
 pub struct EntityIndex(pub usize);
 
 // Persistent Packed ID
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Display,
-    bincode::Encode,
-    bincode::Decode,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[display("{}", bs58::encode(packed.to_be_bytes()).into_string())]
 #[repr(transparent)]
 pub struct GenerationalID<T> {
@@ -54,14 +42,10 @@ pub struct GenerationalID<T> {
     marker: PhantomData<T>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Encode, bincode::Decode,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DeviceIDMarker;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, bincode::Encode, bincode::Decode,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct GroupIDMarker;
 
 // Persistent Packed ID
@@ -151,37 +135,22 @@ impl<T> FromStr for GenerationalID<T> {
     }
 }
 
-#[cfg(feature = "serde")]
 impl<T> serde::Serialize for GenerationalID<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        if serializer.is_human_readable() {
-            // toml|json -> base58 string
-            let encoded = self.encode_bs58();
-            serializer.serialize_str(&encoded)
-        } else {
-            // bincode -> raw u64
-            serializer.serialize_u64(self.packed)
-        }
+        let encoded = self.encode_bs58();
+        serializer.serialize_str(&encoded)
     }
 }
 
-#[cfg(feature = "serde")]
 impl<'de, T> serde::Deserialize<'de> for GenerationalID<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        if deserializer.is_human_readable() {
-            // toml|json -> base58 string
-            let s = String::deserialize(deserializer)?;
-            Self::decode_bs58(&s).map_err(serde::de::Error::custom)
-        } else {
-            // bincode -> raw u64
-            let value = u64::deserialize(deserializer)?;
-            Ok(Self::new(value))
-        }
+        let s = String::deserialize(deserializer)?;
+        Self::decode_bs58(&s).map_err(serde::de::Error::custom)
     }
 }

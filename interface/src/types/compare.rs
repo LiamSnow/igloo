@@ -1,9 +1,8 @@
 use crate::types::{IglooType, IglooValue, cast::CastDirection};
-use bincode::{Decode, Encode};
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 pub enum ComparisonOp {
     #[display("==")]
     Eq,

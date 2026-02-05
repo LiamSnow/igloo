@@ -1,12 +1,11 @@
 use crate::types::{IglooColor, IglooInteger, IglooReal, IglooType, IglooValue};
-use bincode::{Decode, Encode};
 use derive_more::Display;
+use serde::{Deserialize, Serialize};
 
 /// Math & logic operations for IglooValues
 /// The result type is always the type of the LHS (input value)
 /// For cases like Add(Real+Int) the RHS is auto-casted
-#[derive(Debug, Clone, PartialEq, Display, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Display, Serialize, Deserialize)]
 pub enum MathOp {
     /// Int+Int,
     /// Real+Real, Real+Int,

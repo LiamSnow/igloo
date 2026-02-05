@@ -92,8 +92,7 @@ pub fn gen_comp_type(comps: &[Component]) -> TokenStream {
         .collect();
 
     quote! {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Encode, Decode)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
         #[repr(u16)]
         pub enum ComponentType {
             #(#variants),*
