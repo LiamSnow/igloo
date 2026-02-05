@@ -1,12 +1,10 @@
-use std::{collections::HashMap, net::SocketAddr, time::SystemTime};
-
-use bcrypt::{BcryptError, BcryptResult};
-use uuid::Uuid;
-
 use crate::auth::{
     CONFIG_VERSION, SESSION_DURATION,
     model::{Auth, Group, Session, User},
 };
+use bcrypt::{BcryptError, BcryptResult};
+use std::{collections::HashMap, net::SocketAddr, time::SystemTime};
+use uuid::Uuid;
 
 impl Auth {
     pub fn new() -> Self {

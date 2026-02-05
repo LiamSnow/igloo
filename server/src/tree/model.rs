@@ -1,3 +1,4 @@
+use crate::tree::arena::{Arena, ArenaItem};
 use igloo_interface::{
     Component, ComponentType, MSIC,
     id::{
@@ -10,10 +11,8 @@ use igloo_interface::{
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, fs::File, time::Instant};
 use tokio::task::JoinHandle;
-
-use crate::tree::{arena::Arena, persist::PersistWriter};
 
 pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
 
@@ -21,9 +20,9 @@ pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
 pub struct DeviceTree {
     pub(super) groups: Arena<GroupIDMarker, Group>,
-    pub(super) groups_writer: PersistWriter,
+    pub(super) groups_file: Option<File>,
     pub(super) devices: Arena<DeviceIDMarker, Device>,
-    pub(super) devices_writer: PersistWriter,
+    pub(super) devices_file: Option<File>,
     pub(super) attached_exts: Vec<Option<Extension>>,
     pub(super) ext_ref_lut: FxHashMap<ExtensionID, ExtensionIndex>,
 }
@@ -45,6 +44,7 @@ pub struct Extension {
 
 /// Collection of devices (ex. "Living Room")
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Group {
     pub(super) id: GroupID,
     pub(super) name: String,
@@ -52,7 +52,8 @@ pub struct Group {
 }
 
 /// Physical Device, owned (registered & attached) by Extension
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "DeviceData")]
 pub struct Device {
     pub(super) id: DeviceID,
     pub(super) name: String,
@@ -75,6 +76,14 @@ pub struct Device {
     pub(super) entity_index_lut: FxHashMap<EntityID, EntityIndex>,
     #[serde(skip)]
     pub(super) last_updated: Instant,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeviceData {
+    id: DeviceID,
+    name: String,
+    owner: ExtensionID,
 }
 
 /// Tracks presence of components on a device
@@ -455,5 +464,23 @@ impl Extension {
             max_supported_component: self.msic,
             devices: self.devices.to_vec(),
         }
+    }
+}
+
+impl ArenaItem<DeviceIDMarker> for Device {
+    fn id(&self) -> DeviceID {
+        self.id
+    }
+}
+
+impl ArenaItem<GroupIDMarker> for Group {
+    fn id(&self) -> GroupID {
+        self.id
+    }
+}
+
+impl From<DeviceData> for Device {
+    fn from(data: DeviceData) -> Self {
+        Device::new(data.id, data.name, data.owner)
     }
 }

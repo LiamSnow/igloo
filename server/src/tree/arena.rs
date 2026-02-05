@@ -8,6 +8,7 @@
 //! Tries to be mostly panic free, with autofixing behavior.
 
 use igloo_interface::id::GenerationalID;
+use serde::{Deserialize, Deserializer, Serialize, ser::SerializeStruct};
 use std::marker::PhantomData;
 
 #[derive(thiserror::Error, Debug)]
@@ -23,8 +24,12 @@ pub enum Entry<T> {
     Occupied { generation: u32, value: T },
 }
 
+pub trait ArenaItem<IDMarker> {
+    fn id(&self) -> GenerationalID<IDMarker>;
+}
+
 pub struct Arena<IDMarker, T> {
-    items: Vec<Entry<T>>,
+    entries: Vec<Entry<T>>,
     generation: u32,
     free_list_head: Option<usize>,
     len: usize,
@@ -32,9 +37,19 @@ pub struct Arena<IDMarker, T> {
 }
 
 impl<IDMarker, T> Arena<IDMarker, T> {
+    pub fn new(generation: u32) -> Self {
+        Self {
+            entries: Vec::new(),
+            generation,
+            free_list_head: None,
+            len: 0,
+            _phantom: PhantomData,
+        }
+    }
+
     /// Creates an arena with pre-allocated slots up to max_index
     /// All slots up to max_index become free entries
-    pub fn new(max_index: usize, generation: u32) -> Self {
+    pub fn with_max_index(max_index: usize, generation: u32) -> Self {
         let mut items = Vec::with_capacity(max_index + 1);
 
         // build free list
@@ -44,7 +59,7 @@ impl<IDMarker, T> Arena<IDMarker, T> {
         }
 
         Self {
-            items,
+            entries: items,
             generation,
             free_list_head: if max_index > 0 { Some(0) } else { None },
             len: 0,
@@ -61,11 +76,11 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     pub fn insert(&mut self, value: T) -> GenerationalID<IDMarker> {
         // try to use free list first
         if let Some(index) = self.free_list_head {
-            match self.items[index] {
+            match self.entries[index] {
                 Entry::Free { next_free } => {
                     self.free_list_head = next_free;
                     self.len += 1;
-                    self.items[index] = Entry::Occupied {
+                    self.entries[index] = Entry::Occupied {
                         generation: self.generation,
                         value,
                     };
@@ -83,18 +98,18 @@ impl<IDMarker, T> Arena<IDMarker, T> {
         }
 
         // no free slots -> allocate more
-        let len = self.items.len().max(1);
+        let len = self.entries.len().max(1);
         self.reserve(len);
 
         // retry with newly allocated space
         let index = self
             .free_list_head
             .expect("free list must exist after reserve");
-        match self.items[index] {
+        match self.entries[index] {
             Entry::Free { next_free } => {
                 self.free_list_head = next_free;
                 self.len += 1;
-                self.items[index] = Entry::Occupied {
+                self.entries[index] = Entry::Occupied {
                     generation: self.generation,
                     value,
                 };
@@ -108,9 +123,9 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     fn rebuild_free_list(&mut self) {
         let mut new_head = None;
 
-        for i in (0..self.items.len()).rev() {
-            if matches!(self.items[i], Entry::Free { .. }) {
-                self.items[i] = Entry::Free {
+        for i in (0..self.entries.len()).rev() {
+            if matches!(self.entries[i], Entry::Free { .. }) {
+                self.entries[i] = Entry::Free {
                     next_free: new_head,
                 };
                 new_head = Some(i);
@@ -132,12 +147,12 @@ impl<IDMarker, T> Arena<IDMarker, T> {
         let generation = id.generation();
 
         // auto-expand
-        if index >= self.items.len() {
-            let start = self.items.len();
+        if index >= self.entries.len() {
+            let start = self.entries.len();
             let old_head = self.free_list_head;
 
-            self.items.reserve_exact(index - start + 1);
-            self.items.extend((start..=index).map(|i| {
+            self.entries.reserve_exact(index - start + 1);
+            self.entries.extend((start..=index).map(|i| {
                 if i == index {
                     Entry::Free {
                         next_free: old_head,
@@ -152,10 +167,10 @@ impl<IDMarker, T> Arena<IDMarker, T> {
             self.free_list_head = Some(start);
         }
 
-        match &self.items[index] {
+        match &self.entries[index] {
             Entry::Free { .. } => {
                 self.remove_from_free_list(index);
-                self.items[index] = Entry::Occupied { generation, value };
+                self.entries[index] = Entry::Occupied { generation, value };
                 self.len += 1;
                 Ok(())
             }
@@ -169,7 +184,7 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     fn remove_from_free_list(&mut self, target: usize) {
         if self.free_list_head == Some(target) {
             // head of list
-            if let Entry::Free { next_free } = self.items[target] {
+            if let Entry::Free { next_free } = self.entries[target] {
                 self.free_list_head = next_free;
             }
             return;
@@ -178,9 +193,9 @@ impl<IDMarker, T> Arena<IDMarker, T> {
         // search through list
         let mut current = self.free_list_head;
         while let Some(idx) = current {
-            if let Entry::Free { next_free } = &self.items[idx] {
+            if let Entry::Free { next_free } = &self.entries[idx] {
                 if *next_free == Some(target) {
-                    let target_next = if let Entry::Free { next_free } = self.items[target] {
+                    let target_next = if let Entry::Free { next_free } = self.entries[target] {
                         next_free
                     } else {
                         // broken free listen
@@ -188,7 +203,7 @@ impl<IDMarker, T> Arena<IDMarker, T> {
                         return;
                     };
 
-                    if let Entry::Free { next_free } = &mut self.items[idx] {
+                    if let Entry::Free { next_free } = &mut self.entries[idx] {
                         *next_free = target_next;
                     }
                     return;
@@ -203,14 +218,14 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     pub fn remove(&mut self, id: GenerationalID<IDMarker>) -> Option<T> {
         let index = id.index() as usize;
 
-        if index >= self.items.len() {
+        if index >= self.entries.len() {
             return None;
         }
 
-        match self.items[index] {
+        match self.entries[index] {
             Entry::Occupied { generation, .. } if generation == id.generation() => {
                 let entry = std::mem::replace(
-                    &mut self.items[index],
+                    &mut self.entries[index],
                     Entry::Free {
                         next_free: self.free_list_head,
                     },
@@ -235,7 +250,7 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     pub fn get(&self, id: &GenerationalID<IDMarker>) -> Option<&T> {
         let index = id.index() as usize;
 
-        match self.items.get(index) {
+        match self.entries.get(index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation() => {
                 Some(value)
             }
@@ -249,7 +264,7 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     pub fn get_mut(&mut self, id: &GenerationalID<IDMarker>) -> Option<&mut T> {
         let index = id.index() as usize;
 
-        match self.items.get_mut(index) {
+        match self.entries.get_mut(index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation() => {
                 Some(value)
             }
@@ -277,17 +292,17 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     #[allow(dead_code)]
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.items.len()
+        self.entries.len()
     }
 
     /// Reserve space for additional elements
     pub fn reserve(&mut self, additional: usize) {
-        let start = self.items.len();
+        let start = self.entries.len();
         let end = start + additional;
         let old_head = self.free_list_head;
 
-        self.items.reserve_exact(additional);
-        self.items.extend((start..end).map(|i| {
+        self.entries.reserve_exact(additional);
+        self.entries.extend((start..end).map(|i| {
             if i == end - 1 {
                 Entry::Free {
                     next_free: old_head,
@@ -303,21 +318,21 @@ impl<IDMarker, T> Arena<IDMarker, T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.items.iter().filter_map(|entry| match entry {
+        self.entries.iter().filter_map(|entry| match entry {
             Entry::Occupied { value, .. } => Some(value),
             Entry::Free { .. } => None,
         })
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.items.iter_mut().filter_map(|entry| match entry {
+        self.entries.iter_mut().filter_map(|entry| match entry {
             Entry::Occupied { value, .. } => Some(value),
             Entry::Free { .. } => None,
         })
     }
 
     pub fn items(&self) -> &Vec<Entry<T>> {
-        &self.items
+        &self.entries
     }
 }
 
@@ -340,5 +355,49 @@ impl<T> Entry<T> {
             Entry::Occupied { generation, .. } => Some(*generation),
             Entry::Free { .. } => None,
         }
+    }
+}
+
+impl<IDMarker, T: Serialize> Serialize for Arena<IDMarker, T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Arena", 2)?;
+        state.serialize_field("generation", &self.generation)?;
+
+        let occupied: Vec<&T> = self.iter().collect();
+        state.serialize_field("entry", &occupied)?;
+
+        state.end()
+    }
+}
+
+impl<'de, IDMarker, T> Deserialize<'de> for Arena<IDMarker, T>
+where
+    T: Deserialize<'de> + ArenaItem<IDMarker>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de;
+
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct ArenaData<T> {
+            generation: u32,
+            entry: Vec<T>,
+        }
+
+        let data: ArenaData<T> = ArenaData::deserialize(deserializer)?;
+        let mut arena = Arena::new(data.generation);
+
+        for entry in data.entry {
+            let id = entry.id();
+            arena.insert_at(id, entry).map_err(de::Error::custom)?;
+        }
+
+        Ok(arena)
     }
 }

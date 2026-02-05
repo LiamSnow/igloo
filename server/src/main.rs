@@ -44,7 +44,13 @@ async fn main() {
     PACKAGES_DIR.set(PathBuf::from(args.packages_dir)).unwrap();
     WWW_DIR.set(PathBuf::from(args.www_dir)).unwrap();
 
-    let (handle, req_tx) = core::spawn().await.unwrap();
+    let (handle, req_tx) = match core::spawn().await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{e}");
+            return;
+        }
+    };
 
     if let Err(e) = web::run(req_tx.clone(), args.address, args.port).await {
         eprintln!("Error running web: {e}");
