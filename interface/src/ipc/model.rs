@@ -25,8 +25,6 @@ pub enum ExtensionToIgloo {
         entity: usize,
         comps: Vec<Component>,
     },
-
-    Custom(serde_json::Value),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,5 +38,10 @@ pub enum IglooToExtension {
         device: u64,
         entity: usize,
         comps: Vec<Component>,
+    },
+
+    Custom {
+        name: String,
+        payload: serde_json::Value,
     },
 }

@@ -8,6 +8,7 @@ build = "build/main.rs"
 default = []
 penguin = []
 ipc = ["bytes", "tokio", "tokio-util", "futures"]
+kanal = ["dep:kanal"]
 
 [dependencies]
 bs58 = "0.5.1"
@@ -16,6 +17,7 @@ derive_more = { version = "2.0.1", features = ["display", "from"] }
 display-more = "0.2.1"
 futures = { version = "0.3.31", optional = true }
 indexmap = "2.12.0"
+kanal = { version = "0.1.1", optional = true }
 rustc-hash = "2.1.1"
 serde = { version = "1.0.224", features = ["derive"] }
 serde_json = "1.0.149"
