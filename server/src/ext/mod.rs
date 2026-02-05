@@ -4,10 +4,7 @@ use crate::{
     query::QueryEngine,
     tree::DeviceTree,
 };
-use igloo_interface::{
-    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex},
-    ipc::IglooMessage,
-};
+use igloo_interface::id::ExtensionID;
 use std::error::Error;
 use tokio::fs;
 
@@ -27,65 +24,6 @@ pub async fn spawn_all(
         tree.attach_ext(cm, engine, handle, writer)?;
     }
     Ok(())
-}
-
-// TODO TODO move to igloo core ASAP
-/// Takes commands from a Extension and applies to Device Tree
-pub fn handle_msg(
-    cm: &mut ClientManager,
-    tree: &mut DeviceTree,
-    engine: &mut QueryEngine,
-    xindex: ExtensionIndex,
-    msg: IglooMessage,
-) -> Result<(), IglooError> {
-    use IglooMessage::*;
-    match msg {
-        CreateDevice(name) => {
-            let id = tree.create_device(cm, engine, name.clone(), xindex)?;
-            let ext = tree.ext(&xindex)?;
-            let mut scratch = Vec::with_capacity(name.len() + 32);
-            let msg = IglooMessage::DeviceCreated(name, *id.inner());
-            let res = ext.writer.try_write_immut(&msg, &mut scratch);
-            if let Err(e) = res {
-                eprintln!(
-                    "{}/{xindex}'s Unix socket is full. Killing.. Error={e}",
-                    ext.id()
-                );
-                // TODO reboot instead of kill
-                tree.detach_ext(cm, engine, xindex)?;
-            }
-            Ok(())
-        }
-
-        RegisterEntity {
-            device,
-            entity_id,
-            entity_index,
-        } => tree.register_entity(
-            cm,
-            engine,
-            DeviceID::new(device),
-            EntityID(entity_id),
-            EntityIndex(entity_index),
-        ),
-
-        WriteComponents {
-            device,
-            entity,
-            comps,
-        } => tree.write_components(
-            cm,
-            engine,
-            DeviceID::new(device),
-            EntityIndex(entity),
-            comps,
-        ),
-
-        WhatsUpIgloo { .. } | DeviceCreated(..) | Custom { .. } => {
-            // TODO return err
-            Ok(())
-        }
-    }
 }
 
 async fn get_all_ext_ids() -> Result<Vec<ExtensionID>, IglooError> {

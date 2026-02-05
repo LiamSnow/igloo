@@ -4,8 +4,8 @@ use crate::{
     tree::{DeviceTree, TreeIDError, mutation::TreeMutationError, persist::TreePersistError},
 };
 use igloo_interface::{
-    id::{DeviceID, ExtensionIndex, GroupID},
-    ipc,
+    id::{DeviceID, EntityID, EntityIndex, ExtensionIndex, GroupID},
+    ipc::{self, IglooMessage},
     query::{OneShotQuery, QueryResult, WatchQuery, WatchUpdate, check::QueryError},
 };
 use serde::{Deserialize, Serialize};
@@ -203,7 +203,7 @@ impl IglooCore {
             Ext {
                 sender: from,
                 content: msg,
-            } => ext::handle_msg(&mut self.cm, &mut self.tree, &mut self.engine, from, msg),
+            } => self.handle_ext_msg(from, msg),
 
             // client reg
             RegisterClient(channel) => self.cm.register(channel),
@@ -216,6 +216,67 @@ impl IglooCore {
                     return self.cm.send(client_id, IglooResponse::InvalidID(e));
                 }
                 res
+            }
+        }
+    }
+
+    pub fn handle_ext_msg(
+        &mut self,
+        xindex: ExtensionIndex,
+        msg: IglooMessage,
+    ) -> Result<(), IglooError> {
+        use IglooMessage::*;
+        match msg {
+            CreateDevice(name) => {
+                let id = self.tree.create_device(
+                    &mut self.cm,
+                    &mut self.engine,
+                    name.clone(),
+                    xindex,
+                )?;
+                let ext = self.tree.ext(&xindex)?;
+                let mut scratch = Vec::with_capacity(name.len() + 32);
+                let msg = IglooMessage::DeviceCreated(name, *id.inner());
+                let res = ext.writer.try_write_immut(&msg, &mut scratch);
+                if let Err(e) = res {
+                    eprintln!(
+                        "{}/{xindex}'s Unix socket is full. Killing.. Error={e}",
+                        ext.id()
+                    );
+                    // TODO reboot instead of kill
+                    self.tree
+                        .detach_ext(&mut self.cm, &mut self.engine, xindex)?;
+                }
+                Ok(())
+            }
+
+            RegisterEntity {
+                device,
+                entity_id,
+                entity_index,
+            } => self.tree.register_entity(
+                &mut self.cm,
+                &mut self.engine,
+                DeviceID::new(device),
+                EntityID(entity_id),
+                EntityIndex(entity_index),
+            ),
+
+            WriteComponents {
+                device,
+                entity,
+                comps,
+            } => self.tree.write_components(
+                &mut self.cm,
+                &mut self.engine,
+                DeviceID::new(device),
+                EntityIndex(entity),
+                comps,
+            ),
+
+            WhatsUpIgloo { .. } | DeviceCreated(..) | Custom { .. } => {
+                // TODO return err
+                Ok(())
             }
         }
     }
