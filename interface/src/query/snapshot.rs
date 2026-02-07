@@ -15,11 +15,10 @@ pub struct GroupSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Display, Default, Serialize, Deserialize)]
-#[display("{id}{{index={index},msc={max_supported_component}}}")]
+#[display("{id}{{index={index}}}")]
 pub struct ExtensionSnapshot {
     pub id: ExtensionID,
     pub index: ExtensionIndex,
-    pub max_supported_component: u16,
     pub devices: Vec<DeviceID>,
 }
 
