@@ -18,6 +18,8 @@ pub struct ExtensionID(pub String);
 #[repr(transparent)]
 pub struct ExtensionIndex(pub usize);
 
+pub const MAX_ENTITY_ID_LENGTH: usize = 100;
+
 /// persistent
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Serialize, Deserialize)]
 #[display("Entity(\"{_0}\")")]
