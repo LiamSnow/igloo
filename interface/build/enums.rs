@@ -41,13 +41,21 @@ pub fn gen_enum_types(comps: &[Component]) -> TokenStream {
         .iter()
         .map(|comp| {
             let name = ident(&comp.name);
-            if let ComponentKind::Enum { variants, .. } = &comp.kind {
-                let first_variant = ident(&variants[0].name);
-                quote! {
-                    IglooEnumType::#name => IglooEnumValue::#name(#name::#first_variant)
-                }
-            } else {
+            let ComponentKind::Enum { variants, .. } = &comp.kind else {
                 unreachable!()
+            };
+
+            match variants.iter().next() {
+                Some(first_var) => {
+                    let first_var = ident(&first_var.name);
+                    quote! {
+                        IglooEnumType::#name
+                            => IglooEnumValue::#name(#name::#first_var)
+                    }
+                }
+                None => {
+                    quote! {}
+                }
             }
         })
         .collect();

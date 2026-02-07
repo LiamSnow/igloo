@@ -7,16 +7,15 @@ use std::collections::HashSet;
 pub fn gen_comp_enum(comps: &[Component]) -> TokenStream {
     let enum_variants = comps.iter().map(|comp| {
         let name = ident(&comp.name);
-        let id = comp.id;
         match &comp.kind {
             ComponentKind::Single { kind } => {
                 let field_type = kind.direct_type_tokens();
-                quote! { #name(#field_type) = #id }
+                quote! { #name(#field_type) }
             }
             ComponentKind::Enum { .. } => {
-                quote! { #name(#name) = #id }
+                quote! { #name(#name) }
             }
-            ComponentKind::Marker { .. } => quote! { #name = #id },
+            ComponentKind::Marker { .. } => quote! { #name },
         }
     });
 
@@ -26,16 +25,6 @@ pub fn gen_comp_enum(comps: &[Component]) -> TokenStream {
             quote! { Component::#name => ComponentType::#name }
         } else {
             quote! { Component::#name(_) => ComponentType::#name }
-        }
-    });
-
-    let get_type_id_arms = comps.iter().map(|comp| {
-        let name = ident(&comp.name);
-        let id = comp.id;
-        if comp.is_marker() {
-            quote! { Component::#name => #id }
-        } else {
-            quote! { Component::#name(_) => #id }
         }
     });
 
@@ -50,12 +39,6 @@ pub fn gen_comp_enum(comps: &[Component]) -> TokenStream {
             pub fn get_type(&self) -> ComponentType {
                 match self {
                     #(#get_type_arms),*
-                }
-            }
-
-            pub fn get_type_id(&self) -> u16 {
-                match self {
-                    #(#get_type_id_arms),*
                 }
             }
         }
@@ -94,7 +77,6 @@ impl Component {
 
     fn gen_enum(&self, variants: &[Variant]) -> TokenStream {
         self.validate_enum_ids(variants);
-
         let name = ident(&self.name);
 
         let variant_defs: Vec<_> = variants
@@ -174,22 +156,14 @@ impl Component {
     }
 
     fn validate_enum_ids(&self, variants: &[Variant]) {
-        let mut ids = HashSet::new();
+        let mut names = HashSet::new();
 
         for variant in variants {
-            if !ids.insert(variant.id) {
+            if !names.insert(variant.name.clone()) {
                 panic!(
-                    "{}::{} tried to use ID {} but it's already taken! Please take extreme caution to make sure IDs are consistent with old versions",
-                    self.name, variant.name, variant.id
+                    "Enum `{}` has duplicate variant `{}`",
+                    self.name, variant.name
                 );
-            }
-        }
-
-        if let (Some(&min), Some(&max)) = (ids.iter().min(), ids.iter().max()) {
-            for id in min..=max {
-                if !ids.contains(&id) {
-                    panic!("ID {} was skipped in {}!", id, self.name);
-                }
             }
         }
     }

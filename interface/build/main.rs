@@ -14,15 +14,12 @@ mod types;
 use model::*;
 
 const COMPONENTS_FILE: &str = "components.toml";
-const PROTOCOL_FILE: &str = "protocol.toml";
 
 pub fn main() {
     println!("cargo:rerun-if-changed={COMPONENTS_FILE}");
-    println!("cargo:rerun-if-changed={PROTOCOL_FILE}");
 
     let man_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let mut comps = ComponentsConfig::read(Path::new(&man_dir).join(COMPONENTS_FILE)).components;
-    comps.sort_by_key(|comp| comp.id);
+    let comps = ComponentsConfig::read(Path::new(&man_dir).join(COMPONENTS_FILE)).components;
 
     validate_component_ids(&comps);
 
@@ -34,7 +31,6 @@ pub fn main() {
 
     let aggregator = agg::gen_aggregator(&comps);
 
-    let max_id = comps.iter().map(|comp| comp.id).max().unwrap();
     let comp_type = types::gen_comp_type(&comps);
     let str_funcs = types::gen_str_funcs(&comps);
     let enum_types = enums::gen_enum_types(&comps);
@@ -48,9 +44,6 @@ pub fn main() {
         use crate::types::agg::AggregationOp;
         use std::cmp::Ordering;
         use serde::{Serialize, Deserialize};
-
-        /// Maximum Supported Igloo Component (ID)
-        pub const MSIC: u16 = #max_id;
 
         #comp_type
 
@@ -76,7 +69,14 @@ pub fn main() {
     };
 
     // reconstruct, format, and save
-    let syntax_tree = syn::parse2::<syn::File>(code).expect("Failed to parse generated code");
+    let syntax_tree = match syn::parse2::<syn::File>(code.clone()) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to parse generated code: {e}");
+            eprintln!("{code}");
+            panic!()
+        }
+    };
     let formatted = prettyplease::unparse(&syntax_tree);
 
     // save to target/ dir
@@ -87,26 +87,11 @@ pub fn main() {
 
 /// makes sure no IDs conflict or are skipped
 fn validate_component_ids(comps: &[Component]) {
-    let mut ids = HashSet::new();
+    let mut names = HashSet::new();
 
     for comp in comps {
-        if !ids.insert(comp.id) {
-            panic!(
-                "Component {} tried to use ID {} but it's already taken! Please take extreme caution to make sure IDs are consistent with old versions",
-                comp.name, comp.id
-            );
-        }
-    }
-
-    let min = *ids.iter().min().unwrap();
-    let max = *ids.iter().max().unwrap();
-    if min != 0 {
-        panic!("Component ID 0+ was skipped!");
-    }
-
-    for id in min..=max {
-        if !ids.contains(&id) {
-            panic!("Component ID {} was skipped!", id);
+        if !names.insert(&comp.name) {
+            panic!("Duplicate components `{}`", comp.name);
         }
     }
 }

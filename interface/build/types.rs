@@ -86,8 +86,7 @@ pub fn gen_comp_type(comps: &[Component]) -> TokenStream {
         .iter()
         .map(|comp| {
             let name = ident(&comp.name);
-            let id = comp.id;
-            quote! { #name = #id }
+            quote! { #name }
         })
         .collect();
 

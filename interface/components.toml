@@ -1,117 +1,103 @@
-#! components.toml describes all components in Igloo
-#! Using Rust build code it will generate
-#! types and functions for all components
-#!
-#! In order to ensure backwards compatbility, never change IDs (append-only)
+# This file describes all components in Igloo
+# Each component can either be a single type (ex. `kind = "Integer"`) or an enum
+# 
+# Build scripts compile this into Rust code and typings for other languages.
+#
+# To retain backwards compatibility:
+#  - Components cannot be deleted
+#  - `name` or `kind` must never change for components
+#  - Enum typed components can have variants added, but never removed
+# 
 
 # == Primitives == #
 
 [[components]]
 name = "Integer"
-id = 0
 kind = "Integer"
 
 [[components]]
 name = "Real"
-id = 1
 kind = "Real"
 
 [[components]]
 name = "Text"
-id = 2
 kind = "Text"
 
 [[components]]
 name = "Boolean"
-id = 3
 kind = "Boolean"
 
 [[components]]
 name = "Color"
-id = 4
 kind = "Color"
 
 [[components]]
 name = "Date"
-id = 5
 kind = "Date"
 
 [[components]]
 name = "Time"
-id = 6
 kind = "Time"
 
 [[components]]
 name = "IntegerList"
-id = 7
 kind = "IntegerList"
 
 [[components]]
 name = "RealList"
-id = 8
 kind = "RealList"
 
 [[components]]
 name = "TextList"
-id = 9
 kind = "TextList"
 
 [[components]]
 name = "BooleanList"
-id = 10
 kind = "BooleanList"
 
 [[components]]
 name = "ColorList"
-id = 11
 kind = "ColorList"
 
 [[components]]
 name = "DateList"
-id = 12
 kind = "DateList"
 
 [[components]]
 name = "TimeList"
-id = 13
 kind = "TimeList"
 
 # == End Primitives == #
 
 [[components]]
 name = "Trigger"
-id = 14
 
 [[components]]
 name = "Timestamp"
-id = 15
 kind = "Integer"
 desc = "Unix epoch"
 
 [[components]]
 name = "Duration"
-id = 16
 kind = "Integer"
 desc = "Number of seconds"
 
 [[components]]
 name = "Weekday"
-id = 17
 kind = "Enum"
 variants = [
-    { id = 0, name = "Sunday", aliases = ["sunday", "sun"] },
-    { id = 1, name = "Monday", aliases = ["monday", "mon", "m"] },
-    { id = 2, name = "Tuesday", aliases = ["tuesday", "tue", "tues", "t"] },
-    { id = 3, name = "Wednesday", aliases = ["wednesday", "wed", "w"] },
-    { id = 4, name = "Thursday", aliases = ["thursday", "thu", "r"] },
-    { id = 5, name = "Friday", aliases = ["friday", "fri", "f"] },
-    { id = 6, name = "Saturday", aliases = ["saturday", "sat"] },
+    { name = "Sunday", aliases = ["sunday", "sun"] },
+    { name = "Monday", aliases = ["monday", "mon", "m"] },
+    { name = "Tuesday", aliases = ["tuesday", "tue", "tues", "t"] },
+    { name = "Wednesday", aliases = ["wednesday", "wed", "w"] },
+    { name = "Thursday", aliases = ["thursday", "thu", "r"] },
+    { name = "Friday", aliases = ["friday", "fri", "f"] },
+    { name = "Saturday", aliases = ["saturday", "sat"] },
 ]
 
 # Light
 [[components]]
 name = "Light"
-id = 18
 related = [
     { name = "Switch", reason = "on/off control" },
     { name = "Dimmer", reason = "brightness control" },
@@ -122,54 +108,45 @@ related = [
 
 [[components]]
 name = "Switch"
-id = 19
 kind = "Boolean"
 
 [[components]]
 name = "Dimmer"
-id = 20
 kind = "Real"
 desc = "Range: 0.0 (0%) - 1.0 (100%)"
 
 [[components]]
 name = "ColorMode"
-id = 21
 kind = "Enum"
 variants = [
-    { id = 0, name = "RGB" },
-    { id = 1, name = "Temperature" }
+    { name = "RGB" },
+    { name = "Temperature" }
 ]
 
 [[components]]
 name = "ColorTemperature"
-id = 22
 kind = "Integer"
 desc = "Unit: Degrees Kelvin"
 
 [[components]]
 name = "Volume"
-id = 23
 kind = "Real"
 desc = "Range: 0.0 (0%) - 1.0 (100%)"
 
 [[components]]
 name = "Muted"
-id = 24
 kind = "Boolean"
 
 [[components]]
 name = "Config"
-id = 25
 desc = "this entity is for configuration of the device"
 
 [[components]]
 name = "Diagnostic"
-id = 26
 desc = "this entity is for diagnosing the device"
 
 [[components]]
 name = "TextSelect"
-id = 27
 desc = "Usually used in a dropdown select menu"
 related = [
     { name = "Text", reason = "currently selection option" },
@@ -178,11 +155,9 @@ related = [
 
 [[components]]
 name = "Siren"
-id = 28
 
 [[components]]
 name = "Sensor"
-id = 29
 desc = "Marks this entity as a Sensor, which usually means its immutable."
 
 # Metadata 
@@ -190,292 +165,280 @@ desc = "Marks this entity as a Sensor, which usually means its immutable."
 # and might not make sense in Igloo
 [[components]]
 name = "Icon"
-id = 30
 kind = "Text"
 desc = "Example: \"mdi:timer-outline\""
 
 [[components]]
 name = "AccuracyDecimals"
-id = 31
 kind = "Integer"
 
 [[components]]
 name = "DeviceClass"
-id = 32
 kind = "Text"
 desc = "Currently just for ESPHome"
 
 [[components]]
 name = "SensorStateClass"
-id = 33
 kind = "Enum"
 variants = [
-    { id = 0, name = "Measurement" },
-    { id = 1, name = "TotalIncreasing" },
-    { id = 2, name = "Total" }
+    { name = "Measurement" },
+    { name = "TotalIncreasing" },
+    { name = "Total" }
 ]
 
 [[components]]
 name = "Unit"
-id = 34
 kind = "Enum"
 variants = [
     # Apparent power units
-    { id = 0, name = "VoltAmperes", aliases = ["VA"] },
+    { name = "VoltAmperes", aliases = ["VA"] },
     
     # Power units
-    { id = 1, name = "Watts", aliases = ["W", "watt", "watts"] },
-    { id = 2, name = "KiloWatts", aliases = ["kW", "kw", "kilowatt", "kilowatts"] },
-    { id = 3, name = "BtusPerHour", aliases = ["BTU/h"] },
+    { name = "Watts", aliases = ["W", "watt", "watts"] },
+    { name = "KiloWatts", aliases = ["kW", "kw", "kilowatt", "kilowatts"] },
+    { name = "BtusPerHour", aliases = ["BTU/h"] },
     
     # Reactive power units
-    { id = 4, name = "VoltAmpereReactive", aliases = ["var"] },
+    { name = "VoltAmpereReactive", aliases = ["var"] },
     
     # Energy units
-    { id = 5, name = "WattHours", aliases = ["Wh"] },
-    { id = 6, name = "KiloWattHours", aliases = ["kWh"] },
-    { id = 7, name = "MegaWattHours", aliases = ["MWh"] },
+    { name = "WattHours", aliases = ["Wh"] },
+    { name = "KiloWattHours", aliases = ["kWh"] },
+    { name = "MegaWattHours", aliases = ["MWh"] },
     
     # Electric current units
-    { id = 8, name = "Milliamperes", aliases = ["mA", "milliampere", "milliamperes", "milliamps", "milliamp"] },
-    { id = 9, name = "Amperes", aliases = ["A", "amps", "amp", "ampere", "amperes"] },
+    { name = "Milliamperes", aliases = ["mA", "milliampere", "milliamperes", "milliamps", "milliamp"] },
+    { name = "Amperes", aliases = ["A", "amps", "amp", "ampere", "amperes"] },
     
     # Electric potential units
-    { id = 10, name = "Millivolts", aliases = ["mV", "millivolts"] },
-    { id = 11, name = "Volts", aliases = ["V", "volt", "volts"] },
+    { name = "Millivolts", aliases = ["mV", "millivolts"] },
+    { name = "Volts", aliases = ["V", "volt", "volts"] },
     
     # Degree units
-    { id = 12, name = "Degrees", aliases = ["°", "degree", "degrees"] },
+    { name = "Degrees", aliases = ["°", "degree", "degrees"] },
     
     # Currency units
-    { id = 13, name = "Euros", aliases = ["€", "euro", "euros"] },
-    { id = 14, name = "Dollars", aliases = ["$", "dollar", "dollars"] },
-    { id = 15, name = "Cents", aliases = ["¢", "cent", "cents"] },
+    { name = "Euros", aliases = ["€", "euro", "euros"] },
+    { name = "Dollars", aliases = ["$", "dollar", "dollars"] },
+    { name = "Cents", aliases = ["¢", "cent", "cents"] },
     
     # Temperature units
-    { id = 16, name = "Celsius", aliases = ["°C", "celcius"] },
-    { id = 17, name = "Fahrenheit", aliases = ["°F", "fahrenheit"] },
-    { id = 18, name = "Kelvin", aliases = ["K", "kelvin"] },
+    { name = "Celsius", aliases = ["°C", "celcius"] },
+    { name = "Fahrenheit", aliases = ["°F", "fahrenheit"] },
+    { name = "Kelvin", aliases = ["K", "kelvin"] },
     
     # Time units
-    { id = 19, name = "Microseconds", aliases = ["μs", "us", "microseconds"] },
-    { id = 20, name = "Milliseconds", aliases = ["ms", "milliseconds"] },
-    { id = 21, name = "Seconds", aliases = ["s", "seconds"] },
-    { id = 22, name = "Minutes", aliases = ["min", "mins", "minute", "minutes"] },
-    { id = 23, name = "Hours", aliases = ["h", "hour", "hours"] },
-    { id = 24, name = "Days", aliases = ["d", "day", "days"] },
-    { id = 25, name = "Weeks", aliases = ["w", "wk", "wks", "week", "weeks"] },
-    { id = 26, name = "Months", aliases = ["month", "months"] },
-    { id = 27, name = "Years", aliases = ["y", "year", "years"] },
+    { name = "Microseconds", aliases = ["μs", "us", "microseconds"] },
+    { name = "Milliseconds", aliases = ["ms", "milliseconds"] },
+    { name = "Seconds", aliases = ["s", "seconds"] },
+    { name = "Minutes", aliases = ["min", "mins", "minute", "minutes"] },
+    { name = "Hours", aliases = ["h", "hour", "hours"] },
+    { name = "Days", aliases = ["d", "day", "days"] },
+    { name = "Weeks", aliases = ["w", "wk", "wks", "week", "weeks"] },
+    { name = "Months", aliases = ["month", "months"] },
+    { name = "Years", aliases = ["y", "year", "years"] },
     
     # Length units
-    { id = 28, name = "Millimeters", aliases = ["mm"] },
-    { id = 29, name = "Centimeters", aliases = ["cm"] },
-    { id = 30, name = "Meters", aliases = ["m"] },
-    { id = 31, name = "Kilometers", aliases = ["km"] },
-    { id = 32, name = "Inches", aliases = ["in"] },
-    { id = 33, name = "Feet", aliases = ["ft"] },
-    { id = 34, name = "Yard", aliases = ["yd"] },
-    { id = 35, name = "Miles", aliases = ["mi"] },
+    { name = "Millimeters", aliases = ["mm"] },
+    { name = "Centimeters", aliases = ["cm"] },
+    { name = "Meters", aliases = ["m"] },
+    { name = "Kilometers", aliases = ["km"] },
+    { name = "Inches", aliases = ["in"] },
+    { name = "Feet", aliases = ["ft"] },
+    { name = "Yard", aliases = ["yd"] },
+    { name = "Miles", aliases = ["mi"] },
     
     # Frequency units
-    { id = 36, name = "Hertz", aliases = ["Hz"] },
-    { id = 37, name = "Kilohertz", aliases = ["kHz"] },
-    { id = 38, name = "Megahertz", aliases = ["MHz"] },
-    { id = 39, name = "Gigahertz", aliases = ["GHz"] },
+    { name = "Hertz", aliases = ["Hz"] },
+    { name = "Kilohertz", aliases = ["kHz"] },
+    { name = "Megahertz", aliases = ["MHz"] },
+    { name = "Gigahertz", aliases = ["GHz"] },
     
     # Pressure units
-    { id = 40, name = "Pascal", aliases = ["Pa"] },
-    { id = 41, name = "Hectopascal", aliases = ["hPa"] },
-    { id = 42, name = "Kilopascal", aliases = ["kPa"] },
-    { id = 43, name = "Bar", aliases = ["bar"] },
-    { id = 44, name = "Centibar", aliases = ["cbar"] },
-    { id = 45, name = "Millibar", aliases = ["mbar"] },
-    { id = 46, name = "MillimeterMercury", aliases = ["mmHg"] },
-    { id = 47, name = "InchMercury", aliases = ["inHg"] },
-    { id = 48, name = "Psi", aliases = ["psi"] },
+    { name = "Pascal", aliases = ["Pa"] },
+    { name = "Hectopascal", aliases = ["hPa"] },
+    { name = "Kilopascal", aliases = ["kPa"] },
+    { name = "Bar", aliases = ["bar"] },
+    { name = "Centibar", aliases = ["cbar"] },
+    { name = "Millibar", aliases = ["mbar"] },
+    { name = "MillimeterMercury", aliases = ["mmHg"] },
+    { name = "InchMercury", aliases = ["inHg"] },
+    { name = "Psi", aliases = ["psi"] },
     
     # Sound pressure units
-    { id = 49, name = "Decibel", aliases = ["dB", "decibel", "decibels"] },
-    { id = 50, name = "DecibelAWeighted", aliases = ["dBa"] },
-    { id = 51, name = "DecibelsMilliwatt", aliases = ["dBm"] },
+    { name = "Decibel", aliases = ["dB", "decibel", "decibels"] },
+    { name = "DecibelAWeighted", aliases = ["dBa"] },
+    { name = "DecibelsMilliwatt", aliases = ["dBm"] },
     
     # Volume units
-    { id = 52, name = "Liters", aliases = ["L"] },
-    { id = 53, name = "Milliliters", aliases = ["mL"] },
-    { id = 54, name = "CubicMeters", aliases = ["m³"] },
-    { id = 55, name = "CubicFeet", aliases = ["ft³"] },
-    { id = 56, name = "Gallons", aliases = ["gal"] },
-    { id = 57, name = "FluidOunce", aliases = ["fl. oz."] },
+    { name = "Liters", aliases = ["L"] },
+    { name = "Milliliters", aliases = ["mL"] },
+    { name = "CubicMeters", aliases = ["m³"] },
+    { name = "CubicFeet", aliases = ["ft³"] },
+    { name = "Gallons", aliases = ["gal"] },
+    { name = "FluidOunce", aliases = ["fl. oz."] },
     
     # Volume Flow Rate units
-    { id = 58, name = "CubicMetersPerHour", aliases = ["m³/h"] },
-    { id = 59, name = "CubicFeetPerMinute", aliases = ["ft³/m"] },
+    { name = "CubicMetersPerHour", aliases = ["m³/h"] },
+    { name = "CubicFeetPerMinute", aliases = ["ft³/m"] },
     
     # Area units
-    { id = 60, name = "SquareMeters", aliases = ["m²"] },
+    { name = "SquareMeters", aliases = ["m²"] },
     
     # Mass units
-    { id = 61, name = "Grams", aliases = ["g"] },
-    { id = 62, name = "Kilograms", aliases = ["kg"] },
-    { id = 63, name = "Milligrams", aliases = ["mg"] },
-    { id = 64, name = "Micrograms", aliases = ["µg"] },
-    { id = 65, name = "Ounces", aliases = ["oz"] },
-    { id = 66, name = "Pounds", aliases = ["lb"] },
+    { name = "Grams", aliases = ["g"] },
+    { name = "Kilograms", aliases = ["kg"] },
+    { name = "Milligrams", aliases = ["mg"] },
+    { name = "Micrograms", aliases = ["µg"] },
+    { name = "Ounces", aliases = ["oz"] },
+    { name = "Pounds", aliases = ["lb"] },
     
     # Conductivity units
-    { id = 67, name = "MicrosiemensPerCentimeter", aliases = ["µS/cm"] },
+    { name = "MicrosiemensPerCentimeter", aliases = ["µS/cm"] },
     
     # Light units
-    { id = 68, name = "Lux", aliases = ["lx"] },
+    { name = "Lux", aliases = ["lx"] },
     
     # UV Index units
-    { id = 69, name = "UvIndex", aliases = ["UV index"] },
+    { name = "UvIndex", aliases = ["UV index"] },
     
     # Percentage units
-    { id = 70, name = "Percentage", aliases = ["%"] },
+    { name = "Percentage", aliases = ["%"] },
     
     # Irradiation units
-    { id = 71, name = "WattsPerSquareMeter", aliases = ["W/m²"] },
-    { id = 72, name = "BtusPerHourSquareFoot", aliases = ["BTU/(h×ft²)"] },
+    { name = "WattsPerSquareMeter", aliases = ["W/m²"] },
+    { name = "BtusPerHourSquareFoot", aliases = ["BTU/(h×ft²)"] },
     
     # Concentration units
-    { id = 73, name = "MicrogramsPerCubicMeter", aliases = ["µg/m³"] },
-    { id = 74, name = "MilligramsPerCubicMeter", aliases = ["mg/m³"] },
-    { id = 75, name = "MicrogramsPerCubicFoot", aliases = ["μg/ft³"] },
-    { id = 76, name = "PartsPerCubicMeter", aliases = ["p/m³"] },
-    { id = 77, name = "PartsPerMillion", aliases = ["ppm"] },
-    { id = 78, name = "PartsPerBillion", aliases = ["ppb"] },
+    { name = "MicrogramsPerCubicMeter", aliases = ["µg/m³"] },
+    { name = "MilligramsPerCubicMeter", aliases = ["mg/m³"] },
+    { name = "MicrogramsPerCubicFoot", aliases = ["μg/ft³"] },
+    { name = "PartsPerCubicMeter", aliases = ["p/m³"] },
+    { name = "PartsPerMillion", aliases = ["ppm"] },
+    { name = "PartsPerBillion", aliases = ["ppb"] },
     
     # Speed units
-    { id = 79, name = "MillimetersPerDay", aliases = ["mm/d"] },
-    { id = 80, name = "MillimetersPerHour", aliases = ["mm/h"] },
-    { id = 81, name = "FeetPerSecond", aliases = ["ft/s"] },
-    { id = 82, name = "InchesPerDay", aliases = ["in/d"] },
-    { id = 83, name = "MetersPerSecond", aliases = ["m/s"] },
-    { id = 84, name = "InchesPerHour", aliases = ["in/h"] },
-    { id = 85, name = "KilometersPerHour", aliases = ["km/h"] },
-    { id = 86, name = "Knots", aliases = ["kn"] },
-    { id = 87, name = "MilesPerHour", aliases = ["mph"] },
+    { name = "MillimetersPerDay", aliases = ["mm/d"] },
+    { name = "MillimetersPerHour", aliases = ["mm/h"] },
+    { name = "FeetPerSecond", aliases = ["ft/s"] },
+    { name = "InchesPerDay", aliases = ["in/d"] },
+    { name = "MetersPerSecond", aliases = ["m/s"] },
+    { name = "InchesPerHour", aliases = ["in/h"] },
+    { name = "KilometersPerHour", aliases = ["km/h"] },
+    { name = "Knots", aliases = ["kn"] },
+    { name = "MilesPerHour", aliases = ["mph"] },
     
     # Data units
-    { id = 88, name = "Bits", aliases = ["bit"] },
-    { id = 89, name = "Kilobits", aliases = ["kbit"] },
-    { id = 90, name = "Megabits", aliases = ["Mbit"] },
-    { id = 91, name = "Gigabits", aliases = ["Gbit"] },
-    { id = 92, name = "Bytes", aliases = ["B"] },
-    { id = 93, name = "Kilobytes", aliases = ["kB"] },
-    { id = 94, name = "Megabytes", aliases = ["MB"] },
-    { id = 95, name = "Gigabytes", aliases = ["GB"] },
-    { id = 96, name = "Terabytes", aliases = ["TB"] },
-    { id = 97, name = "Petabytes", aliases = ["PB"] },
-    { id = 98, name = "Exabytes", aliases = ["EB"] },
-    { id = 99, name = "Zettabytes", aliases = ["ZB"] },
-    { id = 100, name = "Yottabytes", aliases = ["YB"] },
-    { id = 101, name = "Kibibytes", aliases = ["KiB"] },
-    { id = 102, name = "Mebibytes", aliases = ["MiB"] },
-    { id = 103, name = "Gibibytes", aliases = ["GiB"] },
-    { id = 104, name = "Tebibytes", aliases = ["TiB"] },
-    { id = 105, name = "Pebibytes", aliases = ["PiB"] },
-    { id = 106, name = "Exbibytes", aliases = ["EiB"] },
-    { id = 107, name = "Zebibytes", aliases = ["ZiB"] },
-    { id = 108, name = "Yobibytes", aliases = ["YiB"] },
+    { name = "Bits", aliases = ["bit"] },
+    { name = "Kilobits", aliases = ["kbit"] },
+    { name = "Megabits", aliases = ["Mbit"] },
+    { name = "Gigabits", aliases = ["Gbit"] },
+    { name = "Bytes", aliases = ["B"] },
+    { name = "Kilobytes", aliases = ["kB"] },
+    { name = "Megabytes", aliases = ["MB"] },
+    { name = "Gigabytes", aliases = ["GB"] },
+    { name = "Terabytes", aliases = ["TB"] },
+    { name = "Petabytes", aliases = ["PB"] },
+    { name = "Exabytes", aliases = ["EB"] },
+    { name = "Zettabytes", aliases = ["ZB"] },
+    { name = "Yottabytes", aliases = ["YB"] },
+    { name = "Kibibytes", aliases = ["KiB"] },
+    { name = "Mebibytes", aliases = ["MiB"] },
+    { name = "Gibibytes", aliases = ["GiB"] },
+    { name = "Tebibytes", aliases = ["TiB"] },
+    { name = "Pebibytes", aliases = ["PiB"] },
+    { name = "Exbibytes", aliases = ["EiB"] },
+    { name = "Zebibytes", aliases = ["ZiB"] },
+    { name = "Yobibytes", aliases = ["YiB"] },
     
     # Data rate units
-    { id = 109, name = "BitsPerSecond", aliases = ["bit/s"] },
-    { id = 110, name = "KilobitsPerSecond", aliases = ["kbit/s"] },
-    { id = 111, name = "MegabitsPerSecond", aliases = ["Mbit/s"] },
-    { id = 112, name = "GigabitsPerSecond", aliases = ["Gbit/s"] },
-    { id = 113, name = "BytesPerSecond", aliases = ["B/s"] },
-    { id = 114, name = "KilobytesPerSecond", aliases = ["kB/s"] },
-    { id = 115, name = "MegabytesPerSecond", aliases = ["MB/s"] },
-    { id = 116, name = "GigabytesPerSecond", aliases = ["GB/s"] },
-    { id = 117, name = "KibibytesPerSecond", aliases = ["KiB/s"] },
-    { id = 118, name = "MebibytesPerSecond", aliases = ["MiB/s"] },
-    { id = 119, name = "GibibytesPerSecond", aliases = ["GiB/s"] },
+    { name = "BitsPerSecond", aliases = ["bit/s"] },
+    { name = "KilobitsPerSecond", aliases = ["kbit/s"] },
+    { name = "MegabitsPerSecond", aliases = ["Mbit/s"] },
+    { name = "GigabitsPerSecond", aliases = ["Gbit/s"] },
+    { name = "BytesPerSecond", aliases = ["B/s"] },
+    { name = "KilobytesPerSecond", aliases = ["kB/s"] },
+    { name = "MegabytesPerSecond", aliases = ["MB/s"] },
+    { name = "GigabytesPerSecond", aliases = ["GB/s"] },
+    { name = "KibibytesPerSecond", aliases = ["KiB/s"] },
+    { name = "MebibytesPerSecond", aliases = ["MiB/s"] },
+    { name = "GibibytesPerSecond", aliases = ["GiB/s"] },
 ]
 
 [[components]]
 name = "FanOscillation"
-id = 35
 kind = "Enum"
 variants = [
-    { id = 0, name = "Off", aliases = ["off"] },
-    { id = 1, name = "On", aliases = ["on"] },
-    { id = 2, name = "Vertical", aliases = ["vertical"] },
-    { id = 3, name = "Horizontal", aliases = ["horizontal"] },
-    { id = 4, name = "Both", aliases = ["both"] }
+    { name = "Off", aliases = ["off"] },
+    { name = "On", aliases = ["on"] },
+    { name = "Vertical", aliases = ["vertical"] },
+    { name = "Horizontal", aliases = ["horizontal"] },
+    { name = "Both", aliases = ["both"] }
 ]
 
 [[components]]
 name = "FanDirection"
-id = 36
 kind = "Enum"
 variants = [
-    { id = 0, name = "Forward", aliases = ["forward"] },
-    { id = 1, name = "Reverse", aliases = ["reverse"] },
+    { name = "Forward", aliases = ["forward"] },
+    { name = "Reverse", aliases = ["reverse"] },
 ]
 
 [[components]]
 name = "FanSpeed"
-id = 37
 kind = "Enum"
 variants = [
-    { id = 0, name = "On", aliases = ["on"] },
-    { id = 1, name = "Off", aliases = ["off"] },
-    { id = 2, name = "Auto", aliases = ["auto"] },
-    { id = 3, name = "Low", aliases = ["low"] },
-    { id = 4, name = "Medium", aliases = ["medium"] },
-    { id = 5, name = "High", aliases = ["high"] },
-    { id = 6, name = "Middle", aliases = ["middle"] },
-    { id = 7, name = "Focus", aliases = ["focus"] },
-    { id = 8, name = "Diffuse", aliases = ["diffuse"] },
-    { id = 9, name = "Quiet", aliases = ["quiet"] }
+    { name = "On", aliases = ["on"] },
+    { name = "Off", aliases = ["off"] },
+    { name = "Auto", aliases = ["auto"] },
+    { name = "Low", aliases = ["low"] },
+    { name = "Medium", aliases = ["medium"] },
+    { name = "High", aliases = ["high"] },
+    { name = "Middle", aliases = ["middle"] },
+    { name = "Focus", aliases = ["focus"] },
+    { name = "Diffuse", aliases = ["diffuse"] },
+    { name = "Quiet", aliases = ["quiet"] }
 ]
 
 [[components]]
 name = "ClimateMode"
-id = 38
 kind = "Enum"
 variants = [
-    { id = 0, name = "Off", aliases = ["off"] },
-    { id = 1, name = "Auto", aliases = ["auto"] },
-    { id = 2, name = "Heat", aliases = ["heat"] },
-    { id = 3, name = "Cool", aliases = ["cool"] },
-    { id = 4, name = "HeatCool", aliases = ["heat_cool"] },
-    { id = 5, name = "FanOnly", aliases = ["fan_only"] },
-    { id = 6, name = "Dry", aliases = ["dry"] },
-    { id = 7, name = "Eco", aliases = ["eco"] },
+    { name = "Off", aliases = ["off"] },
+    { name = "Auto", aliases = ["auto"] },
+    { name = "Heat", aliases = ["heat"] },
+    { name = "Cool", aliases = ["cool"] },
+    { name = "HeatCool", aliases = ["heat_cool"] },
+    { name = "FanOnly", aliases = ["fan_only"] },
+    { name = "Dry", aliases = ["dry"] },
+    { name = "Eco", aliases = ["eco"] },
 ]
 
 [[components]]
 name = "LockState"
-id = 39
 kind = "Enum"
 variants = [
-    { id = 0, name = "Unknown", aliases = ["unknown"] },
-    { id = 1, name = "Locked", aliases = ["locked"] },
-    { id = 2, name = "Unlocked", aliases = ["unlocked"] },
-    { id = 3, name = "Jammed", aliases = ["jammed"] },
-    { id = 4, name = "Locking", aliases = ["locking"] },
-    { id = 5, name = "Unlocking", aliases = ["unlocking"] },
+    { name = "Unknown", aliases = ["unknown"] },
+    { name = "Locked", aliases = ["locked"] },
+    { name = "Unlocked", aliases = ["unlocked"] },
+    { name = "Jammed", aliases = ["jammed"] },
+    { name = "Locking", aliases = ["locking"] },
+    { name = "Unlocking", aliases = ["unlocking"] },
 ]
 
 [[components]]
 name = "MediaState"
-id = 40
 kind = "Enum"
 variants = [
-    { id = 0, name = "Unknown", aliases = ["unknown"] },
-    { id = 1, name = "Idle", aliases = ["idle"] },
-    { id = 2, name = "Playing", aliases = ["playing"] },
-    { id = 3, name = "Paused", aliases = ["paused"] },
+    { name = "Unknown", aliases = ["unknown"] },
+    { name = "Idle", aliases = ["idle"] },
+    { name = "Playing", aliases = ["playing"] },
+    { name = "Paused", aliases = ["paused"] },
 ]
 
 # Cover
 [[components]]
 name = "Cover"
-id = 41
 related = [
     { name = "CoverState", reason = "current state" },
     { name = "Position", reason = "position of the cover" },
@@ -484,31 +447,27 @@ related = [
 
 [[components]]
 name = "CoverState"
-id = 42
 kind = "Enum"
 variants = [
-    { id = 0, name = "Idle", aliases = ["idle"] },
-    { id = 1, name = "Opening", aliases = ["opening"] },
-    { id = 2, name = "Closing", aliases = ["closing"] },
-    { id = 3, name = "Stopped", aliases = ["stopped"] },
-    { id = 4, name = "Open", aliases = ["open"] },
-    { id = 5, name = "Closed", aliases = ["closed"] },
+    { name = "Idle", aliases = ["idle"] },
+    { name = "Opening", aliases = ["opening"] },
+    { name = "Closing", aliases = ["closing"] },
+    { name = "Stopped", aliases = ["stopped"] },
+    { name = "Open", aliases = ["open"] },
+    { name = "Closed", aliases = ["closed"] },
 ]
 
 [[components]]
 name = "Position"
-id = 43
 kind = "Real"
 
 [[components]]
 name = "Tilt"
-id = 44
 kind = "Real"
 
 # Valve
 [[components]]
 name = "Valve"
-id = 45
 desc = ""
 related = [
     { name = "ValveState", reason = "current state" },
@@ -517,28 +476,26 @@ related = [
 
 [[components]]
 name = "ValveState"
-id = 46
 kind = "Enum"
 variants = [
-    { id = 0, name = "Idle", aliases = ["idle"] },
-    { id = 1, name = "Opening", aliases = ["opening", "is_opening"] },
-    { id = 2, name = "Closing", aliases = ["closing", "is_closing"] },
+    { name = "Idle", aliases = ["idle"] },
+    { name = "Opening", aliases = ["opening", "is_opening"] },
+    { name = "Closing", aliases = ["closing", "is_closing"] },
 ]
 
 
 [[components]]
 name = "AlarmState"
-id = 47
 kind = "Enum"
 variants = [
-    { id = 0, name = "Disarmed", aliases = ["disarmed"] },
-    { id = 1, name = "ArmedHome", aliases = ["armed_home"] },
-    { id = 2, name = "ArmedAway", aliases = ["armed_away"] },
-    { id = 3, name = "ArmedNight", aliases = ["armed_night"] },
-    { id = 4, name = "ArmedVacation", aliases = ["armed_vacation"] },
-    { id = 5, name = "ArmedUnknown", aliases = ["armed_unknown", "armed"] },
-    { id = 6, name = "Pending", aliases = ["pending"] },
-    { id = 7, name = "Triggered", aliases = ["triggered"] },
-    { id = 8, name = "Arming", aliases = ["arming"] },
-    { id = 9, name = "Disarming", aliases = ["disarming"] },
+    { name = "Disarmed", aliases = ["disarmed"] },
+    { name = "ArmedHome", aliases = ["armed_home"] },
+    { name = "ArmedAway", aliases = ["armed_away"] },
+    { name = "ArmedNight", aliases = ["armed_night"] },
+    { name = "ArmedVacation", aliases = ["armed_vacation"] },
+    { name = "ArmedUnknown", aliases = ["armed_unknown", "armed"] },
+    { name = "Pending", aliases = ["pending"] },
+    { name = "Triggered", aliases = ["triggered"] },
+    { name = "Arming", aliases = ["arming"] },
+    { name = "Disarming", aliases = ["disarming"] },
 ]

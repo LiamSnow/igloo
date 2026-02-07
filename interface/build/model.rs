@@ -13,7 +13,6 @@ pub struct ComponentsConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Component {
     pub name: String,
-    pub id: u16,
     #[serde(default)]
     pub desc: String,
     #[serde(default)]
@@ -79,7 +78,6 @@ pub enum IglooType {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Variant {
-    pub id: u8,
     pub name: String,
     pub aliases: Option<Vec<String>>,
 }
