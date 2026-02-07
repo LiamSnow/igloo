@@ -3,6 +3,8 @@ import { pluginBabel } from '@rsbuild/plugin-babel';
 import { pluginSolid } from '@rsbuild/plugin-solid';
 
 export default defineConfig({
+  mode: 'production',  
+
   plugins: [
     pluginBabel({
       include: /\.(?:jsx|tsx)$/,
@@ -22,6 +24,10 @@ export default defineConfig({
         '@ark-ui/solid': {
           singleton: true,
           eager: true
+        },
+        '@igloo/types': {
+          singleton: true,
+          eager: true,
         },
       },
     },

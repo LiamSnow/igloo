@@ -1,51 +1,40 @@
-import { createSignal, Show, type Component } from 'solid-js';
-import { Dynamic } from 'solid-js/web';
-import { loadPlugin } from './loadPlugin';
+import { createSignal, onMount, onCleanup, Show, type Component } from 'solid-js';
+import { WebSocketManager } from './ws';
+import { DashboardLoader } from './DashboardLoader';
+import type { WatchUpdate } from '@igloo/types';
 
 const App: Component = () => {
-  const [pluginComponent, setPluginComponent] = createSignal<Component | null>(null);
-  const [loading, setLoading] = createSignal(false);
+  const [wsManager] = createSignal(new WebSocketManager());
+  const [connected, setConnected] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [connecting, setConnecting] = createSignal(true);
 
-  const loadExamplePlugin = async () => {
-    setLoading(true);
-    setError(null);
-    
+  onMount(async () => {
     try {
-      const component = await loadPlugin(
-        'example_plugin',
-        '/plugins/example_plugin/remoteEntry.js',
-        './Widget'
-      );
-      setPluginComponent(() => component);
+      const handleMetadata = (update: WatchUpdate) => {
+        console.log('[App] Metadata update:', update);
+      };
+
+      await wsManager().connect('ws://localhost:4299/ws', handleMetadata);
+      setConnected(true);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load plugin');
-      console.error('Plugin load error:', err);
+      console.error('[App] Failed to connect to WebSocket:', err);
+      setError(err instanceof Error ? err.message : 'Connection failed');
     } finally {
-      setLoading(false);
+      setConnecting(false);
     }
-  };
+  });
+
+  onCleanup(() => {
+    wsManager().disconnect();
+  });
 
   return (
-    <div style={{ padding: '40px', 'font-family': 'system-ui, sans-serif' }}>
-      <h1>Example Dashboard</h1>
-      
-      <button
-        onClick={loadExamplePlugin}
-        disabled={loading()}
-        style={{
-          padding: '12px 24px',
-          background: loading() ? '#9ca3af' : '#10b981',
-          color: 'white',
-          border: 'none',
-          'border-radius': '6px',
-          cursor: loading() ? 'not-allowed' : 'pointer',
-          'font-size': '16px',
-          margin: '20px 0'
-        }}
-      >
-        {loading() ? 'Loading Plugin...' : 'Load Example Plugin'}
-      </button>
+    <div style={{ padding: '20px', 'font-family': 'system-ui, sans-serif' }}>
+      <Show when={connecting()}>
+        <div>Connecting to Igloo server...</div>
+      </Show>
 
       <Show when={error()}>
         <div style={{
@@ -54,17 +43,16 @@ const App: Component = () => {
           border: '1px solid #ef4444',
           'border-radius': '6px',
           color: '#991b1b',
-          margin: '20px 0'
         }}>
-          Error: {error()}
+          Connection Error: {error()}
         </div>
       </Show>
 
-      <Show when={pluginComponent()}>
-        <div style={{ 'margin-top': '20px' }}>
-          <h2>Loaded Plugin:</h2>
-          <Dynamic component={pluginComponent()!} />
-        </div>
+      <Show when={connected()}>
+        <DashboardLoader 
+          dashboardId="main" 
+          api={wsManager()} 
+        />
       </Show>
     </div>
   );
