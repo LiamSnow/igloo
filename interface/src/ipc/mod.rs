@@ -1,54 +1,33 @@
-use crate::Component;
-use futures::{Sink, SinkExt, io};
-use std::env;
+use crate::{Component, ipc::codec::LengthDelimitedJSONCodec};
+use futures_util::{Sink, SinkExt};
+pub use model::*;
+use std::{env, io};
 use tokio::net::{
     UnixStream,
     unix::{OwnedReadHalf, OwnedWriteHalf},
 };
+use tokio_util::codec::{FramedRead, FramedWrite};
 
+pub mod codec;
 pub mod model;
-pub use model::*;
-use tokio_serde::{SymmetricallyFramed, formats::SymmetricalJson};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-pub type IWriter = SymmetricallyFramed<
-    FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>,
-    IglooToExtension,
-    SymmetricalJson<IglooToExtension>,
->;
+/// Igloo -> Extension
+pub type IWriter = FramedWrite<OwnedWriteHalf, LengthDelimitedJSONCodec<IglooToExtension>>;
+/// Igloo -> Extension
+pub type IReader = FramedRead<OwnedReadHalf, LengthDelimitedJSONCodec<ExtensionToIgloo>>;
 
-pub type IReader = SymmetricallyFramed<
-    FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
-    ExtensionToIgloo,
-    SymmetricalJson<ExtensionToIgloo>,
->;
-
-pub type EWriter = SymmetricallyFramed<
-    FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>,
-    ExtensionToIgloo,
-    SymmetricalJson<ExtensionToIgloo>,
->;
-
-pub type EReader = SymmetricallyFramed<
-    FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
-    IglooToExtension,
-    SymmetricalJson<IglooToExtension>,
->;
+/// Extension -> Igloo
+pub type EWriter = FramedWrite<OwnedWriteHalf, LengthDelimitedJSONCodec<ExtensionToIgloo>>;
+/// Extension -> Igloo
+pub type EReader = FramedRead<OwnedReadHalf, LengthDelimitedJSONCodec<IglooToExtension>>;
 
 pub async fn connect() -> io::Result<(EWriter, EReader)> {
     let stream = UnixStream::connect("igloo.sock").await?;
 
     let (reader, writer) = stream.into_split();
 
-    let mut writer = SymmetricallyFramed::new(
-        FramedWrite::new(writer, LengthDelimitedCodec::new()),
-        SymmetricalJson::default(),
-    );
-
-    let reader = SymmetricallyFramed::new(
-        FramedRead::new(reader, LengthDelimitedCodec::new()),
-        SymmetricalJson::default(),
-    );
+    let mut writer = FramedWrite::new(writer, LengthDelimitedJSONCodec::new());
+    let reader = FramedRead::new(reader, LengthDelimitedJSONCodec::new());
 
     writer.whats_up_igloo().await?;
     writer.flush().await?;
@@ -128,11 +107,11 @@ where
     type Error = io::Error;
 
     async fn whats_up_igloo(&mut self) -> io::Result<()> {
-        self.send(ExtensionToIgloo::WhatsUpIgloo).await
+        self.feed(ExtensionToIgloo::WhatsUpIgloo).await
     }
 
     async fn create_device(&mut self, name: String) -> io::Result<()> {
-        self.send(ExtensionToIgloo::CreateDevice { name }).await
+        self.feed(ExtensionToIgloo::CreateDevice { name }).await
     }
 
     async fn register_entity(
@@ -141,9 +120,9 @@ where
         entity_id: String,
         entity_index: usize,
     ) -> io::Result<()> {
-        self.send(ExtensionToIgloo::RegisterEntity {
+        self.feed(ExtensionToIgloo::RegisterEntity {
             device,
-            entity_id: entity_id,
+            entity_id,
             entity_index,
         })
         .await
@@ -164,7 +143,7 @@ where
         entity: usize,
         comps: Vec<Component>,
     ) -> io::Result<()> {
-        self.send(ExtensionToIgloo::WriteComponents {
+        self.feed(ExtensionToIgloo::WriteComponents {
             device,
             entity,
             comps,
@@ -193,7 +172,7 @@ impl AsyncWriteExtensionToIgloo for kanal::AsyncSender<ExtensionToIgloo> {
     ) -> Result<(), Self::Error> {
         self.send(ExtensionToIgloo::RegisterEntity {
             device,
-            entity_id: entity_id,
+            entity_id,
             entity_index,
         })
         .await
@@ -253,7 +232,7 @@ pub trait WriteIglooToExtension {
 
 impl WriteIglooToExtension for IWriter {
     async fn device_created(&mut self, name: String, id: u64) -> io::Result<()> {
-        self.send(IglooToExtension::DeviceCreated { name, id })
+        self.feed(IglooToExtension::DeviceCreated { name, id })
             .await
     }
 
@@ -272,7 +251,7 @@ impl WriteIglooToExtension for IWriter {
         entity: usize,
         comps: Vec<Component>,
     ) -> io::Result<()> {
-        self.send(IglooToExtension::WriteComponents {
+        self.feed(IglooToExtension::WriteComponents {
             device,
             entity,
             comps,
@@ -281,6 +260,6 @@ impl WriteIglooToExtension for IWriter {
     }
 
     async fn write_custom(&mut self, name: String, payload: serde_json::Value) -> io::Result<()> {
-        self.send(IglooToExtension::Custom { name, payload }).await
+        self.feed(IglooToExtension::Custom { name, payload }).await
     }
 }
