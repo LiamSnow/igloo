@@ -1,2 +1,8 @@
 Checkout this as reference:
 https://crates.io/crates/hakoniwa
+
+Also,
+ - report bad health/issues
+ - how do we handle esphome device logs?
+ - events?
+ - extension dashboards for configuring?

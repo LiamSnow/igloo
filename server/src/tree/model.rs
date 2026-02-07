@@ -1,20 +1,21 @@
-use crate::tree::arena::{Arena, ArenaItem};
+use crate::{
+    ext::{ExtensionProcess, ExtensionRequest},
+    tree::arena::{Arena, ArenaItem},
+};
 use igloo_interface::{
-    Component, ComponentType, MSIC,
+    Component, ComponentType, NUM_COMPONENTS,
     id::{
         DeviceID, DeviceIDMarker, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID,
         GroupIDMarker,
     },
-    ipc::IWriter,
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot, TypeFilter},
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{collections::HashMap, fs::File, time::Instant};
-use tokio::task::JoinHandle;
+use std::{collections::HashMap, fs::File, sync::Arc, time::Instant};
 
-pub const COMP_TYPE_ARR_LEN: usize = MSIC as usize + 1;
+pub const COMP_TYPE_ARR_LEN: usize = NUM_COMPONENTS + 1;
 
 /// Root
 /// WARN: Mutations to the device tree must only occur in `mutation.rs`
@@ -34,12 +35,9 @@ pub struct DeviceTree {
 pub struct Extension {
     pub(super) id: ExtensionID,
     pub(super) index: ExtensionIndex,
-    pub writer: IWriter,
+    pub channel: kanal::Sender<ExtensionRequest>,
     pub(super) devices: SmallVec<[DeviceID; 50]>,
-    pub(super) handle: JoinHandle<()>,
-    pub msic: u16,
-    #[allow(dead_code)]
-    pub msim: u8,
+    pub process: Arc<ExtensionProcess>,
 }
 
 /// Collection of devices (ex. "Living Room")
@@ -461,7 +459,6 @@ impl Extension {
         ExtensionSnapshot {
             id: self.id.clone(),
             index: self.index,
-            max_supported_component: self.msic,
             devices: self.devices.to_vec(),
         }
     }

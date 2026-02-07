@@ -10,14 +10,13 @@
 use super::{Device, DeviceTree, Entity, Extension, Group};
 use crate::{
     core::{ClientManager, IglooError},
-    ext::ExtensionHandle,
+    ext::{ExtensionHandle, ExtensionRequest},
     query::QueryEngine,
     tree::{COMP_TYPE_ARR_LEN, Presense, TreeIDError, persist::TreePersistError},
 };
 use igloo_interface::{
     Component,
     id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
-    ipc::IWriter,
 };
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
@@ -47,13 +46,12 @@ impl DeviceTree {
         cm: &mut ClientManager,
         engine: &mut QueryEngine,
         mut handle: ExtensionHandle,
-        writer: IWriter,
+        channel: kanal::Sender<ExtensionRequest>,
     ) -> Result<ExtensionIndex, IglooError> {
         let xid = handle.id.clone();
-        let msic = handle.msic;
-        let msim = handle.msim;
 
         if self.ext_ref_lut.contains_key(&xid) {
+            handle.kill();
             return Err(IglooError::DeviceTreeMutation(
                 TreeMutationError::ExtensionAlreadyAttached(xid),
             ))?;
@@ -76,16 +74,14 @@ impl DeviceTree {
 
         let xindex = ExtensionIndex(xindex);
         handle.index = xindex;
-        let handle = handle.spawn();
+        let process = handle.spawn();
 
         self.attached_exts[xindex.0] = Some(Extension {
             id: xid.clone(),
             index: xindex,
-            writer,
+            channel,
             devices,
-            handle,
-            msic,
-            msim,
+            process,
         });
 
         // link devices owned by this Extension
@@ -108,9 +104,14 @@ impl DeviceTree {
         cm: &mut ClientManager,
         engine: &mut QueryEngine,
         index: ExtensionIndex,
+        from_err: bool,
     ) -> Result<(), IglooError> {
         // make sure valid first
         self.ext(&index)?;
+
+        if from_err {
+            println!("{index}'s channel is full. This is likely a broken program.");
+        }
 
         let ext = self.attached_exts[index.0].take().unwrap(); // FIXME unwrap
         let xid = &ext.id;
@@ -129,7 +130,7 @@ impl DeviceTree {
         }
 
         // kill it
-        ext.handle.abort();
+        ext.process.start_kill();
 
         Ok(())
     }

@@ -31,6 +31,7 @@ pub fn main() {
 
     let aggregator = agg::gen_aggregator(&comps);
 
+    let num_comps = comps.len();
     let comp_type = types::gen_comp_type(&comps);
     let str_funcs = types::gen_str_funcs(&comps);
     let enum_types = enums::gen_enum_types(&comps);
@@ -44,6 +45,10 @@ pub fn main() {
         use crate::types::agg::AggregationOp;
         use std::cmp::Ordering;
         use serde::{Serialize, Deserialize};
+
+        /// Total number of Components in Igloo
+        /// (length of `Components` enum)
+        pub const NUM_COMPONENTS: usize = #num_comps;
 
         #comp_type
 

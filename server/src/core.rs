@@ -1,11 +1,11 @@
 use crate::{
-    ext,
+    ext::{self, ExtensionRequest},
     query::{QueryEngine, watch::WatcherID},
     tree::{DeviceTree, TreeIDError, mutation::TreeMutationError, persist::TreePersistError},
 };
 use igloo_interface::{
     id::{DeviceID, EntityID, EntityIndex, ExtensionIndex, GroupID},
-    ipc::{self, IglooMessage},
+    ipc::{ExtensionToIgloo, IglooToExtension},
     query::{OneShotQuery, QueryResult, WatchQuery, WatchUpdate, check::QueryError},
 };
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ pub enum IglooRequest {
 
     Ext {
         sender: ExtensionIndex,
-        content: ipc::IglooMessage,
+        content: ExtensionToIgloo,
     },
 }
 
@@ -223,11 +223,11 @@ impl IglooCore {
     pub fn handle_ext_msg(
         &mut self,
         xindex: ExtensionIndex,
-        msg: IglooMessage,
+        msg: ExtensionToIgloo,
     ) -> Result<(), IglooError> {
-        use IglooMessage::*;
+        use ExtensionToIgloo::*;
         match msg {
-            CreateDevice(name) => {
+            CreateDevice { name } => {
                 let id = self.tree.create_device(
                     &mut self.cm,
                     &mut self.engine,
@@ -235,17 +235,14 @@ impl IglooCore {
                     xindex,
                 )?;
                 let ext = self.tree.ext(&xindex)?;
-                let mut scratch = Vec::with_capacity(name.len() + 32);
-                let msg = IglooMessage::DeviceCreated(name, *id.inner());
-                let res = ext.writer.try_write_immut(&msg, &mut scratch);
-                if let Err(e) = res {
-                    eprintln!(
-                        "{}/{xindex}'s Unix socket is full. Killing.. Error={e}",
-                        ext.id()
-                    );
-                    // TODO reboot instead of kill
+                let msg = ExtensionRequest::Msg(IglooToExtension::DeviceCreated {
+                    name,
+                    id: *id.inner(),
+                });
+
+                if ext.channel.try_send(msg).is_err() {
                     self.tree
-                        .detach_ext(&mut self.cm, &mut self.engine, xindex)?;
+                        .detach_ext(&mut self.cm, &mut self.engine, xindex, true)?;
                 }
                 Ok(())
             }
@@ -274,7 +271,7 @@ impl IglooCore {
                 comps,
             ),
 
-            WhatsUpIgloo { .. } | DeviceCreated(..) | Custom { .. } => {
+            WhatsUpIgloo { .. } => {
                 // TODO return err
                 Ok(())
             }
@@ -333,7 +330,10 @@ impl IglooCore {
                 self.tree
                     .remove_device_from_group(&mut self.cm, &mut self.engine, gid, did)
             }
-            DetachExt(xindex) => self.tree.detach_ext(&mut self.cm, &mut self.engine, xindex),
+            DetachExt(xindex) => {
+                self.tree
+                    .detach_ext(&mut self.cm, &mut self.engine, xindex, false)
+            }
         }
     }
 }

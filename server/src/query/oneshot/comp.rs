@@ -1,5 +1,6 @@
 use crate::{
     core::{ClientManager, IglooError},
+    ext::ExtensionRequest,
     query::{
         QueryEngine,
         iter::{estimate_entity_count, for_each_entity},
@@ -8,7 +9,7 @@ use crate::{
 };
 use igloo_interface::{
     Aggregator, Component,
-    ipc::IglooMessage,
+    ipc::IglooToExtension,
     query::{ComponentAction as A, ComponentQuery, QueryResult as R, check::QueryError},
 };
 use rustc_hash::FxBuildHasher;
@@ -140,14 +141,13 @@ impl QueryEngine {
 
             A::Set(value) | A::Put(value) => {
                 let comp = Component::from_igloo_value(query.component, value).unwrap(); // FIXME unwrap
-                let msic = query.component as u16;
-                let mut scratch = Vec::with_capacity(64);
                 let mut exts_to_kill = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
-                let mut msg = IglooMessage::WriteComponents {
+                let mut exts_to_flush = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
+                let mut msg = ExtensionRequest::Msg(IglooToExtension::WriteComponents {
                     device: u64::MAX,
                     entity: usize::MAX,
                     comps: vec![comp],
-                };
+                });
                 let mut count = 0;
 
                 let _ = for_each_entity(
@@ -168,26 +168,21 @@ impl QueryEngine {
                             return ControlFlow::Continue(());
                         };
 
-                        if msic > ext.msic {
-                            // extension doesn't support this component so dont send it
-                            return ControlFlow::Continue(());
-                        }
-
-                        if let IglooMessage::WriteComponents {
+                        if let ExtensionRequest::Msg(IglooToExtension::WriteComponents {
                             device: d,
                             entity: e,
                             ..
-                        } = &mut msg
+                        }) = &mut msg
                         {
                             *d = *device.id().inner();
                             *e = entity.index().0;
                         }
 
-                        let res = ext.writer.try_write_immut(&msg, &mut scratch);
-                        if res.is_err() {
+                        match ext.channel.try_send(msg.clone()) {
+                            Ok(_) => exts_to_flush.insert(xindex),
                             // TODO print error
-                            exts_to_kill.insert(xindex);
-                        }
+                            Err(_) => exts_to_kill.insert(xindex),
+                        };
 
                         count += 1;
 
@@ -199,18 +194,22 @@ impl QueryEngine {
                     },
                 );
 
+                for xindex in exts_to_flush {
+                    if let Ok(ext) = tree.ext(&xindex) {
+                        _ = ext.channel.try_send(ExtensionRequest::Flush);
+                    }
+                }
+
                 for xindex in exts_to_kill {
-                    println!("{xindex}'s unix socket is full. Killing..");
-                    // TODO reboot instead of kill
-                    tree.detach_ext(cm, self, xindex)?;
+                    tree.detach_ext(cm, self, xindex, true)?;
                 }
 
                 R::Count(count)
             }
 
             A::Apply(op) => {
-                let mut scratch = Vec::with_capacity(64);
                 let mut exts_to_kill = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
+                let mut exts_to_flush = HashSet::with_capacity_and_hasher(2, FxBuildHasher);
                 let mut count = 0;
 
                 let _ = for_each_entity(
@@ -250,19 +249,17 @@ impl QueryEngine {
                             return ControlFlow::Continue(());
                         };
 
-                        // no need to check MSIC since we are just modifying
-                        // components they put
-
-                        let msg = IglooMessage::WriteComponents {
+                        let msg = ExtensionRequest::Msg(IglooToExtension::WriteComponents {
                             device: *device.id().inner(),
                             entity: entity.index().0,
                             comps: vec![comp],
-                        };
+                        });
 
-                        let res = ext.writer.try_write_immut(&msg, &mut scratch);
-                        if res.is_err() {
-                            exts_to_kill.insert(xindex);
-                        }
+                        match ext.channel.try_send(msg.clone()) {
+                            Ok(_) => exts_to_flush.insert(xindex),
+                            // TODO print error
+                            Err(_) => exts_to_kill.insert(xindex),
+                        };
 
                         count += 1;
 
@@ -274,10 +271,14 @@ impl QueryEngine {
                     },
                 );
 
-                for xindicies in exts_to_kill {
-                    println!("{xindicies}'s unix socket is full. Killing..");
-                    // TODO reboot instead of kill
-                    tree.detach_ext(cm, self, xindicies)?;
+                for xindex in exts_to_flush {
+                    if let Ok(ext) = tree.ext(&xindex) {
+                        _ = ext.channel.try_send(ExtensionRequest::Flush);
+                    }
+                }
+
+                for xindex in exts_to_kill {
+                    tree.detach_ext(cm, self, xindex, true)?;
                 }
 
                 R::Count(count)

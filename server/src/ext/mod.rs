@@ -6,7 +6,7 @@ use crate::{
 };
 use igloo_interface::id::ExtensionID;
 use std::error::Error;
-use tokio::fs;
+use tokio::{fs, task::JoinSet};
 
 pub mod handle;
 pub use handle::*;
@@ -17,12 +17,29 @@ pub async fn spawn_all(
     cm: &mut ClientManager,
     tree: &mut DeviceTree,
     engine: &mut QueryEngine,
-    tx: &kanal::Sender<IglooRequest>,
+    core_tx: &kanal::Sender<IglooRequest>,
 ) -> Result<(), Box<dyn Error>> {
+    let mut set = JoinSet::new();
+
     for id in get_all_ext_ids().await? {
-        let (handle, writer) = ExtensionHandle::new(id.clone(), tx).await?;
-        tree.attach_ext(cm, engine, handle, writer)?;
+        let core_tx = core_tx.clone();
+        set.spawn(async move { ExtensionHandle::new(id.clone(), core_tx).await });
     }
+
+    while let Some(result) = set.join_next().await {
+        match result {
+            Ok(Ok((handle, channel))) => {
+                tree.attach_ext(cm, engine, handle, channel)?;
+            }
+            Ok(Err(e)) => {
+                eprintln!("Error in extension boot task: {e}");
+            }
+            Err(e) => {
+                eprintln!("Error joining extension boot task: {e}");
+            }
+        }
+    }
+
     Ok(())
 }
 
