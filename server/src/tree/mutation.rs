@@ -16,7 +16,9 @@ use crate::{
 };
 use igloo_interface::{
     Component,
-    id::{DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID},
+    id::{
+        DeviceID, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID, MAX_ENTITY_ID_LENGTH,
+    },
 };
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
@@ -51,7 +53,7 @@ impl DeviceTree {
         let xid = handle.id.clone();
 
         if self.ext_ref_lut.contains_key(&xid) {
-            handle.kill();
+            _ = handle.kill();
             return Err(IglooError::DeviceTreeMutation(
                 TreeMutationError::ExtensionAlreadyAttached(xid),
             ))?;
@@ -130,7 +132,7 @@ impl DeviceTree {
         }
 
         // kill it
-        ext.process.start_kill();
+        _ = ext.process.start_kill();
 
         Ok(())
     }
@@ -238,6 +240,10 @@ impl DeviceTree {
         id: EntityID,
         expected_index: EntityIndex,
     ) -> Result<(), IglooError> {
+        if id.0.len() > MAX_ENTITY_ID_LENGTH {
+            return Err(IglooError::DeviceTreeID(TreeIDError::EntityIDTooLong));
+        }
+
         let device = self.device_mut(&did)?;
         let index = EntityIndex(device.entities.len());
 

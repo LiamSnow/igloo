@@ -6,7 +6,7 @@ use igloo_interface::{
     Component, ComponentType, NUM_COMPONENTS,
     id::{
         DeviceID, DeviceIDMarker, EntityID, EntityIndex, ExtensionID, ExtensionIndex, GroupID,
-        GroupIDMarker,
+        GroupIDMarker, MAX_ENTITY_ID_LENGTH,
     },
     query::{DeviceSnapshot, EntitySnapshot, ExtensionSnapshot, GroupSnapshot, TypeFilter},
 };
@@ -116,6 +116,8 @@ pub enum TreeIDError {
     ExtensionRefOutOfBounds(ExtensionIndex),
     #[error("Extension {0} is invalid. Maybe it isn't attached?")]
     ExtensionIDInvalid(ExtensionID),
+    #[error("Entity ID is too long. Can only be {} at most.", MAX_ENTITY_ID_LENGTH)]
+    EntityIDTooLong,
 }
 
 impl DeviceTree {

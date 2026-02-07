@@ -4,6 +4,7 @@ use std::{path::PathBuf, sync::OnceLock};
 
 mod core;
 mod ext;
+mod history;
 mod query;
 mod tree;
 mod web;

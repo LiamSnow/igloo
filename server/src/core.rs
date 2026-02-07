@@ -271,7 +271,7 @@ impl IglooCore {
                 comps,
             ),
 
-            WhatsUpIgloo { .. } => {
+            WhatsUpIgloo => {
                 // TODO return err
                 Ok(())
             }

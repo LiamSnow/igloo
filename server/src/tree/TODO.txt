@@ -1,0 +1,2 @@
+TODO add little ring buffer to device tree components
+to see their last 2 values (+ timestamps)
