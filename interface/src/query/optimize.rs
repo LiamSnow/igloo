@@ -54,6 +54,10 @@ impl EntityFilter {
 
         if let Some(tf) = &mut self.type_filter {
             tf.optimize();
+
+            if matches!(tf, TypeFilter::And(f) | TypeFilter::Or(f) if f.is_empty()) {
+                self.type_filter = None;
+            }
         }
     }
 }
@@ -182,7 +186,12 @@ impl TypeFilter {
                 if !filters.contains(&with_filter) {
                     filters.push(with_filter);
                 }
-                TypeFilter::And(filters)
+
+                if filters.len() == 1 {
+                    filters.pop().unwrap()
+                } else {
+                    TypeFilter::And(filters)
+                }
             }
             Some(existing) => TypeFilter::merge_and(existing, with_filter),
         });
