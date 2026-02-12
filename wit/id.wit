@@ -1,0 +1,33 @@
+package igloo:lib@0.1.0;
+
+interface id {
+    // Persistent
+    record device-id {
+        packed: u64
+    }
+
+    // Persistent
+    record group-id {
+        packed: u64
+    }
+
+    // Persistent
+    record extension-id {
+        inner: string,
+    }
+
+    // Ephemeral
+    record extension-index {
+        inner: u64,
+    }
+
+    // Persistent
+    record entity-id {
+        inner: string,
+    }
+
+    // Ephemeral
+    record entity-index {
+        inner: u64,
+    }
+}

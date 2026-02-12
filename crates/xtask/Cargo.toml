@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.101"
+ariadne = "0.6.0"
+logos = "0.16.1"
+prettyplease = "0.2.37"
+proc-macro2 = "1.0.106"
+quote = "1.0.44"
+serde = { version = "1.0.228", features = ["derive"] }
+syn = "2.0.114"
+toml = "1.0.0"
+wit-bindgen-core = "0.52.0"
+wit-bindgen-rust = "0.52.0"

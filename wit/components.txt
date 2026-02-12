@@ -1,0 +1,504 @@
+# This file describes all components in Igloo
+# 
+# *Modification*:
+#   1. *Immutable*: Components can never be renamed or have their type changed
+#       - The only exception to this is that new variants can be added to enums at the bottom
+#   2. *Append Only*: All new components must be added at the end of the file
+#
+# *Syntax*:
+#   <Ident> <(<IglooType> | 'none')> '\n'
+#   <Ident> 'enum' '{' '\n' <(<Ident> '\n')*> '}' '\n'
+
+# == Primitives == #
+# These are used for when either the component does not yet exist
+# in Igloo, or it doesn't make sense
+
+Integer  int
+Float    float
+String   string
+Bool     bool
+Color    color
+Date     date
+Time     time
+
+IntegerList  list<int>
+FloatList    list<float>
+StringList   list<string>
+BooleanList  list<bool>
+ColorList    list<color>
+DateList     list<date>
+TimeList     list<time>
+
+# == End Primitives == #
+
+Trigger   none
+
+# unix epoch
+Timestamp int
+
+# seconds
+Duration  int
+
+Weekday enum {
+    Sunday
+    Monday
+    Tuesday
+    Wednesday
+    Thursday
+    Friday
+    Saturday
+}
+
+Light  none
+Switch bool
+# 0.0 to 1.0
+Dimmer float 
+ColorMode enum {
+    RGB
+    Temperature
+}
+
+# degrees kelvin
+ColorTemperature int
+
+# 0.0 to 1.0
+Volume float 
+Muted bool
+
+# mark entity as config
+Config     none
+
+# mark entity as diagnostic
+Diagnostic none
+
+# mark entity as siren
+Siren      none
+
+# mark entity as sensor
+Sensor     none
+
+# Metadata 
+# TODO a bunch of these are super specific to ESPHome
+# and might not make sense in Igloo
+Icon string
+
+AccuracyDecimals int
+
+# Currently just for ESPHome
+DeviceClass string
+
+SensorStateClass enum {
+    Measurement
+    TotalIncreasing
+    Total
+}
+
+UnitApparentPower enum {
+    # VA
+    VoltAmperes
+}
+
+UnitPower enum {
+    # W, watt, watts
+    Watts
+    # kW, kw, kilowatt, kilowatts
+    KiloWatts
+    # BTU/h
+    BtusPerHour
+}
+
+UnitReactivePower enum {
+    # var
+    VoltAmpereReactive
+}
+
+UnitEnergy enum {
+    # Wh
+    WattHours
+    # kWh
+    KiloWattHours
+    # MWh
+    MegaWattHours
+}
+
+UnitElectricCurrent enum {
+    # mA, milliampere, milliamperes, milliamps, milliamp
+    Milliamperes
+    # A, amps, amp, ampere, amperes
+    Amperes
+}
+
+UnitElectricPotential enum {
+    # mV, millivolts
+    Millivolts
+    # V, volt, volts
+    Volts
+}
+
+UnitDegree enum {
+    # °, degree, degrees
+    Degrees
+}
+
+UnitCurrency enum {
+    # €, euro, euros
+    Euros
+    # $, dollar, dollars
+    Dollars
+    # ¢, cent, cents
+    Cents
+}
+
+UnitTemperature enum {
+    # °C, celcius
+    Celsius
+    # °F, fahrenheit
+    Fahrenheit
+    # K, kelvin
+    Kelvin
+}
+
+UnitTime enum {
+    # μs, us, microseconds
+    Microseconds
+    # ms, milliseconds
+    Milliseconds
+    # s, seconds
+    Seconds
+    # min, mins, minute, minutes
+    Minutes
+    # h, hour, hours
+    Hours
+    # d, day, days
+    Days
+    # w, wk, wks, week, weeks
+    Weeks
+    # month, months
+    Months
+    # y, year, years
+    Years
+}
+
+UnitLength enum {
+    # mm
+    Millimeters
+    # cm
+    Centimeters
+    # m
+    Meters
+    # km
+    Kilometers
+    # in
+    Inches
+    # ft
+    Feet
+    # yd
+    Yard
+    # mi
+    Miles
+}
+
+UnitFrequency enum {
+    # Hz
+    Hertz
+    # kHz
+    Kilohertz
+    # MHz
+    Megahertz
+    # GHz
+    Gigahertz
+}
+
+UnitPressure enum {
+    # Pa
+    Pascal
+    # hPa
+    Hectopascal
+    # kPa
+    Kilopascal
+    # bar
+    Bar
+    # cbar
+    Centibar
+    # mbar
+    Millibar
+    # mmHg
+    MillimeterMercury
+    # inHg
+    InchMercury
+    # psi
+    Psi
+}
+
+UnitSoundPressure enum {
+    # dB, decibel, decibels
+    Decibel
+    # dBa
+    DecibelAWeighted
+    # dBm
+    DecibelsMilliwatt
+}
+
+UnitVolume enum {
+    # L
+    Liters
+    # mL
+    Milliliters
+    # m³
+    CubicMeters
+    # ft³
+    CubicFeet
+    # gal
+    Gallons
+    # fl. oz.
+    FluidOunce
+}
+
+UnitVolumeFlowRate enum {
+    # m³/h
+    CubicMetersPerHour
+    # ft³/m
+    CubicFeetPerMinute
+}
+
+UnitArea enum {
+    # m²
+    SquareMeters
+}
+
+UnitMass enum {
+    # g
+    Grams
+    # kg
+    Kilograms
+    # mg
+    Milligrams
+    # µg
+    Micrograms
+    # oz
+    Ounces
+    # lb
+    Pounds
+}
+
+UnitConductivity enum {
+    # µS/cm
+    MicrosiemensPerCentimeter
+}
+
+UnitLight enum {
+    # lx
+    Lux
+}
+
+UnitUvIndex enum {
+    # UV index
+    UvIndex
+}
+
+UnitPercentage enum {
+    # %
+    Percentage
+}
+
+UnitIrradiation enum {
+    # W/m²
+    WattsPerSquareMeter
+    # BTU/(h×ft²)
+    BtusPerHourSquareFoot
+}
+
+UnitConcentration enum {
+    # µg/m³
+    MicrogramsPerCubicMeter
+    # mg/m³
+    MilligramsPerCubicMeter
+    # μg/ft³
+    MicrogramsPerCubicFoot
+    # p/m³
+    PartsPerCubicMeter
+    # ppm
+    PartsPerMillion
+    # ppb
+    PartsPerBillion
+}
+
+UnitSpeed enum {
+    # mm/d
+    MillimetersPerDay
+    # mm/h
+    MillimetersPerHour
+    # ft/s
+    FeetPerSecond
+    # in/d
+    InchesPerDay
+    # m/s
+    MetersPerSecond
+    # in/h
+    InchesPerHour
+    # km/h
+    KilometersPerHour
+    # kn
+    Knots
+    # mph
+    MilesPerHour
+}
+
+UnitData enum {
+    # bit
+    Bits
+    # kbit
+    Kilobits
+    # Mbit
+    Megabits
+    # Gbit
+    Gigabits
+    # B
+    Bytes
+    # kB
+    Kilobytes
+    # MB
+    Megabytes
+    # GB
+    Gigabytes
+    # TB
+    Terabytes
+    # PB
+    Petabytes
+    # EB
+    Exabytes
+    # ZB
+    Zettabytes
+    # YB
+    Yottabytes
+    # KiB
+    Kibibytes
+    # MiB
+    Mebibytes
+    # GiB
+    Gibibytes
+    # TiB
+    Tebibytes
+    # PiB
+    Pebibytes
+    # EiB
+    Exbibytes
+    # ZiB
+    Zebibytes
+    # YiB
+    Yobibytes
+}
+
+UnitDataRate enum {
+    # bit/s
+    BitsPerSecond
+    # kbit/s
+    KilobitsPerSecond
+    # Mbit/s
+    MegabitsPerSecond
+    # Gbit/s
+    GigabitsPerSecond
+    # B/s
+    BytesPerSecond
+    # kB/s
+    KilobytesPerSecond
+    # MB/s
+    MegabytesPerSecond
+    # GB/s
+    GigabytesPerSecond
+    # KiB/s
+    KibibytesPerSecond
+    # MiB/s
+    MebibytesPerSecond
+    # GiB/s
+    GibibytesPerSecond
+}
+
+FanOscillation enum {
+    Off
+    On
+    Vertical
+    Horizontal
+    Both
+}
+
+FanDirection enum {
+    Forward
+    Reverse
+}
+
+FanSpeed enum {
+    On
+    Off
+    Auto
+    Low
+    Medium
+    High
+    Middle
+    Focus
+    Diffuse
+    Quiet
+}
+
+ClimateMode enum {
+    Off
+    Auto
+    Heat
+    Cool
+    HeatCool
+    FanOnly
+    Dry
+    Eco
+}
+
+LockState enum {
+    Unknown
+    Locked
+    Unlocked
+    Jammed
+    Locking
+    Unlocking
+}
+
+MediaState enum {
+    Unknown
+    Idle
+    Playing
+    Paused
+}
+
+Cover none
+
+CoverState enum {
+    Idle
+    Opening
+    Closing
+    Stopped
+    Open
+    Closed
+}
+
+Position float
+
+Tilt float
+
+Valve none
+
+ValveState enum {
+    Idle
+    Opening
+    Closing
+}
+
+AlarmState enum {
+    Disarmed
+    ArmedHome
+    ArmedAway
+    ArmedNight
+    ArmedVacation
+    ArmedUnknown
+    Pending
+    Triggered
+    Arming
+    Disarming
+}

@@ -1,0 +1,128 @@
+package igloo:lib@0.1.0;
+
+interface entity {
+    use id.{entity-id, entity-index};
+    use component.{component};
+
+    enum entity-error {
+        invalid-entity
+    }
+
+    resource entity {
+        id: func() -> entity-id;
+        index: func() -> entity-index;
+        
+        /// Will either put a component on the given entity
+        /// or will set the value (if it already exists)
+        /// 
+        /// Fails if this entity is invalid
+        put-component: async func(component: component) -> result<_, entity-error>;
+    }
+}
+
+interface extension-mp-to-igloo {
+    use id.{device-id, entity-id};
+    use component.{component};
+    use entity.{entity};
+
+    /// Returns the ID of this device
+    id: func() -> device-id;
+
+    /// Get a value from the config for this device
+    get-cfg: async func(key: string) -> option<string>;
+    /// Save a value to the config for this device
+    save-cfg: async func(key: string, value: string);
+    /// Remove a value from the config for this device
+    remove-cfg: async func(key: string);
+    
+    /// Register an entity under this device
+    register-entity: async func(id: entity-id) -> entity;
+
+}
+
+interface extension-sp-to-igloo {
+    use id.{device-id, entity-id};
+    use component.{component};
+    use entity.{entity};
+
+    /// Get persisted devices
+    get-devices: func() -> list<device>;
+
+    /// Get a value from the config for the entire extension
+    get-cfg: async func(key: string) -> option<string>;
+    /// Save a value to the config for the entire extension
+    save-cfg: async func(key: string, value: string);
+    /// Remove a value from the config for the entire extension
+    remove-cfg: async func(key: string);
+
+    enum device-error {
+        invalid-device
+    }
+
+    resource device {
+        /// Requests to register new device with Igloo
+        /// Infallible
+        constructor(name: string);
+
+        /// Returns the ID of the device
+        id: func() -> result<device-id, device-error>;
+
+        /// Get a value from the config for this device
+        get-cfg: async func(key: string) -> result<option<string>, device-error>;
+        /// Save a value to the config for this device
+        save-cfg: async func(key: string, value: string) -> result<_, device-error>;
+        /// Remove a value from the config for this device
+        remove-cfg: async func(key: string) -> result<_, device-error>;
+
+        /// Register an entity under this device
+        /// Fails if the device is invalid
+        register-entity: async func(id: entity-id) -> result<entity, device-error>;
+    }
+}
+
+interface core-to-extension-sp {
+    use id.{device-id, entity-index};
+    use component.{component};
+
+    /// Igloo core request to put a component on the given device and entity.
+    /// The change will not be applied to the device tree until the extension
+    /// confirms by sending a `put-component` back
+    /// (usually after response from the physical hardware device)
+    /// 
+    /// The extension _should_ hint to the core whether the operation will
+    /// succeed by returning either `Ok` or `Err` 
+    put-component: async func(
+        device-id: device-id,
+        entity-index: entity-index,
+        component: component
+    ) -> result<_, string>;
+
+    /// Igloo has deleted device,
+    /// extension must cleanup its `Device` reference
+    delete-device: async func(device-id: device-id) -> result<_, string>;
+
+    /// Custom function defined by extension
+    custom: async func(name: string, params: string) -> result<_, string>;
+}
+
+interface core-to-extension-mp {
+    use id.{entity-index};
+    use component.{component};    
+
+    /// Igloo core request to put a component on the given entity.
+    /// The change will not be applied to the device tree until the extension
+    /// confirms by sending a `put-component` back
+    /// (usually after response from the physical hardware device)
+    /// 
+    /// The extension _should_ hint to the core whether the operation will
+    /// succeed by returning either `Ok` or `Err` 
+    put-component: async func(
+        entity-index: entity-index,
+        component: component
+    ) -> result<_, string>;
+
+    /// Custom function defined by extension
+    custom: async func(name: string, params: string) -> result<_, string>;
+}
+
+

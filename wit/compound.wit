@@ -1,0 +1,24 @@
+package igloo:lib@0.1.0;
+
+interface compound {
+    record igloo-color {
+        /// 0.0 to 1.0
+        r: f64,
+        /// 0.0 to 1.0
+        g: f64,
+        /// 0.0 to 1.0
+        b: f64,
+    }
+    
+    record igloo-date {
+        year: u16,
+        month: u8,
+        day: u8,
+    }
+    
+    record igloo-time {
+        hour: u8,
+        minute: u8,
+        second: u8,
+    }
+}

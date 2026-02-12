@@ -1,0 +1,29 @@
+[package]
+name = "igloo-interface"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+extension = ["wasip3"]
+
+# used with extension feature
+# forces sp mode instead of multi-process
+# in this mode, the extension handles multiple devices
+single-process = ["wasip3"]
+
+# recommended for extensions
+async = []
+
+# only for igloo core
+core = []
+query = ["thiserror", "rustc-hash"]
+penguin = []
+
+[dependencies]
+derive_more = { version = "2.1.1", features = ["display", "from"] }
+rustc-hash = { version = "2.1.1", optional = true }
+serde = { version = "1.0.228", features = ["derive"] }
+thiserror = { version = "2.0.18", optional = true }
+wasip3 = { version = "0.4.0", optional = true }
+wit-bindgen = { version = "0.52.0", features = ["async-spawn"] }
+wit-bindgen-rt = { version = "0.44.0", features = ["async"] }

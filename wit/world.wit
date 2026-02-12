@@ -1,0 +1,29 @@
+package igloo:lib@0.1.0;
+
+/// Multi-process extension
+/// Manages one device
+world extension-mp {
+    include wasi:cli/command@0.3.0-rc-2026-01-06;
+    import extension-mp-to-igloo;
+    export core-to-extension-mp;
+}
+
+/// Single-process extension
+/// Manages multiple devices
+world extension-sp {
+    include wasi:cli/command@0.3.0-rc-2026-01-06;
+    import extension-sp-to-igloo;
+    export core-to-extension-sp;
+}
+
+/// Core Igloo system
+world core {
+    import core-to-extension-sp;
+    import core-to-extension-mp;
+}
+
+world shared {
+    import id;
+    import component;
+    import compound;
+}
