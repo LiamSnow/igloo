@@ -1,4 +1,5 @@
-include!(concat!(env!("OUT_DIR"), "/out.rs"));
+pub mod generated;
+pub use generated::*;
 
 pub mod id;
 pub mod query;

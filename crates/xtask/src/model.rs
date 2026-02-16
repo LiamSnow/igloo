@@ -1,16 +1,16 @@
 use crate::types::ident;
 use proc_macro2::TokenStream;
 use quote::quote;
-use serde::Deserialize;
-use std::{fs, path::PathBuf};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use syn::Ident;
 
-#[derive(Debug, Deserialize)]
-pub struct ComponentsConfig {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ComponentsFile {
     pub components: Vec<Component>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Component {
     pub name: String,
     #[serde(default)]
@@ -22,7 +22,7 @@ pub struct Component {
     pub kind: ComponentKind,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[allow(dead_code)]
 pub enum ComponentKind {
@@ -47,18 +47,18 @@ impl Default for ComponentKind {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum EnumTag {
     Enum,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MarkerTag {
     Marker,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IglooType {
     Integer,
     Real,
@@ -76,22 +76,29 @@ pub enum IglooType {
     TimeList,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Variant {
     pub name: String,
     pub aliases: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Related {
     pub name: String,
     pub reason: String,
 }
 
-impl ComponentsConfig {
-    pub fn read(pathbuf: PathBuf) -> Self {
-        let contents = fs::read_to_string(pathbuf).expect("Failed to read components file");
-        toml::from_str(&contents).expect("Failed to parse components file")
+impl ComponentsFile {
+    pub fn make_map(&self, filename: &'static str) -> HashMap<&String, &Component> {
+        let mut map = HashMap::with_capacity(self.components.len());
+
+        for comp in &self.components {
+            if map.insert(&comp.name, comp).is_some() {
+                panic!("{filename}: Duplicate components `{}`", comp.name);
+            }
+        }
+
+        map
     }
 }
 
