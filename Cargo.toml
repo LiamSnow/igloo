@@ -2,10 +2,10 @@
 edition = "2024"
 license = "GNU GPLv3"
 repository = "https://github.com/liamsnow/igloo"
-rust-version = "1.93.0"
+rust-version = "1.93.1"
 
 [workspace.dependencies]
 
 [workspace]
-members = ["./crates/*"]
-resolver = "2"
+members = []
+resolver = "3"
